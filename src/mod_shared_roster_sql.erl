@@ -99,8 +99,12 @@ delete_group(Host, Group) ->
         Res -> Res
     end.
 
-
 get_group_opts(Host, Group) ->
+    ets_cache:lookup(?GROUP_CACHE, {Group, Host},
+            fun () -> get_group_opts_db(Host, Group) end).
+
+
+get_group_opts_db(Host, Group) ->
     case catch ejabberd_sql:sql_query(
 		 Host,
 		 ?SQL("select @(opts)s from sr_group"
