@@ -686,8 +686,13 @@ push_user_to_group(LUser, LServer, Group, Host,
 		  end,
 		  get_group_users(Host, Group)).
 
+%% Simplified version - we don't need list of groups inside group
+displayed_to_groups(GroupName, LServer) -> 
+	?DEBUG("[shr] displayed_to_groups ~s", [GroupName]),
+	[GroupName].
+
 %% Get list of groups to which this group is displayed
-displayed_to_groups(GroupName, LServer) ->
+displayed_to_groups_complete(GroupName, LServer) -> 
 	?DEBUG("[shr] displayed_to_groups ~s", [GroupName]),
     GroupsOpts = groups_with_opts(LServer),
     Gs = lists:filter(fun ({_Group, Opts}) ->

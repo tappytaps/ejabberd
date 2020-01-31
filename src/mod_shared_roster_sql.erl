@@ -131,6 +131,7 @@ get_group_opts_db(Host, Group) ->
 
 set_group_opts(Host, Group, Opts) ->
     ?DEBUG("[shr] Set group opts ~ts",[Host]),
+    ets_cache:delete(?GROUP_CACHE, {Group, Host}),
     SOpts = misc:term_to_expr(Opts),
     F = fun () ->
 		?SQL_UPSERT_T(
@@ -213,6 +214,7 @@ add_user_to_group(Host, US, Group) ->
           "grp=%(Group)s"])).
 
 remove_user_from_group(Host, US, Group) ->
+    ets_cache:delete(?USER_CACHE, {US, Host}),
     SJID = make_jid_s(US),
     F = fun () ->
 		ejabberd_sql:sql_query_t(
