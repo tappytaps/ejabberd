@@ -809,7 +809,7 @@ shared_roster_group(Host, Group, Query, Lang) ->
     Members = mod_shared_roster:get_group_explicit_users(Host,
 						 Group),
     FMembers = iolist_to_binary(
-                  [[us_to_list(Member), $\n] || Member <- Members]]),
+                  [[[us_to_list(Member), $\n] || Member <- Members]]),
     FDisplayedGroups = [<<DG/binary, $\n>> || DG <- DisplayedGroups],
     DescNL = length(ejabberd_regexp:split(Description,
 					   <<"\n">>)),
