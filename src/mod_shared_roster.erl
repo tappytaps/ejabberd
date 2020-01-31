@@ -576,12 +576,7 @@ add_user_to_group2(Host, US, Group) ->
 
 get_displayed_groups(Group, LServer) ->
 	?DEBUG("[shr] get_displayed_groups ~s", [Group]),
-	% to remove
-    GroupsOpts = groups_with_opts(LServer),
-    GroupOptsOld = proplists:get_value(Group, GroupsOpts, []),
-	% to remove
 	GroupOpts = mod_shared_roster:get_group_opts(LServer, Group),
-	?DEBUG("[shr] get_displayed_groups old ~p, new ~p", [GroupOptsOld, GroupOpts]),
     proplists:get_value(displayed_groups, GroupOpts, []).
 
 push_displayed_to_user(LUser, LServer, Host, Subscription, DisplayedGroups) ->
@@ -617,10 +612,7 @@ remove_user_from_group(Host, US, Group) ->
 
 push_members_to_user(LUser, LServer, Group, Host,
 		     Subscription) ->
-    GroupsOpts = groups_with_opts(LServer),
-    GroupOptsOld = proplists:get_value(Group, GroupsOpts, []),
 	GroupOpts = mod_shared_roster:get_group_opts(LServer, Group),
-	?DEBUG("[shr] push_members_to_user old ~p, new ~p", [GroupOptsOld, GroupOpts]),
     GroupName = proplists:get_value(name, GroupOpts, Group),
 	?DEBUG("[shr] push_members_to_user ~s, ~p",[GroupName, GroupOpts]),
     Members = get_group_users(Host, Group),
@@ -671,10 +663,7 @@ push_user_to_members(User, Server, Subscription) ->
 
 push_user_to_displayed(LUser, LServer, Group, Host, Subscription, DisplayedToGroupsOpts) ->
 	?DEBUG("[shr] push_user_to_displayed ~s, ~s", [LUser, Subscription]),
-    GroupsOpts = groups_with_opts(Host),
-    GroupOptsOld = proplists:get_value(Group, GroupsOpts, []),	
 	GroupOpts = mod_shared_roster:get_group_opts(LServer, Group),
-	?DEBUG("[shr] push_user_to_displayed old ~p, new ~p", [GroupOptsOld, GroupOpts]),
     GroupName = proplists:get_value(name, GroupOpts, Group),
 	
     [push_user_to_group(LUser, LServer, GroupD, Host,
