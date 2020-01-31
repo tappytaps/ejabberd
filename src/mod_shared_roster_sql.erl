@@ -100,8 +100,15 @@ delete_group(Host, Group) ->
     end.
 
 get_group_opts(Host, Group) ->
-    ets_cache:lookup(?GROUP_CACHE, {Group, Host},
-            fun () -> get_group_opts_db(Host, Group) end).
+    ?DEBUG("get_group_opts: ~p ~p", [Host, Group])
+    case ets_cache:lookup(?GROUP_CACHE, {Group, Host},
+            fun () ->                 
+                case  get_group_opts_db(Host, Group) of
+                    {selected, Result} -> {ok, Result}
+                    _ -> error
+                end.) of
+        {ok, CacheResult} -> {selected, CacheResult}
+        _ -> error
 
 
 get_group_opts_db(Host, Group) ->
@@ -124,33 +131,6 @@ set_group_opts(Host, Group, Opts) ->
                     "opts=%(SOpts)s"])
 	end,
     ejabberd_sql:sql_transaction(Host, F).
-
-
-% get_group_opts(Host, Group) ->
-%     ets_cache:lookup(?GROUP_CACHE, {Group, Host},
-%             fun () -> get_group_opts_db(Host, Group) end).
-
-% get_group_opts(Host, Group) ->
-%     case catch ejabberd_sql:sql_query(
-% 		 Host,
-% 		 ?SQL("select @(opts)s from sr_group"
-%                       " where name=%(Group)s and %(Host)H")) of
-% 	{selected, [{SOpts}]} ->
-% 	    mod_shared_roster:opts_to_binary(ejabberd_sql:decode_term(SOpts));
-% 	_ -> error
-%     end.
-
-% set_group_opts(Host, Group, Opts) ->
-%     ets_cache:delete(?GROUP_CACHE, {Group, Host}, nil),
-%     SOpts = misc:term_to_expr(Opts),
-%     F = fun () ->
-% 		?SQL_UPSERT_T(
-%                    "sr_group",
-%                    ["!name=%(Group)s",
-%                     "!server_host=%(Host)s",
-%                     "opts=%(SOpts)s"])
-% 	end,
-%     ejabberd_sql:sql_transaction(Host, F).
 
 get_user_groups(US, Host) ->
     SJID = make_jid_s(US),
