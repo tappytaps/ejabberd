@@ -39,6 +39,7 @@
 -include("mod_roster.hrl").
 -include("mod_shared_roster.hrl").
 -include("ejabberd_sql_pt.hrl").
+-include("logger.hrl").
 
 -define(USER_CACHE, shared_roster_sql_user_cache).
 -define(GROUP_CACHE, shared_roster_sql_group_cache).
@@ -66,6 +67,7 @@ list_groups(Host) ->
     end.
 
 groups_with_opts(Host) ->
+    ?DEBUG("[shr] Getting all groups from ~ts",[Host]),
     case ejabberd_sql:sql_query(
            Host,
            ?SQL("select @(name)s, @(opts)s from sr_group where %(Host)H"))
@@ -100,7 +102,9 @@ delete_group(Host, Group) ->
     end.
 
 get_group_opts(Host, Group) ->
+    ?DEBUG("[shr] get_group_opts ~ts",[Group]),
     F = fun() ->
+        ?DEBUG("[shr] get_group_opts From DB! ~ts",[Group]),
         case  get_group_opts_db(Host, Group) of
             error -> error;
             Result -> {ok, Result}
@@ -126,6 +130,7 @@ get_group_opts_db(Host, Group) ->
     end.
 
 set_group_opts(Host, Group, Opts) ->
+    ?DEBUG("[shr] Set group opts ~ts",[Host]),
     SOpts = misc:term_to_expr(Opts),
     F = fun () ->
 		?SQL_UPSERT_T(
@@ -137,7 +142,9 @@ set_group_opts(Host, Group, Opts) ->
     ejabberd_sql:sql_transaction(Host, F).
 
 get_user_groups(US, Host) ->
+    ?DEBUG("[shr] Get user groups ~ts",[US]),
     F = fun() ->
+        ?DEBUG("[shr] From DB! ~ts",[US]),
         case  get_user_groups_db(US, Host) of
             error -> error;
             Result -> {ok, Result}
