@@ -100,16 +100,15 @@ delete_group(Host, Group) ->
     end.
 
 get_group_opts(Host, Group) ->
-    ?DEBUG("get_group_opts: ~p ~p", [Host, Group])
-    case ets_cache:lookup(?GROUP_CACHE, {Group, Host},
-            fun () ->                 
-                case  get_group_opts_db(Host, Group) of
-                    {selected, Result} -> {ok, Result}
-                    _ -> error
-                end.) of
-        {ok, CacheResult} -> {selected, CacheResult}
+    F = fun() ->
+        case  get_group_opts_db(Host, Group) of
+            {selected, Result} -> {ok, Result};
+            _ -> error
+        end,    
+    case ets_cache:lookup(?GROUP_CACHE, {Group, Host}, F) of
+        {ok, CacheResult} -> {selected, CacheResult};
         _ -> error
-
+    end.
 
 get_group_opts_db(Host, Group) ->
     case catch ejabberd_sql:sql_query(
