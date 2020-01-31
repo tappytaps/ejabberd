@@ -453,24 +453,26 @@ get_group_name(Host1, Group1) ->
 
 %% Get list of names of groups that have @all@/@online@/etc in the memberlist
 get_special_users_groups(Host) ->
-    lists:filtermap(fun ({Group, Opts}) ->
-             case proplists:get_value(all_users, Opts, false) orelse
-                  proplists:get_value(online_users, Opts, false) of
-               true -> {true, Group};
-               false -> false
-             end
-         end,
-         groups_with_opts(Host)).
+    % lists:filtermap(fun ({Group, Opts}) ->
+    %          case proplists:get_value(all_users, Opts, false) orelse
+    %               proplists:get_value(online_users, Opts, false) of
+    %            true -> {true, Group};
+    %            false -> false
+    %          end
+    %      end,
+    %      groups_with_opts(Host)).
+	[].
 
 %% Get list of names of groups that have @online@ in the memberlist
 get_special_users_groups_online(Host) ->
-    lists:filtermap(fun ({Group, Opts}) ->
-             case proplists:get_value(online_users, Opts, false) of
-               true -> {true, Group};
-               false -> false
-             end
-         end,
-         groups_with_opts(Host)).
+    % lists:filtermap(fun ({Group, Opts}) ->
+    %          case proplists:get_value(online_users, Opts, false) of
+    %            true -> {true, Group};
+    %            false -> false
+    %          end
+    %      end,
+    %      groups_with_opts(Host)).
+	[].
 
 %% Given two lists of groupnames and their options,
 %% return the list of displayed groups to the second list
@@ -553,24 +555,12 @@ add_user_to_group(Host, US, Group) ->
     end.
 add_user_to_group2(Host, US, Group) ->
     {LUser, LServer} = US,
-    case ejabberd_regexp:run(LUser, <<"^@.+@\$">>) of
-      match ->
-	  GroupOpts = mod_shared_roster:get_group_opts(Host, Group),
-	  MoreGroupOpts = case LUser of
-			    <<"@all@">> -> [{all_users, true}];
-			    <<"@online@">> -> [{online_users, true}];
-			    _ -> []
-			  end,
-	  mod_shared_roster:set_group_opts(Host, Group,
-				   GroupOpts ++ MoreGroupOpts);
-      nomatch ->
-	  DisplayedToGroups = displayed_to_groups(Group, Host),
-	  DisplayedGroups = get_displayed_groups(Group, LServer),
-	  push_user_to_displayed(LUser, LServer, Group, Host, both, DisplayedToGroups),
-	  push_displayed_to_user(LUser, LServer, Host, both, DisplayedGroups),
-	  Mod = gen_mod:db_mod(Host, ?MODULE),
-	  Mod:add_user_to_group(Host, US, Group)
-    end.
+	DisplayedToGroups = displayed_to_groups(Group, Host),
+	DisplayedGroups = get_displayed_groups(Group, LServer),
+	push_user_to_displayed(LUser, LServer, Group, Host, both, DisplayedToGroups),
+	push_displayed_to_user(LUser, LServer, Host, both, DisplayedGroups),
+	Mod = gen_mod:db_mod(Host, ?MODULE),
+	Mod:add_user_to_group(Host, US, Group).
 
 get_displayed_groups(Group, LServer) ->
     GroupsOpts = groups_with_opts(LServer),
@@ -584,29 +574,13 @@ push_displayed_to_user(LUser, LServer, Host, Subscription, DisplayedGroups) ->
 
 remove_user_from_group(Host, US, Group) ->
     {LUser, LServer} = US,
-    case ejabberd_regexp:run(LUser, <<"^@.+@\$">>) of
-      match ->
-	  GroupOpts = mod_shared_roster:get_group_opts(Host, Group),
-	  NewGroupOpts = case LUser of
-			   <<"@all@">> ->
-			       lists:filter(fun (X) -> X /= {all_users, true}
-					    end,
-					    GroupOpts);
-			   <<"@online@">> ->
-			       lists:filter(fun (X) -> X /= {online_users, true}
-					    end,
-					    GroupOpts)
-			 end,
-	  mod_shared_roster:set_group_opts(Host, Group, NewGroupOpts);
-      nomatch ->
-	  Mod = gen_mod:db_mod(Host, ?MODULE),
-	  Result = Mod:remove_user_from_group(Host, US, Group),
-	  DisplayedToGroups = displayed_to_groups(Group, Host),
-	  DisplayedGroups = get_displayed_groups(Group, LServer),
-	  push_user_to_displayed(LUser, LServer, Group, Host, remove, DisplayedToGroups),
-	  push_displayed_to_user(LUser, LServer, Host, remove, DisplayedGroups),
-	  Result
-    end.
+	Mod = gen_mod:db_mod(Host, ?MODULE),
+	Result = Mod:remove_user_from_group(Host, US, Group),
+	DisplayedToGroups = displayed_to_groups(Group, Host),
+	DisplayedGroups = get_displayed_groups(Group, LServer),
+	push_user_to_displayed(LUser, LServer, Group, Host, remove, DisplayedToGroups),
+	push_displayed_to_user(LUser, LServer, Host, remove, DisplayedGroups),
+	Result.
 
 push_members_to_user(LUser, LServer, Group, Host,
 		     Subscription) ->
@@ -828,19 +802,13 @@ shared_roster_group(Host, Group, Query, Lang) ->
     GroupOpts = mod_shared_roster:get_group_opts(Host, Group),
     Name = get_opt(GroupOpts, name, <<"">>),
     Description = get_opt(GroupOpts, description, <<"">>),
-    AllUsers = get_opt(GroupOpts, all_users, false),
-    OnlineUsers = get_opt(GroupOpts, online_users, false),
+    % AllUsers = get_opt(GroupOpts, all_users, false),
+    % OnlineUsers = get_opt(GroupOpts, online_users, false),
     DisplayedGroups = get_opt(GroupOpts, displayed_groups,
 			      []),
     Members = mod_shared_roster:get_group_explicit_users(Host,
 						 Group),
     FMembers = iolist_to_binary(
-                 [if AllUsers -> <<"@all@\n">>;
-                     true -> <<"">>
-                  end,
-                  if OnlineUsers -> <<"@online@\n">>;
-                     true -> <<"">>
-                  end,
                   [[us_to_list(Member), $\n] || Member <- Members]]),
     FDisplayedGroups = [<<DG/binary, $\n>> || DG <- DisplayedGroups],
     DescNL = length(ejabberd_regexp:split(Description,
