@@ -102,12 +102,12 @@ delete_group(Host, Group) ->
 get_group_opts(Host, Group) ->
     F = fun() ->
         case  get_group_opts_db(Host, Group) of
-            {selected, Result} -> {ok, Result};
-            error -> error
+            error -> error;
+            Result -> {ok, Result}
         end
     end, 
     case ets_cache:lookup(?GROUP_CACHE, {Group, Host}, F) of
-        {ok, CacheResult} -> {selected, CacheResult};
+        {ok, CacheResult} -> CacheResult;
         error -> error
     end.
 
