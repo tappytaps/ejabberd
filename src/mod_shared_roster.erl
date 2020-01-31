@@ -453,24 +453,26 @@ get_group_name(Host1, Group1) ->
 
 %% Get list of names of groups that have @all@/@online@/etc in the memberlist
 get_special_users_groups(Host) ->
-    lists:filtermap(fun ({Group, Opts}) ->
-             case proplists:get_value(all_users, Opts, false) orelse
-                  proplists:get_value(online_users, Opts, false) of
-               true -> {true, Group};
-               false -> false
-             end
-         end,
-         groups_with_opts(Host)).
+	[].
+    % lists:filtermap(fun ({Group, Opts}) ->
+    %          case proplists:get_value(all_users, Opts, false) orelse
+    %               proplists:get_value(online_users, Opts, false) of
+    %            true -> {true, Group};
+    %            false -> false
+    %          end
+    %      end,
+    %      groups_with_opts(Host)).
 
 %% Get list of names of groups that have @online@ in the memberlist
 get_special_users_groups_online(Host) ->
-    lists:filtermap(fun ({Group, Opts}) ->
-             case proplists:get_value(online_users, Opts, false) of
-               true -> {true, Group};
-               false -> false
-             end
-         end,
-         groups_with_opts(Host)).
+	[].
+    % lists:filtermap(fun ({Group, Opts}) ->
+    %          case proplists:get_value(online_users, Opts, false) of
+    %            true -> {true, Group};
+    %            false -> false
+    %          end
+    %      end,
+    %      groups_with_opts(Host)).
 
 %% Given two lists of groupnames and their options,
 %% return the list of displayed groups to the second list
@@ -613,6 +615,7 @@ push_members_to_user(LUser, LServer, Group, Host,
     GroupsOpts = groups_with_opts(LServer),
     GroupOpts = proplists:get_value(Group, GroupsOpts, []),
     GroupName = proplists:get_value(name, GroupOpts, Group),
+	?DEBUG("[shr] push_members_to_user ~s, ~p",[GroupName, GroupOpts]),
     Members = get_group_users(Host, Group),
     lists:foreach(fun ({U, S}) ->
 			  push_roster_item(LUser, LServer, U, S, GroupName,
