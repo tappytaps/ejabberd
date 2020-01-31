@@ -40,11 +40,22 @@
 -include("mod_shared_roster.hrl").
 -include("ejabberd_sql_pt.hrl").
 
+-define(USER_CACHE, shared_roster_sql_user_cache).
+-define(GROUP_CACHE, shared_roster_sql_group_cache).
+
+
 %%%===================================================================
 %%% API
 %%%===================================================================
 init(_Host, _Opts) ->
+    init_cache(_Host, _Opts),
     ok.
+
+
+init_cache(Host, Opts) ->
+    ets_cache:new(?USER_CACHE, []),
+    ets_cache:new(?GROUP_CACHE, []).    
+
 
 list_groups(Host) ->
     case ejabberd_sql:sql_query(
@@ -88,7 +99,12 @@ delete_group(Host, Group) ->
         Res -> Res
     end.
 
+
 get_group_opts(Host, Group) ->
+    ets_cache:lookup(?GROUP_CACHE, {Group, Host},
+            fun () -> get_group_opts_db(State, Group) end)
+
+get_group_opts_db(Host, Group) ->
     case catch ejabberd_sql:sql_query(
 		 Host,
 		 ?SQL("select @(opts)s from sr_group"
@@ -99,6 +115,7 @@ get_group_opts(Host, Group) ->
     end.
 
 set_group_opts(Host, Group, Opts) ->
+    ets_cache:delete(?GROUP_CACHE, {Group, Host}, nil),
     SOpts = misc:term_to_expr(Opts),
     F = fun () ->
 		?SQL_UPSERT_T(
