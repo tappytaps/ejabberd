@@ -575,7 +575,7 @@ add_user_to_group2(Host, US, Group) ->
     end.
 
 get_displayed_groups(Group, LServer) ->
-	?DEBUG("[shr] get_displayed_groups ~s", [Group])
+	?DEBUG("[shr] get_displayed_groups ~s", [Group]),
     GroupsOpts = groups_with_opts(LServer),
     GroupOpts = proplists:get_value(Group, GroupsOpts, []),
     proplists:get_value(displayed_groups, GroupOpts, []).
@@ -639,7 +639,7 @@ remove_user(User, Server) ->
 push_user_to_members(User, Server, Subscription) ->
     LUser = jid:nodeprep(User),
     LServer = jid:nameprep(Server),
-	?DEBUG("[shr] push_user_to_members ~s, ~s", [User, Subscription])
+	?DEBUG("[shr] push_user_to_members ~s, ~s", [User, Subscription]),
     GroupsOpts = groups_with_opts(LServer),
     SpecialGroups =
 	get_special_displayed_groups(GroupsOpts),
@@ -664,7 +664,7 @@ push_user_to_members(User, Server, Subscription) ->
 		  lists:usort(SpecialGroups ++ UserGroups)).
 
 push_user_to_displayed(LUser, LServer, Group, Host, Subscription, DisplayedToGroupsOpts) ->
-	?DEBUG("[shr] push_user_to_displayed ~s, ~s", [LUser, Subscription])
+	?DEBUG("[shr] push_user_to_displayed ~s, ~s", [LUser, Subscription]),
     GroupsOpts = groups_with_opts(Host),
     GroupOpts = proplists:get_value(Group, GroupsOpts, []),
     GroupName = proplists:get_value(name, GroupOpts, Group),
@@ -690,7 +690,7 @@ push_user_to_group(LUser, LServer, Group, Host,
 
 %% Get list of groups to which this group is displayed
 displayed_to_groups(GroupName, LServer) ->
-	?DEBUG("[shr] displayed_to_groups ~s", [GroupName])
+	?DEBUG("[shr] displayed_to_groups ~s", [GroupName]),
     GroupsOpts = groups_with_opts(LServer),
     Gs = lists:filter(fun ({_Group, Opts}) ->
 			 lists:member(GroupName,
