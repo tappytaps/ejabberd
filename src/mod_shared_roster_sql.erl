@@ -118,7 +118,9 @@ get_group_opts(Host, Group) ->
 		 ?SQL("select @(opts)s from sr_group"
                       " where name=%(Group)s and %(Host)H")) of
 	{selected, [{SOpts}]} ->
-	    mod_shared_roster:opts_to_binary(ejabberd_sql:decode_term(SOpts));
+	    deb = mod_shared_roster:opts_to_binary(ejabberd_sql:decode_term(SOpts)),
+        ?DEBUG("[shr] get_group_opts(sql) ~p",deb),
+        deb;
 	_ -> error
     end.
 
@@ -154,7 +156,10 @@ get_user_groups(US, Host) ->
 		 Host,
 		 ?SQL("select @(grp)s from sr_user"
                       " where jid=%(SJID)s and %(Host)H")) of
-	{selected, Rs} -> [G || {G} <- Rs];
+	{selected, Rs} -> 
+        deb = [G || {G} <- Rs],
+        ?DEBUG("[shr] get_user_groups(sql) ~p",deb),
+        deb;
 	_ -> []
     end.
 
