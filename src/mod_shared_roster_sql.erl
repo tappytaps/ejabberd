@@ -134,21 +134,21 @@ set_group_opts(Host, Group, Opts) ->
 	end,
     ejabberd_sql:sql_transaction(Host, F).
 
-% get_user_groups(US, Host) ->
-%     ?DEBUG("[shr] Get user groups ~p",[US]),
-%     F = fun() ->
-%         ?DEBUG("[shr] From DB! ~p",[US]),
-%         case  get_user_groups_db(US, Host) of
-%             error -> error;
-%             Result -> {ok, Result}
-%         end
-%     end, 
-%     case ets_cache:lookup(?USER_CACHE, {US, Host}, F) of
-%         {ok, CacheResult} -> CacheResult;
-%         error -> error
-%     end.
-
 get_user_groups(US, Host) ->
+    ?DEBUG("[shr] Get user groups ~p",[US]),
+    F = fun() ->
+        ?DEBUG("[shr] From DB! ~p",[US]),
+        case  get_user_groups_db(US, Host) of
+            error -> error;
+            Result -> {ok, Result}
+        end
+    end, 
+    case ets_cache:lookup(?USER_CACHE, {US, Host}, F) of
+        {ok, CacheResult} -> CacheResult;
+        error -> error
+    end.
+
+get_user_groups_db(US, Host) ->
     SJID = make_jid_s(US),
     case catch ejabberd_sql:sql_query(
 		 Host,

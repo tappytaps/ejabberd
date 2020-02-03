@@ -394,7 +394,7 @@ get_user_groups(US) ->
     Host = element(2, US),
     Mod = gen_mod:db_mod(Host, ?MODULE),
     Result = Mod:get_user_groups(US, Host) ++ get_special_users_groups(Host),
-	?DEBUG("[shr] get_user_groups  ~p", [Result]),
+	?DEBUG("[shr] get_user_groups main ~p", [Result]),
 	Result.
 
 
