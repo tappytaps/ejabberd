@@ -39,12 +39,22 @@
 -include("mod_roster.hrl").
 -include("mod_shared_roster.hrl").
 -include("ejabberd_sql_pt.hrl").
+-include("logger.hrl").
+
+-define(USER_CACHE, shared_roster_sql_user_cache).
+-define(GROUP_CACHE, shared_roster_sql_group_cache).
+
 
 %%%===================================================================
 %%% API
 %%%===================================================================
 init(_Host, _Opts) ->
+    init_cache(_Host, _Opts),
     ok.
+
+init_cache(Host, Opts) ->
+    ets_cache:new(?USER_CACHE, []),
+    ets_cache:new(?GROUP_CACHE, []).    
 
 list_groups(Host) ->
     case ejabberd_sql:sql_query(
@@ -89,6 +99,20 @@ delete_group(Host, Group) ->
     end.
 
 get_group_opts(Host, Group) ->
+    ?DEBUG("[shr] get_group_opts ~ts",[Group]),
+    F = fun() ->
+        ?DEBUG("[shr] get_group_opts From DB! ~ts",[Group]),
+        case  get_group_opts_db(Host, Group) of
+            error -> error;
+            Result -> {ok, Result}
+        end
+    end, 
+    case ets_cache:lookup(?GROUP_CACHE, {Group, Host}, F) of
+        {ok, CacheResult} -> CacheResult;
+        error -> error
+    end.
+
+get_group_opts_db(Host, Group) ->
     case catch ejabberd_sql:sql_query(
 		 Host,
 		 ?SQL("select @(opts)s from sr_group"
@@ -99,6 +123,7 @@ get_group_opts(Host, Group) ->
     end.
 
 set_group_opts(Host, Group, Opts) ->
+    ets_cache:delete(?GROUP_CACHE, {Group, Host}),
     SOpts = misc:term_to_expr(Opts),
     F = fun () ->
 		?SQL_UPSERT_T(
@@ -110,6 +135,20 @@ set_group_opts(Host, Group, Opts) ->
     ejabberd_sql:sql_transaction(Host, F).
 
 get_user_groups(US, Host) ->
+    ?DEBUG("[shr] Get user groups ~p",[US]),
+    F = fun() ->
+        ?DEBUG("[shr] From DB! ~p",[US]),
+        case  get_user_groups_db(US, Host) of
+            error -> error;
+            Result -> {ok, Result}
+        end
+    end, 
+    case ets_cache:lookup(?USER_CACHE, {US, Host}, F) of
+        {ok, CacheResult} -> CacheResult;
+        error -> error
+    end.
+
+get_user_groups_db(US, Host) ->
     SJID = make_jid_s(US),
     case catch ejabberd_sql:sql_query(
 		 Host,
@@ -167,6 +206,7 @@ add_user_to_group(Host, US, Group) ->
           "grp=%(Group)s"])).
 
 remove_user_from_group(Host, US, Group) ->
+    ets_cache:delete(?USER_CACHE, {US, Host}),
     SJID = make_jid_s(US),
     F = fun () ->
 		ejabberd_sql:sql_query_t(
