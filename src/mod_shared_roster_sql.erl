@@ -137,10 +137,12 @@ set_group_opts(Host, Group, Opts) ->
 get_user_groups(US, Host) ->
     ?DEBUG("[shr] Get user groups ~p",[US]),
     F = fun() ->
-        ?DEBUG("[shr] From DB! ~p",[US]),
+        ?DEBUG("[shr] get_user_groups From DB! ~p",[US]),
         case  get_user_groups_db(US, Host) of
             error -> error;
-            Result -> {ok, Result}
+            Result -> 
+                ?DEBUG("[shr] get_user_groups result ~p", [Result]),
+                {ok, Result}
         end
     end, 
     case ets_cache:lookup(?USER_CACHE, {US, Host}, F) of
