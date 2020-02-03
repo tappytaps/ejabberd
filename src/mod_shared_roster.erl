@@ -393,7 +393,10 @@ set_group_opts(Host, Group, Opts) ->
 get_user_groups(US) ->
     Host = element(2, US),
     Mod = gen_mod:db_mod(Host, ?MODULE),
-    Mod:get_user_groups(US, Host) ++ get_special_users_groups(Host).
+    Result = Mod:get_user_groups(US, Host) ++ get_special_users_groups(Host),
+	?DEBUG("[shr] get_user_groups  ~p", [Result]),
+	Result.
+
 
 is_group_enabled(Host1, Group1) ->
     {Host, Group} = split_grouphost(Host1, Group1),
