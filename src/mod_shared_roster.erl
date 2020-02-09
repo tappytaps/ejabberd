@@ -753,7 +753,7 @@ push_user_to_group(LUser, LServer, Group, Host,
 %% Simplified version - we don't need list of groups inside group
 displayed_to_groups(GroupName, LServer) -> 
 	?DEBUG("[shr] displayed_to_groups ~s", [GroupName]),
-	?DEBUG("[shr] displayed_to_groups_complete ~s", displayed_to_groups_complete(GroupName, LServer)),
+	% ?DEBUG("[shr] displayed_to_groups_complete ~s", displayed_to_groups_complete(GroupName, LServer)),
 	[GroupName].
 
 %% Get list of groups to which this group is displayed
