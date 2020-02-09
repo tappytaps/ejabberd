@@ -132,6 +132,7 @@ get_group_opts_db(Host, Group) ->
     end.
 
 set_group_opts(Host, Group, Opts) ->
+    ?DEBUG("[shr] set_group_opts, so delete cache ~ts, ~p",[Group, Opts]),
     ets_cache:delete(?GROUP_CACHE, {Group, Host}, all_nodes()),
     SOpts = misc:term_to_expr(Opts),
     F = fun () ->
@@ -207,7 +208,7 @@ is_user_in_group(US, Group, Host) ->
     end.
 
 add_user_to_group(Host, US, Group) ->
-    ?DEBUG("[shr] add_user_to_group - so delete chache! ~p",[US, Group]),
+    ?DEBUG("[shr] add_user_to_group - so delete chache! ~p, ~p",[US, Group]),
     ets_cache:delete(?USER_GROUPS_CACHE, {US, Host}, all_nodes()),
     SJID = make_jid_s(US),
     ejabberd_sql:sql_query(
@@ -219,7 +220,7 @@ add_user_to_group(Host, US, Group) ->
           "grp=%(Group)s"])).
 
 remove_user_from_group(Host, US, Group) ->
-    ?DEBUG("[shr] remove_user_from_group - so delete chache! ~p",[US, Group]),
+    ?DEBUG("[shr] remove_user_from_group - so delete chache! ~p, ~p",[US, Group]),
     ets_cache:delete(?USER_GROUPS_CACHE, {US, Host}, all_nodes()),
     SJID = make_jid_s(US),
     F = fun () ->
