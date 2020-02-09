@@ -455,25 +455,32 @@ get_group_name(Host1, Group1) ->
     get_group_opt(Host, Group, name, Group).
 
 %% Get list of names of groups that have @all@/@online@/etc in the memberlist
+% get_special_users_groups(Host) ->
+%     lists:filtermap(fun ({Group, Opts}) ->
+%              case proplists:get_value(all_users, Opts, false) orelse
+%                   proplists:get_value(online_users, Opts, false) of
+%                true -> {true, Group};
+%                false -> false
+%              end
+%          end,
+%          groups_with_opts(Host)).
+
 get_special_users_groups(Host) ->
-    lists:filtermap(fun ({Group, Opts}) ->
-             case proplists:get_value(all_users, Opts, false) orelse
-                  proplists:get_value(online_users, Opts, false) of
-               true -> {true, Group};
-               false -> false
-             end
-         end,
-         groups_with_opts(Host)).
+[].
 
 %% Get list of names of groups that have @online@ in the memberlist
+% get_special_users_groups_online(Host) ->
+%     lists:filtermap(fun ({Group, Opts}) ->
+%              case proplists:get_value(online_users, Opts, false) of
+%                true -> {true, Group};
+%                false -> false
+%              end
+%          end,
+%          groups_with_opts(Host)).
+
 get_special_users_groups_online(Host) ->
-    lists:filtermap(fun ({Group, Opts}) ->
-             case proplists:get_value(online_users, Opts, false) of
-               true -> {true, Group};
-               false -> false
-             end
-         end,
-         groups_with_opts(Host)).
+	[].
+
 
 %% Given two lists of groupnames and their options,
 %% return the list of displayed groups to the second list
@@ -575,10 +582,16 @@ add_user_to_group2(Host, US, Group) ->
 	  Mod:add_user_to_group(Host, US, Group)
     end.
 
+% get_displayed_groups(Group, LServer) ->
+%     GroupsOpts = groups_with_opts(LServer),
+%     GroupOpts = proplists:get_value(Group, GroupsOpts, []),
+%     proplists:get_value(displayed_groups, GroupOpts, []).
+
 get_displayed_groups(Group, LServer) ->
-    GroupsOpts = groups_with_opts(LServer),
-    GroupOpts = proplists:get_value(Group, GroupsOpts, []),
+	?DEBUG("[shr] get_displayed_groups ~s", [Group]),
+	GroupOpts = mod_shared_roster:get_group_opts(LServer, Group),
     proplists:get_value(displayed_groups, GroupOpts, []).
+
 
 push_displayed_to_user(LUser, LServer, Host, Subscription, DisplayedGroups) ->
     [push_members_to_user(LUser, LServer, DGroup, Host,
@@ -611,17 +624,30 @@ remove_user_from_group(Host, US, Group) ->
 	  Result
     end.
 
+% push_members_to_user(LUser, LServer, Group, Host,
+% 		     Subscription) ->
+%     GroupsOpts = groups_with_opts(LServer),
+%     GroupOpts = proplists:get_value(Group, GroupsOpts, []),
+%     GroupName = proplists:get_value(name, GroupOpts, Group),
+%     Members = get_group_users(Host, Group),
+%     lists:foreach(fun ({U, S}) ->
+% 			  push_roster_item(LUser, LServer, U, S, GroupName,
+% 					   Subscription)
+% 		  end,
+% 		  Members).
+
 push_members_to_user(LUser, LServer, Group, Host,
 		     Subscription) ->
-    GroupsOpts = groups_with_opts(LServer),
-    GroupOpts = proplists:get_value(Group, GroupsOpts, []),
+	GroupOpts = mod_shared_roster:get_group_opts(LServer, Group),
     GroupName = proplists:get_value(name, GroupOpts, Group),
+	?DEBUG("[shr] push_members_to_user ~s, ~p",[GroupName, GroupOpts]),
     Members = get_group_users(Host, Group),
     lists:foreach(fun ({U, S}) ->
 			  push_roster_item(LUser, LServer, U, S, GroupName,
 					   Subscription)
 		  end,
 		  Members).
+
 
 -spec register_user(binary(), binary()) -> ok.
 register_user(User, Server) ->
@@ -635,9 +661,36 @@ register_user(User, Server) ->
 remove_user(User, Server) ->
     push_user_to_members(User, Server, remove).
 
+% push_user_to_members(User, Server, Subscription) ->
+%     LUser = jid:nodeprep(User),
+%     LServer = jid:nameprep(Server),
+%     GroupsOpts = groups_with_opts(LServer),
+%     SpecialGroups =
+% 	get_special_displayed_groups(GroupsOpts),
+%     UserGroups = get_user_displayed_groups(LUser, LServer,
+% 					   GroupsOpts),
+%     lists:foreach(fun (Group) ->
+% 			  remove_user_from_group(LServer, {LUser, LServer},
+% 						 Group),
+% 			  GroupOpts = proplists:get_value(Group, GroupsOpts,
+% 							  []),
+% 			  GroupName = proplists:get_value(name, GroupOpts,
+% 							  Group),
+% 			  lists:foreach(fun ({U, S}) ->
+% 						push_roster_item(U, S, LUser,
+% 								 LServer,
+% 								 GroupName,
+% 								 Subscription)
+% 					end,
+% 					get_group_users(LServer, Group,
+% 							GroupOpts))
+% 		  end,
+% 		  lists:usort(SpecialGroups ++ UserGroups)).
+
 push_user_to_members(User, Server, Subscription) ->
     LUser = jid:nodeprep(User),
     LServer = jid:nameprep(Server),
+	?DEBUG("[shr] push_user_to_members ~s, ~s", [User, Subscription]),
     GroupsOpts = groups_with_opts(LServer),
     SpecialGroups =
 	get_special_displayed_groups(GroupsOpts),
@@ -661,13 +714,24 @@ push_user_to_members(User, Server, Subscription) ->
 		  end,
 		  lists:usort(SpecialGroups ++ UserGroups)).
 
+
+% push_user_to_displayed(LUser, LServer, Group, Host, Subscription, DisplayedToGroupsOpts) ->
+%     GroupsOpts = groups_with_opts(Host),
+%     GroupOpts = proplists:get_value(Group, GroupsOpts, []),
+%     GroupName = proplists:get_value(name, GroupOpts, Group),
+%     [push_user_to_group(LUser, LServer, GroupD, Host,
+% 			GroupName, Subscription)
+%      || GroupD <- DisplayedToGroupsOpts].
+
 push_user_to_displayed(LUser, LServer, Group, Host, Subscription, DisplayedToGroupsOpts) ->
-    GroupsOpts = groups_with_opts(Host),
-    GroupOpts = proplists:get_value(Group, GroupsOpts, []),
+	?DEBUG("[shr] push_user_to_displayed ~s, ~s", [LUser, Subscription]),
+	GroupOpts = mod_shared_roster:get_group_opts(LServer, Group),
     GroupName = proplists:get_value(name, GroupOpts, Group),
+	
     [push_user_to_group(LUser, LServer, GroupD, Host,
 			GroupName, Subscription)
      || GroupD <- DisplayedToGroupsOpts].
+
 
 push_user_to_group(LUser, LServer, Group, Host,
 		   GroupName, Subscription) ->
@@ -685,8 +749,15 @@ push_user_to_group(LUser, LServer, Group, Host,
 		  end,
 		  get_group_users(Host, Group)).
 
+%% Simplified version - we don't need list of groups inside group
+displayed_to_groups(GroupName, LServer) -> 
+	?DEBUG("[shr] displayed_to_groups ~s", [GroupName]),
+	?DEBUG("[shr] displayed_to_groups_complete ~s", displayed_to_groups_complete(GroupName, LServer)),
+	[GroupName].
+
 %% Get list of groups to which this group is displayed
-displayed_to_groups(GroupName, LServer) ->
+displayed_to_groups_complete(GroupName, LServer) -> 
+	?DEBUG("[shr] displayed_to_groups ~s", [GroupName]),
     GroupsOpts = groups_with_opts(LServer),
     Gs = lists:filter(fun ({_Group, Opts}) ->
 			 lists:member(GroupName,
