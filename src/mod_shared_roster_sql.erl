@@ -79,8 +79,6 @@ groups_with_opts(Host) ->
     end.
 
 create_group(Host, Group, Opts) ->
-    ?DEBUG("[shr] create_group - so delete chache! ~p",[Group]),
-    ets_cache:delete(?GROUP_CACHE, {Group, Host}, all_nodes()),
     SOpts = misc:term_to_expr(Opts),
     F = fun () ->
 		?SQL_UPSERT_T(
@@ -89,13 +87,17 @@ create_group(Host, Group, Opts) ->
                     "!server_host=%(Host)s",
                     "opts=%(SOpts)s"])
 	end,
-    ejabberd_sql:sql_transaction(Host, F).
+    ejabberd_sql:sql_transaction(Host, F),
+    ?DEBUG("[shr] create_group - so delete chache! ~p",[Group]),
+    ets_cache:delete(?GROUP_CACHE, {Group, Host}, all_nodes()).
+
 
 delete_group(Host, Group) ->
-    ?DEBUG("[shr] delete_group - so delete chache! ~p",[Group]),
-    ets_cache:delete(?GROUP_CACHE, {Group, Host}, all_nodes()),
-    ets_cache:clear(?USER_GROUPS_CACHE, all_nodes()),
-
+    ClearCache = fun () ->
+        ?DEBUG("[shr] delete_group - so delete chache! ~p",[Group]),
+        ets_cache:delete(?GROUP_CACHE, {Group, Host}, all_nodes()),
+        ets_cache:clear(?USER_GROUPS_CACHE, all_nodes())
+    end,
     F = fun () ->
 		ejabberd_sql:sql_query_t(
                   ?SQL("delete from sr_group where name=%(Group)s and %(Host)H")),
@@ -103,8 +105,8 @@ delete_group(Host, Group) ->
                   ?SQL("delete from sr_user where grp=%(Group)s and %(Host)H"))
 	end,
     case ejabberd_sql:sql_transaction(Host, F) of
-        {atomic,{updated,_}} -> {atomic, ok};
-        Res -> Res
+        {atomic,{updated,_}} -> ClearCache(), {atomic, ok};
+        Res -> ClearCache(), Res
     end.
 
 get_group_opts(Host, Group) ->
@@ -132,8 +134,6 @@ get_group_opts_db(Host, Group) ->
     end.
 
 set_group_opts(Host, Group, Opts) ->
-    ?DEBUG("[shr] set_group_opts, so delete cache ~ts, ~p",[Group, Opts]),
-    ets_cache:delete(?GROUP_CACHE, {Group, Host}, all_nodes()),
     SOpts = misc:term_to_expr(Opts),
     F = fun () ->
 		?SQL_UPSERT_T(
@@ -142,7 +142,9 @@ set_group_opts(Host, Group, Opts) ->
                     "!server_host=%(Host)s",
                     "opts=%(SOpts)s"])
 	end,
-    ejabberd_sql:sql_transaction(Host, F).
+    ejabberd_sql:sql_transaction(Host, F),
+    ?DEBUG("[shr] set_group_opts, so delete cache ~ts, ~p",[Group, Opts]),
+    ets_cache:delete(?GROUP_CACHE, {Group, Host}, all_nodes()).
 
 get_user_groups(US, Host) ->
     ?DEBUG("[shr] Get user groups ~p",[US]),
@@ -208,8 +210,6 @@ is_user_in_group(US, Group, Host) ->
     end.
 
 add_user_to_group(Host, US, Group) ->
-    ?DEBUG("[shr] add_user_to_group - so delete chache! ~p, ~p",[US, Group]),
-    ets_cache:delete(?USER_GROUPS_CACHE, {US, Host}, all_nodes()),
     SJID = make_jid_s(US),
     ejabberd_sql:sql_query(
       Host,
@@ -217,11 +217,11 @@ add_user_to_group(Host, US, Group) ->
          "sr_user",
          ["jid=%(SJID)s",
           "server_host=%(Host)s",
-          "grp=%(Group)s"])).
+          "grp=%(Group)s"])),
+    ?DEBUG("[shr] add_user_to_group - so delete chache! ~p, ~p",[US, Group]),
+    ets_cache:delete(?USER_GROUPS_CACHE, {US, Host}, all_nodes()).    
 
 remove_user_from_group(Host, US, Group) ->
-    ?DEBUG("[shr] remove_user_from_group - so delete chache! ~p, ~p",[US, Group]),
-    ets_cache:delete(?USER_GROUPS_CACHE, {US, Host}, all_nodes()),
     SJID = make_jid_s(US),
     F = fun () ->
 		ejabberd_sql:sql_query_t(
@@ -229,7 +229,10 @@ remove_user_from_group(Host, US, Group) ->
                        " and grp=%(Group)s")),
 		ok
 	end,
-    ejabberd_sql:sql_transaction(Host, F).
+    ejabberd_sql:sql_transaction(Host, F),
+    ?DEBUG("[shr] remove_user_from_group - so delete chache! ~p, ~p",[US, Group]),
+    ets_cache:delete(?USER_GROUPS_CACHE, {US, Host}, all_nodes()).
+
 
 export(_Server) ->
     [{sr_group,
