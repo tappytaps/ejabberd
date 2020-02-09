@@ -368,6 +368,7 @@ list_groups(Host) ->
     Mod:list_groups(Host).
 
 groups_with_opts(Host) ->
+	?DEBUG("[shr] groups_with_opts (main) ~s", [Host]),
     Mod = gen_mod:db_mod(Host, ?MODULE),
     Mod:groups_with_opts(Host).
 

@@ -68,6 +68,7 @@ list_groups(Host) ->
     end.
 
 groups_with_opts(Host) ->
+    ?DEBUG("[shr] groups_with_opts (sql) ~s", [Host]),
     case ejabberd_sql:sql_query(
            Host,
            ?SQL("select @(name)s, @(opts)s from sr_group where %(Host)H"))
