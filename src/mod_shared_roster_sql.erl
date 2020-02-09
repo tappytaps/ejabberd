@@ -87,9 +87,10 @@ create_group(Host, Group, Opts) ->
                     "!server_host=%(Host)s",
                     "opts=%(SOpts)s"])
 	end,
-    ejabberd_sql:sql_transaction(Host, F),
+    Ret = ejabberd_sql:sql_transaction(Host, F),
     ?DEBUG("[shr] create_group - so delete chache! ~p",[Group]),
-    ets_cache:delete(?GROUP_CACHE, {Group, Host}, all_nodes()).
+    ets_cache:delete(?GROUP_CACHE, {Group, Host}, all_nodes()),
+    Ret.
 
 
 delete_group(Host, Group) ->
@@ -142,9 +143,10 @@ set_group_opts(Host, Group, Opts) ->
                     "!server_host=%(Host)s",
                     "opts=%(SOpts)s"])
 	end,
-    ejabberd_sql:sql_transaction(Host, F),
+    Ret = ejabberd_sql:sql_transaction(Host, F),
     ?DEBUG("[shr] set_group_opts, so delete cache ~ts, ~p",[Group, Opts]),
-    ets_cache:delete(?GROUP_CACHE, {Group, Host}, all_nodes()).
+    ets_cache:delete(?GROUP_CACHE, {Group, Host}, all_nodes()),
+    Ret.
 
 get_user_groups(US, Host) ->
     ?DEBUG("[shr] Get user groups ~p",[US]),
@@ -211,7 +213,7 @@ is_user_in_group(US, Group, Host) ->
 
 add_user_to_group(Host, US, Group) ->
     SJID = make_jid_s(US),
-    ejabberd_sql:sql_query(
+    Ret = ejabberd_sql:sql_query(
       Host,
       ?SQL_INSERT(
          "sr_user",
@@ -219,7 +221,8 @@ add_user_to_group(Host, US, Group) ->
           "server_host=%(Host)s",
           "grp=%(Group)s"])),
     ?DEBUG("[shr] add_user_to_group - so delete chache! ~p, ~p",[US, Group]),
-    ets_cache:delete(?USER_GROUPS_CACHE, {US, Host}, all_nodes()).    
+    ets_cache:delete(?USER_GROUPS_CACHE, {US, Host}, all_nodes()),
+    Ret.
 
 remove_user_from_group(Host, US, Group) ->
     SJID = make_jid_s(US),
@@ -229,9 +232,10 @@ remove_user_from_group(Host, US, Group) ->
                        " and grp=%(Group)s")),
 		ok
 	end,
-    ejabberd_sql:sql_transaction(Host, F),
+    Ret = ejabberd_sql:sql_transaction(Host, F),
     ?DEBUG("[shr] remove_user_from_group - so delete chache! ~p, ~p",[US, Group]),
-    ets_cache:delete(?USER_GROUPS_CACHE, {US, Host}, all_nodes()).
+    ets_cache:delete(?USER_GROUPS_CACHE, {US, Host}, all_nodes()),
+    Ret.
 
 
 export(_Server) ->
