@@ -53,8 +53,9 @@ init(_Host, _Opts) ->
     ok.
 
 init_cache(Host, Opts) ->
-    ets_cache:new(?USER_GROUPS_CACHE, []),
-    ets_cache:new(?GROUP_CACHE, []).    
+    % Just 30 seconds cache, good to finish pairing
+    ets_cache:new(?USER_GROUPS_CACHE, [{life_time, 30}]),
+    ets_cache:new(?GROUP_CACHE, [{life_time, 30}]).    
 
 all_nodes() ->
     ejabberd_cluster:get_nodes().
