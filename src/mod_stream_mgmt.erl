@@ -192,7 +192,7 @@ c2s_handle_recv(State, _, _) ->
 
 c2s_handle_send(#{mgmt_state := MgmtState, mod := Mod,
 		  lang := Lang} = State, Pkt, SendResult)
-  when MgmtState == pending; MgmtState == active ->
+  when MgmtState == pending; MgmtState == active; MgmtState == resumed ->
     IsStanza = xmpp:is_stanza(Pkt),
     case Pkt of
 	_ when IsStanza ->
@@ -214,10 +214,13 @@ c2s_handle_send(#{mgmt_state := MgmtState, mod := Mod,
 	    end;
 	#stream_error{} ->
 	    case MgmtState of
+		resumed ->
+		    State;
 		active ->
 		    State;
 		pending ->
-		    Mod:stop(State#{stop_reason => {stream, {out, Pkt}}})
+		    Mod:stop_async(self()),
+		    {stop, State#{stop_reason => {stream, {out, Pkt}}}}
 	    end;
 	_ ->
 	    State
@@ -229,7 +232,7 @@ c2s_handle_call(#{sid := {Time, _}, mod := Mod, mgmt_queue := Queue} = State,
 		{resume_session, Time}, From) ->
     State1 = State#{mgmt_queue => p1_queue:file_to_ram(Queue)},
     Mod:reply(From, {resume, State1}),
-    {stop, State#{mgmt_state => resumed}};
+    {stop, State#{mgmt_state => resumed, mgmt_queue => p1_queue:clear(Queue)}};
 c2s_handle_call(#{mod := Mod} = State, {resume_session, _}, From) ->
     Mod:reply(From, {error, session_not_found}),
     {stop, State};
@@ -250,8 +253,9 @@ c2s_handle_info(#{mgmt_state := pending, lang := Lang,
 	   [jid:encode(JID)]),
     Txt = ?T("Timed out waiting for stream resumption"),
     Err = xmpp:serr_connection_timeout(Txt, Lang),
-    Mod:stop(State#{mgmt_state => timeout,
-		    stop_reason => {stream, {out, Err}}});
+    Mod:stop_async(self()),
+    {stop, State#{mgmt_state => timeout,
+		  stop_reason => {stream, {out, Err}}}};
 c2s_handle_info(State, {_Ref, {resume, #{jid := JID} = OldState}}) ->
     %% This happens if the resume_session/1 request timed out; the new session
     %% now receives the late response.
@@ -280,6 +284,7 @@ c2s_terminated(#{mgmt_state := resumed, sid := SID, jid := JID} = State, _Reason
 	   [jid:encode(JID)]),
     {U, S, R} = jid:tolower(JID),
     ejabberd_sm:close_session(SID, U, S, R),
+    route_late_queue_after_resume(State),
     ejabberd_c2s:bounce_message_queue(SID, JID),
     {stop, State};
 c2s_terminated(#{mgmt_state := MgmtState, mgmt_stanzas_in := In,
@@ -444,7 +449,8 @@ handle_resume(#{user := User, lserver := LServer,
 -spec transition_to_pending(state(), _) -> state().
 transition_to_pending(#{mgmt_state := active, mod := Mod,
 			mgmt_timeout := 0} = State, _Reason) ->
-    Mod:stop(State);
+    Mod:stop_async(self()),
+    State;
 transition_to_pending(#{mgmt_state := active, jid := JID, socket := Socket,
 			lserver := LServer, mgmt_timeout := Timeout} = State,
 		      Reason) ->
@@ -541,6 +547,18 @@ check_queue_length(#{mgmt_queue := Queue, mgmt_max_queue := Limit} = State) ->
 	    State
     end.
 
+-spec route_late_queue_after_resume(state()) -> ok.
+route_late_queue_after_resume(#{mgmt_queue := Queue, jid := JID})
+    when ?qlen(Queue) > 0 ->
+    ?DEBUG("Re-routing ~B late queued packets to ~ts",
+	   [p1_queue:len(Queue), jid:encode(JID)]),
+    p1_queue:foreach(
+	fun({_, _Time, Pkt}) ->
+	    ejabberd_router:route(Pkt)
+	end, Queue);
+route_late_queue_after_resume(_State) ->
+    ok.
+
 -spec resend_unacked_stanzas(state()) -> state().
 resend_unacked_stanzas(#{mgmt_state := MgmtState,
 			 mgmt_queue := Queue,
@@ -587,6 +605,7 @@ route_unacked_stanzas(#{mgmt_state := MgmtState,
 		      end,
     ?DEBUG("Re-routing ~B unacknowledged stanza(s) to ~ts",
 	   [p1_queue:len(Queue), jid:encode(JID)]),
+    ModOfflineEnabled = gen_mod:is_loaded(LServer, mod_offline),
     p1_queue:foreach(
       fun({_, _Time, #presence{from = From}}) ->
 	      ?DEBUG("Dropping presence stanza from ~ts", [jid:encode(From)]);
@@ -603,20 +622,21 @@ route_unacked_stanzas(#{mgmt_state := MgmtState,
 	      ?DEBUG("Dropping forwarded message stanza from ~ts",
 		     [jid:encode(From)]);
 	 ({_, Time, #message{} = Msg}) ->
-	      case ejabberd_hooks:run_fold(message_is_archived,
-					   LServer, false,
-					   [State, Msg]) of
-		  true ->
-		      ?DEBUG("Dropping archived message stanza from ~ts",
-			     [jid:encode(xmpp:get_from(Msg))]);
-		  false when ResendOnTimeout ->
-		      NewEl = add_resent_delay_info(State, Msg, Time),
-		      ejabberd_router:route(NewEl);
-		  false ->
-		      Txt = ?T("User session terminated"),
-		      ejabberd_router:route_error(
-			Msg, xmpp:err_service_unavailable(Txt, Lang))
-	      end;
+	     case {ModOfflineEnabled, ResendOnTimeout,
+		   xmpp:get_meta(Msg, mam_archived, false)} of
+		 Val when Val == {true, true, false};
+			  Val == {true, true, true};
+			  Val == {false, true, false} ->
+		     NewEl = add_resent_delay_info(State, Msg, Time),
+		     ejabberd_router:route(NewEl);
+		 {_, _, true} ->
+		     ?DEBUG("Dropping archived message stanza from ~s",
+			    [jid:encode(xmpp:get_from(Msg))]);
+		 _ ->
+		     Txt = ?T("User session terminated"),
+		     ejabberd_router:route_error(
+			 Msg, xmpp:err_service_unavailable(Txt, Lang))
+	     end;
 	 ({_, _Time, El}) ->
 	      %% Raw element of type 'error' resulting from a validation error
 	      %% We cannot pass it to the router, it will generate an error
@@ -660,7 +680,7 @@ inherit_session_state(#{user := U, server := S,
 					     mgmt_stanzas_out => NumStanzasOut,
 					     mgmt_state => active},
 			    State3 = ejabberd_c2s:open_session(State2),
-			    ejabberd_c2s:stop(OldPID),
+			    ejabberd_c2s:stop_async(OldPID),
 			    {ok, State3};
 			{error, Msg} ->
 			    {error, Msg}
@@ -674,7 +694,7 @@ inherit_session_state(#{user := U, server := S,
 			    {error, session_was_killed};
 			  exit:{timeout, _} ->
 			    ejabberd_sm:close_session(OldSID, U, S, R),
-			    ejabberd_c2s:stop(OldPID),
+			    ejabberd_c2s:stop_async(OldPID),
 			    {error, session_copy_timed_out}
 		    end
 	    end;

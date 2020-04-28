@@ -26,8 +26,8 @@ CREATE TABLE [dbo].[archive] (
         [timestamp] [bigint] NOT NULL,
         [peer] [varchar] (250) NOT NULL,
         [bare_peer] [varchar] (250) NOT NULL,
-        [xml] [text] NOT NULL,
-        [txt] [text] NULL,
+        [xml] [ntext] NOT NULL,
+        [txt] [ntext] NULL,
         [id] [bigint] IDENTITY(1,1) NOT NULL,
         [kind] [varchar] (10) NULL,
         [nick] [varchar] (250) NULL,
@@ -209,7 +209,7 @@ WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, ALLOW_ROW_LOCKS = ON, ALLOW
 CREATE TABLE [dbo].[pubsub_item] (
         [nodeid] [bigint] NULL,
         [itemid] [varchar] (255) NOT NULL,
-        [publisher] [text] NOT NULL,
+        [publisher] [varchar] (250) NOT NULL,
         [creation] [varchar] (32) NOT NULL,
         [modification] [varchar] (32) NOT NULL,
         [payload] [text] NOT NULL DEFAULT ''

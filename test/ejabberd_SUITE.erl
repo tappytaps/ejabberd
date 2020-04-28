@@ -77,11 +77,21 @@ init_per_group(Group, Config) ->
                     do_init_per_group(Group, Config);
                 Backends ->
                     %% Skipped backends that were not explicitely enabled
-                    case lists:member(Group, Backends) of
-                        true ->
+                    case Group of
+                      mssql ->
+                        case lists:member(odbc, Backends) of
+                          true ->
                             do_init_per_group(Group, Config);
-                        false ->
+                          false ->
                             {skip, {disabled_backend, Group}}
+                        end;
+                      _ ->
+                        case lists:member(Group, Backends) of
+                            true ->
+                                do_init_per_group(Group, Config);
+                            false ->
+                                {skip, {disabled_backend, Group}}
+                        end
                     end
             end
     end.
@@ -103,6 +113,15 @@ do_init_per_group(mysql, Config) ->
             set_opt(server, ?MYSQL_VHOST, Config);
         Err ->
             {skip, {mysql_not_available, Err}}
+    end;
+do_init_per_group(mssql, Config) ->
+    case catch ejabberd_sql:sql_query(?MSSQL_VHOST, [<<"select 1;">>]) of
+        {selected, _, _} ->
+            mod_muc:shutdown_rooms(?MSSQL_VHOST),
+            clear_sql_tables(mssql, ?config(base_dir, Config)),
+            set_opt(server, ?MSSQL_VHOST, Config);
+        Err ->
+            {skip, {mssql_not_available, Err}}
     end;
 do_init_per_group(pgsql, Config) ->
     case catch ejabberd_sql:sql_query(?PGSQL_VHOST, [<<"select 1;">>]) of
@@ -157,6 +176,8 @@ end_per_group(mnesia, _Config) ->
 end_per_group(redis, _Config) ->
     ok;
 end_per_group(mysql, _Config) ->
+    ok;
+end_per_group(mssql, _Config) ->
     ok;
 end_per_group(pgsql, _Config) ->
     ok;
@@ -259,6 +280,8 @@ init_per_testcase(TestCase, OrigConfig) ->
     case Test of
         "test_connect" ++ _ ->
             Config;
+        "webadmin_" ++ _ ->
+            Config;
 	"test_legacy_auth_feature" ->
 	    connect(Config);
 	"test_legacy_auth" ++ _ ->
@@ -359,6 +382,7 @@ no_db_tests() ->
      muc_tests:master_slave_cases(),
      proxy65_tests:single_cases(),
      proxy65_tests:master_slave_cases(),
+     stundisco_tests:single_cases(),
      replaced_tests:master_slave_cases(),
      upload_tests:single_cases(),
      carbons_tests:single_cases(),
@@ -372,6 +396,7 @@ db_tests(DB) when DB == mnesia; DB == redis ->
        auth_md5,
        presence_broadcast,
        last,
+       webadmin_tests:single_cases(),
        roster_tests:single_cases(),
        private_tests:single_cases(),
        privacy_tests:single_cases(),
@@ -401,6 +426,7 @@ db_tests(DB) ->
        auth_md5,
        presence_broadcast,
        last,
+       webadmin_tests:single_cases(),
        roster_tests:single_cases(),
        private_tests:single_cases(),
        privacy_tests:single_cases(),
@@ -481,6 +507,7 @@ groups() ->
      {mnesia, [sequence], db_tests(mnesia)},
      {redis, [sequence], db_tests(redis)},
      {mysql, [sequence], db_tests(mysql)},
+     {mssql, [sequence], db_tests(mssql)},
      {pgsql, [sequence], db_tests(pgsql)},
      {sqlite, [sequence], db_tests(sqlite)}].
 
@@ -490,6 +517,7 @@ all() ->
      {group, mnesia},
      {group, redis},
      {group, mysql},
+     {group, mssql},
      {group, pgsql},
      {group, sqlite},
      {group, extauth},
@@ -500,7 +528,14 @@ all() ->
 stop_ejabberd(Config) ->
     ok = application:stop(ejabberd),
     ?recv1(#stream_error{reason = 'system-shutdown'}),
-    ?recv1({xmlstreamend, <<"stream:stream">>}),
+    case suite:recv(Config) of
+        {xmlstreamend, <<"stream:stream">>} ->
+            ok;
+        closed ->
+            ok;
+        Other ->
+            suite:match_failure([Other], [closed])
+    end,
     Config.
 
 test_connect_bad_xml(Config) ->
@@ -1001,6 +1036,14 @@ clear_sql_tables(Type, BaseDir) ->
                                     "mysql.sql"
                             end,
                             {?MYSQL_VHOST, Path};
+                        mssql ->
+                            Path = case ejabberd_sql:use_new_schema() of
+                                true ->
+                                    "mssql.new.sql";
+                                false ->
+                                    "mssql.sql"
+                            end,
+                            {?MSSQL_VHOST, Path};
                         pgsql ->
                             Path = case ejabberd_sql:use_new_schema() of
                                 true ->

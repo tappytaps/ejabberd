@@ -31,7 +31,8 @@
 %% External exports
 -export([start/3, start_link/3,
 	 accept/1, receive_headers/1, recv_file/2,
-         listen_opt_type/1, listen_options/0]).
+	 listen_opt_type/1, listen_options/0,
+	 apply_custom_headers/2]).
 
 -export([init/3]).
 
@@ -192,7 +193,10 @@ receive_headers(#state{trail = Trail} = State) ->
     Socket = State#state.socket,
     Data = SockMod:recv(Socket, 0, 300000),
     case Data of
-        {error, _} -> ok;
+        {error, Error} ->
+	    ?DEBUG("Error when retrieving http headers ~p: ~p",
+		   [State#state.sockmod, Error]),
+	    ok;
         {ok, D} ->
             parse_headers(State#state{trail = <<Trail/binary, D/binary>>})
     end.
@@ -385,7 +389,7 @@ extract_path_query(#state{request_method = Method,
 			 {'EXIT', _Reason} -> [];
 			 LQ -> LQ
 		     end,
-	    {State, {LPath, LQuery, <<"">>}}
+	    {State, {LPath, LQuery, <<"">>, Path}}
     end;
 extract_path_query(#state{request_method = Method,
 			  request_path = {abs_path, Path},
@@ -401,7 +405,7 @@ extract_path_query(#state{request_method = Method,
         {LPath, _Query} ->
 	    case Method of
 		'PUT' ->
-		    {State, {LPath, [], Trail}};
+		    {State, {LPath, [], Trail, Path}};
 		'POST' ->
 		    case recv_data(State) of
 			{ok, Data} ->
@@ -409,7 +413,7 @@ extract_path_query(#state{request_method = Method,
 					 {'EXIT', _Reason} -> [];
 					 LQ -> LQ
 				     end,
-			    {State, {LPath, LQuery, Data}};
+			    {State, {LPath, LQuery, Data, Path}};
 			error ->
 			    {State, false}
 		    end
@@ -450,7 +454,7 @@ process_request(#state{request_method = Method,
     case extract_path_query(State) of
 	{State2, false} ->
 	    {State2, make_bad_request(State)};
-	{State2, {LPath, LQuery, Data}} ->
+	{State2, {LPath, LQuery, Data, RawPath}} ->
 	    PeerName = case SockPeer of
 			   none ->
 			       case SockMod of
@@ -470,6 +474,7 @@ process_request(#state{request_method = Method,
 	    IP = analyze_ip_xff(IPHere, XFF),
             Request = #request{method = Method,
                                path = LPath,
+                               raw_path = RawPath,
                                q = LQuery,
                                auth = Auth,
 			       length = Length,
@@ -491,19 +496,19 @@ process_request(#state{request_method = Method,
 		      {Status, Headers, El}
 			when is_record(El, xmlel) ->
 			  make_xhtml_output(State, Status,
-					    Headers ++ CustomHeaders, El);
+					    apply_custom_headers(Headers, CustomHeaders), El);
 		      Output when is_binary(Output) or is_list(Output) ->
 			  make_text_output(State, 200, CustomHeaders, Output);
 		      {Status, Headers, Output}
 			when is_binary(Output) or is_list(Output) ->
 			  make_text_output(State, Status,
-					   Headers ++ CustomHeaders, Output);
+					   apply_custom_headers(Headers, CustomHeaders), Output);
 		      {Status, Headers, {file, FileName}} ->
 			  make_file_output(State, Status, Headers, FileName);
 		      {Status, Reason, Headers, Output}
 			when is_binary(Output) or is_list(Output) ->
 			  make_text_output(State, Status, Reason,
-					   Headers ++ CustomHeaders, Output);
+					   apply_custom_headers(Headers, CustomHeaders), Output);
 		      _ ->
 			  none
 		  end,
@@ -854,6 +859,15 @@ parse_urlencoded(<<H, Tail/binary>>, Last, Cur, State) ->
 parse_urlencoded(<<>>, Last, Cur, _State) ->
     [{Last, Cur}];
 parse_urlencoded(undefined, _, _, _) -> [].
+
+apply_custom_headers(Headers, CustomHeaders) ->
+    {Doctype, Headers2} = case Headers -- [html] of
+	Headers -> {[], Headers};
+	Other -> {[html], Other}
+    end,
+    M = maps:merge(maps:from_list(Headers2),
+		   maps:from_list(CustomHeaders)),
+    Doctype ++ maps:to_list(M).
 
 % The following code is mostly taken from yaws_ssl.erl
 

@@ -93,31 +93,20 @@ process([], #request{method = 'GET', lang = Lang}) ->
 process([<<"register.css">>],
 	#request{method = 'GET'}) ->
     serve_css();
-process([<<"new">>],
+process([Section],
 	#request{method = 'GET', lang = Lang, host = Host,
-		 ip = IP}) ->
-    case ejabberd_router:is_my_host(Host) of
+		 ip = {Addr, _Port}}) ->
+    Host2 = case ejabberd_router:is_my_host(Host) of
 	true ->
-	    {Addr, _Port} = IP,
-	    form_new_get(Host, Lang, Addr);
+	    Host;
 	false ->
-	    {400, [], <<"Host not served">>}
-    end;
-process([<<"delete">>],
-	#request{method = 'GET', lang = Lang, host = Host}) ->
-    case ejabberd_router:is_my_host(Host) of
-	true ->
-	    form_del_get(Host, Lang);
-	false ->
-	    {400, [], <<"Host not served">>}
-    end;
-process([<<"change_password">>],
-	#request{method = 'GET', lang = Lang, host = Host}) ->
-    case ejabberd_router:is_my_host(Host) of
-	true ->
-	    form_changepass_get(Host, Lang);
-	false ->
-	    {400, [], <<"Host not served">>}
+	    <<"">>
+    end,
+    case Section of
+	<<"new">> -> form_new_get(Host2, Lang, Addr);
+	<<"delete">> -> form_del_get(Host2, Lang);
+	<<"change_password">> -> form_changepass_get(Host2, Lang);
+	_ -> {404, [], "Not Found"}
     end;
 process([<<"new">>],
 	#request{method = 'POST', q = Q, ip = {Ip, _Port},
@@ -636,5 +625,13 @@ mod_doc() ->
            ?T("- Register a new account on the server."), "",
            ?T("- Change the password from an existing account on the server."), "",
            ?T("- Delete an existing account on the server."), "",
+	   ?T("This module supports CAPTCHA image to register a new account. "
+	      "To enable this feature, configure the options 'captcha\_cmd' "
+	      "and 'captcha\_url', which are documented in the section with "
+	      "top-level options."), "",
+	   ?T("As an example usage, the users of the host 'example.org' can "
+	      "visit the page: 'https://example.org:5281/register/' It is "
+	      "important to include the last / character in the URL, "
+	      "otherwise the subpages URL will be incorrect."), "",
            ?T("The module depends on 'mod_register' where all the configuration "
               "is performed.")]}.

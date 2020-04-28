@@ -51,10 +51,8 @@
 	 sqlite_file/1,
 	 encode_term/1,
 	 decode_term/1,
-	 odbc_config/0,
-	 freetds_config/0,
 	 odbcinst_config/0,
-	 init_mssql/1,
+	 init_mssql/0,
 	 keep_alive/2,
 	 to_list/2,
 	 to_array/2]).
@@ -253,7 +251,7 @@ to_list(EscapeFun, Val) ->
 
 to_array(EscapeFun, Val) ->
     Escaped = lists:join(<<",">>, lists:map(EscapeFun, Val)),
-    [<<"{">>, Escaped, <<"}">>].
+    lists:flatten([<<"{">>, Escaped, <<"}">>]).
 
 to_string_literal(odbc, S) ->
     <<"'", (escape(S))/binary, "'">>;
@@ -736,11 +734,11 @@ pgsql_sql_query_format(SQLQuery) ->
 pgsql_escape() ->
     #sql_escape{string = fun(X) -> <<"E'", (escape(X))/binary, "'">> end,
 		integer = fun(X) -> misc:i2l(X) end,
-		boolean = fun(true) -> <<"1">>;
-                             (false) -> <<"0">>
+		boolean = fun(true) -> <<"'t'">>;
+                             (false) -> <<"'f'">>
                           end,
 		in_array_string = fun(X) -> <<"E'", (escape(X))/binary, "'">> end,
-                like_escape = fun() -> <<"">> end
+                like_escape = fun() -> <<"ESCAPE E'\\\\'">> end
                }.
 
 sqlite_sql_query(SQLQuery) ->
@@ -776,11 +774,13 @@ pgsql_prepare(SQLQuery, State) ->
                          like_escape = fun() -> escape end},
     {RArgs, _} =
         lists:foldl(
-          fun(arg, {Acc, I}) ->
-                  {[<<$$, (integer_to_binary(I))/binary>> | Acc], I + 1};
-             (escape, {Acc, I}) ->
-                  {[<<"">> | Acc], I}
-          end, {[], 1}, (SQLQuery#sql_query.args)(Escape)),
+	    fun(arg, {Acc, I}) ->
+		{[<<$$, (integer_to_binary(I))/binary>> | Acc], I + 1};
+	       (escape, {Acc, I}) ->
+		   {[<<"ESCAPE E'\\\\'">> | Acc], I};
+	       (List, {Acc, I}) when is_list(List) ->
+		   {[<<$$, (integer_to_binary(I))/binary>> | Acc], I + 1}
+	    end, {[], 1}, (SQLQuery#sql_query.args)(Escape)),
     Args = lists:reverse(RArgs),
     %N = length((SQLQuery#sql_query.args)(Escape)),
     %Args = [<<$$, (integer_to_binary(I))/binary>> || I <- lists:seq(1, N)],
@@ -1001,12 +1001,18 @@ pgsql_execute_to_odbc(_) -> {updated, undefined}.
 
 %% part of init/1
 %% Open a database connection to MySQL
-mysql_connect(Server, Port, DB, Username, Password, ConnectTimeout,  _, _) ->
+mysql_connect(Server, Port, DB, Username, Password, ConnectTimeout, Transport, _) ->
+    SSLOpts = case Transport of
+		  ssl ->
+		      [ssl_required];
+		  _ ->
+		      []
+	      end,
     case p1_mysql_conn:start(binary_to_list(Server), Port,
 			     binary_to_list(Username),
 			     binary_to_list(Password),
 			     binary_to_list(DB),
-			     ConnectTimeout, fun log/3)
+			     ConnectTimeout, fun log/3, SSLOpts)
 	of
 	{ok, Ref} ->
 	    p1_mysql_conn:fetch(
@@ -1101,8 +1107,9 @@ db_opts(Host) ->
 	    SSLOpts = get_ssl_opts(Transport, Host),
 	    case Type of
 		mssql ->
-		    [mssql, <<"DSN=", Host/binary, ";UID=", User/binary,
-			      ";PWD=", Pass/binary>>, Timeout];
+		    [mssql, <<"DRIVER=FreeTDS;SERVER=", Server/binary, ";UID=", User/binary,
+			      ";DATABASE=", DB/binary ,";PWD=", Pass/binary,
+			      ";PORT=", (integer_to_binary(Port))/binary ,";CLIENT_CHARSET=UTF-8;">>, Timeout];
 		_ ->
 		    [Type, Server, Port, DB, User, Pass, Timeout, Transport, SSLOpts]
 	    end
@@ -1111,6 +1118,8 @@ db_opts(Host) ->
 warn_if_ssl_unsupported(tcp, _) ->
     ok;
 warn_if_ssl_unsupported(ssl, pgsql) ->
+    ok;
+warn_if_ssl_unsupported(ssl, mysql) ->
     ok;
 warn_if_ssl_unsupported(ssl, Type) ->
     ?WARNING_MSG("SSL connection is not supported for ~ts", [Type]).
@@ -1142,44 +1151,15 @@ get_ssl_opts(ssl, Host) ->
 get_ssl_opts(tcp, _) ->
     [].
 
-init_mssql(Host) ->
-    Server = ejabberd_option:sql_server(Host),
-    Port = ejabberd_option:sql_port(Host),
-    DB = case ejabberd_option:sql_database(Host) of
-	     undefined -> <<"ejabberd">>;
-	     D -> D
-	 end,
-    FreeTDS = io_lib:fwrite("[~ts]~n"
-			    "\thost = ~ts~n"
-			    "\tport = ~p~n"
-			    "\tclient charset = UTF-8~n"
-			    "\ttds version = 7.1~n",
-			    [Host, Server, Port]),
-    ODBCINST = io_lib:fwrite("[freetds]~n"
-			     "Description = MSSQL connection~n"
-			     "Driver = libtdsodbc.so~n"
-			     "Setup = libtdsS.so~n"
-			     "UsageCount = 1~n"
-			     "FileUsage = 1~n", []),
-    ODBCINI = io_lib:fwrite("[~ts]~n"
-			    "Description = MS SQL~n"
-			    "Driver = freetds~n"
-			    "Servername = ~ts~n"
-			    "Database = ~ts~n"
-			    "Port = ~p~n",
-			    [Host, Host, DB, Port]),
-    ?DEBUG("~ts:~n~ts", [freetds_config(), FreeTDS]),
+init_mssql() ->
+    ODBCINST = io_lib:fwrite("[FreeTDS]~n"
+			     "Driver = libtdsodbc.so~n", []),
     ?DEBUG("~ts:~n~ts", [odbcinst_config(), ODBCINST]),
-    ?DEBUG("~ts:~n~ts", [odbc_config(), ODBCINI]),
-    case filelib:ensure_dir(freetds_config()) of
+    case filelib:ensure_dir(odbcinst_config()) of
 	ok ->
 	    try
-		ok = write_file_if_new(freetds_config(), FreeTDS),
 		ok = write_file_if_new(odbcinst_config(), ODBCINST),
-		ok = write_file_if_new(odbc_config(), ODBCINI),
 		os:putenv("ODBCSYSINI", tmp_dir()),
-		os:putenv("FREETDS", freetds_config()),
-		os:putenv("FREETDSCONF", freetds_config()),
 		ok
 	    catch error:{badmatch, {error, Reason} = Err} ->
 		    ?ERROR_MSG("Failed to create temporary files in ~ts: ~ts",
@@ -1203,12 +1183,6 @@ tmp_dir() ->
 	{win32, _} -> filename:join([os:getenv("HOME"), "conf"]);
 	_ -> filename:join(["/tmp", "ejabberd"])
     end.
-
-odbc_config() ->
-    filename:join(tmp_dir(), "odbc.ini").
-
-freetds_config() ->
-    filename:join(tmp_dir(), "freetds.conf").
 
 odbcinst_config() ->
     filename:join(tmp_dir(), "odbcinst.ini").

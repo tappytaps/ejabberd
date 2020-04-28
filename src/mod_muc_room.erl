@@ -217,6 +217,8 @@ unsubscribe(Pid, JID) ->
     try p1_fsm:sync_send_all_state_event(Pid, {muc_unsubscribe, JID})
     catch _:{timeout, {p1_fsm, _, _}} ->
 	    {error, ?T("Request has timed out")};
+	  exit:{normal, {p1_fsm, _, _}} ->
+	    ok;
 	  _:{_, {p1_fsm, _, _}} ->
 	    {error, ?T("Conference room does not exist")}
     end.
@@ -741,10 +743,13 @@ handle_sync_event({muc_subscribe, From, Nick, Nodes}, _From,
 	{error, Err} ->
 	    {reply, {error, get_error_text(Err)}, StateName, StateData}
     end;
-handle_sync_event({muc_unsubscribe, From}, _From, StateName, StateData) ->
+handle_sync_event({muc_unsubscribe, From}, _From, StateName,
+		  #state{config = Conf} = StateData) ->
     IQ = #iq{type = set, id = p1_rand:get_string(),
 	     from = From, sub_els = [#muc_unsubscribe{}]},
     case process_iq_mucsub(From, IQ, StateData) of
+	{result, _, stop} ->
+	    {stop, normal, StateData#state{config = Conf#config{persistent = false}}};
 	{result, _, NewState} ->
 	    {reply, ok, StateName, NewState};
 	{ignore, NewState} ->
@@ -4198,7 +4203,7 @@ process_iq_vcard(From, #iq{type = set, lang = Lang, sub_els = [Pkt]},
 
 -spec process_iq_mucsub(jid(), iq(), state()) ->
       {error, stanza_error()} |
-      {result, undefined | muc_subscribe() | muc_subscriptions(), state()} |
+      {result, undefined | muc_subscribe() | muc_subscriptions(), stop | state()} |
       {ignore, state()}.
 process_iq_mucsub(_From, #iq{type = set, lang = Lang,
 			     sub_els = [#muc_subscribe{}]},

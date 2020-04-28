@@ -3,7 +3,7 @@ defmodule Ejabberd.Mixfile do
 
   def project do
     [app: :ejabberd,
-     version: "20.1.0",
+     version: "20.3.0",
      description: description(),
      elixir: "~> 1.4",
      elixirc_paths: ["lib"],
@@ -51,12 +51,25 @@ defmodule Ejabberd.Mixfile do
     end
   end
 
+  defp if_version_below(ver, okResult) do
+    if :erlang.system_info(:otp_release) < ver do
+      okResult
+    else
+      []
+    end
+  end
+
   defp erlc_options do
     # Use our own includes + includes from all dependencies
     includes = ["include"] ++ deps_include(["fast_xml", "xmpp", "p1_utils"])
-    [:debug_info, {:d, :ELIXIR_ENABLED}] ++ cond_options() ++ Enum.map(includes, fn(path) -> {:i, path} end) ++
-    if_version_above('20', [{:d, :DEPRECATED_GET_STACKTRACE}]) ++
-    if_function_exported(:erl_error, :format_exception, 6, [{:d, :HAVE_ERL_ERROR}])
+    result = [:debug_info, {:d, :ELIXIR_ENABLED}] ++
+             cond_options() ++
+             Enum.map(includes, fn (path) -> {:i, path} end) ++
+             if_version_above('20', [{:d, :DEPRECATED_GET_STACKTRACE}]) ++
+             if_version_below('22', [{:d, :LAGER}]) ++
+             if_function_exported(:erl_error, :format_exception, 6, [{:d, :HAVE_ERL_ERROR}])
+    defines = for {:d, value} <- result, do: {:d, value}
+    result ++ [{:d, :ALL_DEFS, defines}]
   end
 
   defp cond_options do
@@ -72,17 +85,17 @@ defmodule Ejabberd.Mixfile do
     [{:lager, "~> 3.6.0"},
      {:p1_utils, "~> 1.0"},
      {:fast_xml, "~> 1.1"},
-     {:xmpp, "~> 1.4"},
+     {:xmpp, git: "https://github.com/processone/xmpp", ref: "f8c5b3bb"},
      {:cache_tab, "~> 1.0"},
      {:stringprep, "~> 1.0"},
      {:fast_yaml, "~> 1.0"},
      {:fast_tls, "~> 1.1"},
-     {:stun, "~> 1.0"},
+     {:stun, git: "https://github.com/processone/stun", ref: "f1516827", override: true},
      {:esip, "~> 1.0"},
      {:p1_mysql, "~> 1.0"},
      {:mqtree, "~> 1.0"},
      {:p1_pgsql, "~> 1.1"},
-     {:jiffy, "~> 1.0"},
+     {:jiffy, "~> 1.0.4"},
      {:p1_oauth2, "~> 0.6.1"},
      {:distillery, "~> 2.0"},
      {:pkix, "~> 1.0"},
@@ -120,6 +133,7 @@ defmodule Ejabberd.Mixfile do
   defp cond_apps do
     for {:true, app} <- [{config(:redis), :eredis},
                          {config(:mysql), :p1_mysql},
+                         {config(:odbc), :odbc},
                          {config(:pgsql), :p1_pgsql},
                          {config(:sqlite), :sqlite3},
                          {config(:zlib), :ezlib}], do:

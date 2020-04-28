@@ -1,3 +1,41 @@
+# Version 20.03
+
+* Changes in this version
+- Add support of ssl connection when connection to mysql
+  database (configured with `sql_ssl: true` option)
+- Experimental support for cockroachdb when configured
+  with postgres connector 
+- Add cache and optimize queries issued by `mod_shared_roster`,
+  this should greatly improve performance of this module when
+  used with `sql` backend
+- Fix problem with accessing webadmin
+- Make webadmin work even when url is missing trailing slash
+- When compiling external modules with ext_mod, use flags
+  that were detected during compilation of ejabberd
+- Make config changed to ldap options be updated when issued
+  `reload_config` command
+- Fix `room_empty_destory` command
+- Fix reporting errors in `send_stanza` command when xml
+  passed to it couldn't be passed correctly
+
+# Version 20.02
+
+* Changes in this version
+- Fix problems when trying to use string format with unicode
+  values directly in xmpp nodes
+- Add missing oauth_client table declaration in lite.new.sql
+- Improve compatibility with CocroachDB
+- Fix importing of piefxis files that did use scram passwords
+- Fix importing of piefxis files that had multiple includes
+  in them
+- Update jiffy dependency
+- Allow storage of emojis when using mssql database (Thanks
+  to Christoph Scholz)
+- Make ejabberd_auth_http be able to use auth_opts
+- Make custom_headers options in http modules correctly
+  override built-in values
+- Fix return value of reload_config and dump_config commands
+
 # Version 20.01
 
 * New features
