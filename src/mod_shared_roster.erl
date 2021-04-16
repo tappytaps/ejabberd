@@ -511,6 +511,14 @@ get_group_opt_cached(Host, Group, Opt, Default, Cache) ->
 	    proplists:get_value(Opt, Opts, Default)
     end.
 
+get_group_opt_cached(Host, Group, Opt, Opt2, Default, Cache) ->
+    case get_groups_opts_cached(Host, Group, Cache) of
+	{error, _} -> get_group_opt_cached(Host, Group, Opt2, Default, Cache);
+	{Opts, _} ->
+	    proplists:get_value(Opt, Opts, Default)
+    end.
+
+
 %% @spec (Host::string(), Group::string(), Opt::atom(), Default) -> OptValue | Default
 get_group_opt(Host, Group, Opt, Default) ->
     case get_group_opts(Host, Group) of
@@ -518,6 +526,14 @@ get_group_opt(Host, Group, Opt, Default) ->
       Opts ->
 	  proplists:get_value(Opt, Opts, Default)
     end.
+
+get_group_opt(Host, Group, Opt, Opt2, Default) ->
+    case get_group_opts(Host, Group) of
+      error -> get_group_opt(Host, Group, Opt2, Default);
+      Opts ->
+	  proplists:get_value(Opt, Opts, Default)
+    end.
+
 
 get_online_users(Host) ->
     lists:usort([{U, S}
@@ -558,7 +574,7 @@ get_group_explicit_users(Host, Group) ->
     end.
 
 get_group_label_cached(Host, Group, Cache) ->
-    get_group_opt_cached(Host, Group, label, Group, Cache).
+    get_group_opt_cached(Host, Group, label, name, Group, Cache).
 
 -spec update_wildcard_cache(binary(), binary(), list()) -> ok.
 update_wildcard_cache(Host, Group, NewOpts) ->
@@ -767,7 +783,7 @@ remove_user_from_group(Host, US, Group) ->
 push_members_to_user(LUser, LServer, Group, Host,
 		     Subscription) ->
     GroupOpts = get_group_opts(LServer, Group),
-    GroupLabel = proplists:get_value(label, GroupOpts, Group), %++
+    GroupLabel = proplists:get_value(label, GroupOpts, proplists:get_value(name, GroupOpts, Group)), %++
     Members = get_group_users(Host, Group),
     lists:foreach(fun ({U, S}) ->
 			  N = get_rosteritem_name(U, S),
@@ -803,7 +819,8 @@ push_user_to_members(User, Server, Subscription) ->
 			  GroupOpts = proplists:get_value(Group, GroupsOpts,
 							  []),
 			  GroupLabel = proplists:get_value(label, GroupOpts,
-							  Group),
+							  proplists:get_value(name, GroupOpts,
+							  Group)),
 			  lists:foreach(fun ({U, S}) ->
 						push_roster_item(U, S, LUser,
 								 LServer,
@@ -817,7 +834,7 @@ push_user_to_members(User, Server, Subscription) ->
 		  lists:usort(SpecialGroups ++ UserGroups)).
 
 push_user_to_displayed(LUser, LServer, Group, Host, Subscription, DisplayedToGroupsOpts) ->
-    GroupLabel = get_group_opt(Host, Group, label, Group), %++
+    GroupLabel = get_group_opt(Host, Group, label, name, Group), %++
     [push_user_to_group(LUser, LServer, GroupD, Host,
 			GroupLabel, Subscription)
      || GroupD <- DisplayedToGroupsOpts].
@@ -989,7 +1006,7 @@ shared_roster_group(Host, Group, Query, Lang) ->
     Res = shared_roster_group_parse_query(Host, Group,
 					  Query),
     GroupOpts = get_group_opts(Host, Group),
-    Label = get_opt(GroupOpts, label, <<"">>), %%++
+    Label = get_opt(GroupOpts, label, name, <<"">>), %%++
     Description = get_opt(GroupOpts, description, <<"">>),
     AllUsers = get_opt(GroupOpts, all_users, false),
     OnlineUsers = get_opt(GroupOpts, online_users, false),
@@ -1167,6 +1184,14 @@ get_opt(Opts, Opt, Default) ->
       {value, {_, Val}} -> Val;
       false -> Default
     end.
+
+
+get_opt(Opts, Opt, Opt2, Default) ->
+    case lists:keysearch(Opt, 1, Opts) of
+      {value, {_, Val}} -> Val;
+      false -> get_opt(Opts, Opt2, Default)
+    end.
+
 
 us_to_list({User, Server}) ->
     jid:encode({User, Server, <<"">>}).
