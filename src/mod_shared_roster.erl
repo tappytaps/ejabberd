@@ -547,16 +547,17 @@ get_group_users(Host, Group, GroupOpts) ->
 
 get_group_explicit_users(Host, Group) ->
     Mod = gen_mod:db_mod(Host, ?MODULE),
-    case use_cache(Mod, Host) of
-	true ->
-	    ets_cache:lookup(
-		?GROUP_EXPLICIT_USERS_CACHE, {Host, Group},
-		fun() ->
-		    {cache, Mod:get_group_explicit_users(Host, Group)}
-		end);
-	false ->
-	    Mod:get_group_explicit_users(Host, Group)
-    end.
+	Mod:get_group_explicit_users(Host, Group).
+    % case use_cache(Mod, Host) of
+	% true ->
+	%     ets_cache:lookup(
+	% 	?GROUP_EXPLICIT_USERS_CACHE, {Host, Group},
+	% 	fun() ->
+	% 	    {cache, Mod:get_group_explicit_users(Host, Group)}
+	% 	end);
+	% false ->
+	%     Mod:get_group_explicit_users(Host, Group)
+    % end.
 
 get_group_label_cached(Host, Group, Cache) ->
     get_group_opt_cached(Host, Group, label, Group, Cache).
