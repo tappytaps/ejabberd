@@ -664,8 +664,8 @@ get_commands_spec() ->
 			"name desc \\\"group1\\\\ngroup2\\\"",
 			module = ?MODULE, function = srg_create,
 			args = [{group, binary}, {host, binary},
-				{name, binary}, {label, binary}, {description, binary}, {display, binary}],
-			args_example = [<<"group3">>, <<"myserver.com">>, <<"Group3">>, <<"Group3">>,
+				{name, binary}, {name, binary},{description, binary}, {display, binary}],
+			args_example = [<<"group3">>, <<"myserver.com">>, <<"Group3">>,
 				<<"Third group">>, <<"group1\\\\ngroup2">>],
 			args_desc = ["Group identifier", "Group server name", "Group name",
 				"Group description", "Groups to display"],
@@ -1462,6 +1462,7 @@ srg_create(Group, Host, Name, Description, Display) ->
 	_ -> ejabberd_regexp:split(Display, <<"\\\\n">>)
     end,
     Opts = [{name, Name},
+		{label, Name},
 	    {displayed_groups, DisplayList},
 	    {description, Description}],
     {atomic, _} = mod_shared_roster:create_group(Host, Group, Opts),
