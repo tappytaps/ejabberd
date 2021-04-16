@@ -664,7 +664,7 @@ get_commands_spec() ->
 			"name desc \\\"group1\\\\ngroup2\\\"",
 			module = ?MODULE, function = srg_create,
 			args = [{group, binary}, {host, binary},
-				{name, binary}, {name, binary},{description, binary}, {display, binary}],
+				{name, binary}, {description, binary}, {display, binary}],
 			args_example = [<<"group3">>, <<"myserver.com">>, <<"Group3">>,
 				<<"Third group">>, <<"group1\\\\ngroup2">>],
 			args_desc = ["Group identifier", "Group server name", "Group name",
