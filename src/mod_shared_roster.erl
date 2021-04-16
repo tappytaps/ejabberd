@@ -492,16 +492,17 @@ set_group_opts(Host, Group, Opts) ->
 get_user_groups(US) ->
     Host = element(2, US),
     Mod = gen_mod:db_mod(Host, ?MODULE),
-    UG = case use_cache(Mod, Host) of
-	     true ->
-		 ets_cache:lookup(
-		     ?USER_GROUPS_CACHE, {Host, US},
-		     fun() ->
-			 {cache, Mod:get_user_groups(US, Host)}
-		     end);
-	     false ->
-		 Mod:get_user_groups(US, Host)
-	 end,
+	UG = Mod:get_user_groups(US, Host),
+    % UG = case use_cache(Mod, Host) of
+	%      true ->
+	% 	 ets_cache:lookup(
+	% 	     ?USER_GROUPS_CACHE, {Host, US},
+	% 	     fun() ->
+	% 		 {cache, Mod:get_user_groups(US, Host)}
+	% 	     end);
+	%      false ->
+	% 	 Mod:get_user_groups(US, Host)
+	%  end,
     UG ++ get_groups_with_wildcards(Host, both).
 
 get_group_opt_cached(Host, Group, Opt, Default, Cache) ->
@@ -715,7 +716,7 @@ add_user_to_group2(Host, US, Group) ->
 	  Mod = gen_mod:db_mod(Host, ?MODULE),
 	  case use_cache(Mod, Host) of
 	      true ->
-		  ets_cache:delete(?USER_GROUPS_CACHE, {Host, US}, cache_nodes(Mod, Host)),
+		%   ets_cache:delete(?USER_GROUPS_CACHE, {Host, US}, cache_nodes(Mod, Host)),
 		  ets_cache:delete(?GROUP_EXPLICIT_USERS_CACHE, {Host, Group}, cache_nodes(Mod, Host));
 	      false ->
 		  ok
@@ -751,7 +752,7 @@ remove_user_from_group(Host, US, Group) ->
 	  Mod = gen_mod:db_mod(Host, ?MODULE),
 	  case use_cache(Mod, Host) of
 	      true ->
-		  ets_cache:delete(?USER_GROUPS_CACHE, {Host, US}, cache_nodes(Mod, Host)),
+		%   ets_cache:delete(?USER_GROUPS_CACHE, {Host, US}, cache_nodes(Mod, Host)),
 		  ets_cache:delete(?GROUP_EXPLICIT_USERS_CACHE, {Host, Group}, cache_nodes(Mod, Host));
 	      false ->
 		  ok
