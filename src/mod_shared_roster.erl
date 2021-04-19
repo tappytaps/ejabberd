@@ -593,27 +593,12 @@ update_wildcard_cache(Host, Group, NewOpts) ->
     end,
     ok.
 
+
+%% ttmonitor optimalization - we dpn't need special groups
 -spec get_groups_with_wildcards(binary(), online | both) -> list(binary()).
 get_groups_with_wildcards(Host, Type) ->
-    Res =
-    ets_cache:lookup(
-	?SPECIAL_GROUPS_CACHE, {Host, Type},
-	fun() ->
-	    Res = lists:filtermap(
-		fun({Group, Opts}) ->
-		    case proplists:get_value(online_users, Opts, false) orelse
-			 (Type == both andalso proplists:get_value(all_users, Opts, false)) of
-			true -> {true, Group};
-			false -> false
-		    end
-		end,
-		groups_with_opts(Host)),
-	    {cache, {ok, Res}}
-	end),
-    case Res of
-	{ok, List} -> List;
-	_ -> []
-    end.
+	[].
+
 
 %% Given two lists of groupnames and their options,
 %% return the list of displayed groups to the second list
@@ -840,15 +825,9 @@ push_user_to_group(LUser, LServer, Group, Host,
 		  get_group_users(Host, Group)).
 
 %% Get list of groups to which this group is displayed
-displayed_to_groups(GroupName, LServer) ->
-    GroupsOpts = groups_with_opts(LServer),
-    Gs = lists:filter(fun ({_Group, Opts}) ->
-			 lists:member(GroupName,
-				      proplists:get_value(displayed_groups,
-							  Opts, []))
-		 end,
-		 GroupsOpts),
-    [Name || {Name, _} <- Gs].
+%% ttmonitor optimalization - we don't need nested groups
+displayed_to_groups(GroupName, LServer) -> 
+	[GroupName].
 
 push_item(User, Server, Item) ->
     mod_roster:push_item(jid:make(User, Server),
