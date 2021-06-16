@@ -107,7 +107,8 @@ defmodule Ejabberd.Mixfile do
      {:p1_pgsql, "~> 1.1"},
      {:p1_utils, "~> 1.0"},
      {:pkix, "~> 1.0"},
-     {:stringprep, "~> 1.0"},
+    #  {:stringprep, "~> 1.0"},
+     {:stringprep, git: "git@github.com:processone/stringprep.git", ref: "6d143ebcacaafe3a8adc669300a8ad001402b3d8"},
      {:stun, "~> 1.0"},
      {:xmpp, "~> 1.5"},
      {:yconf, "~> 1.0"}]
