@@ -33,3 +33,4 @@
 /rebar.lock
 /log/
 .DS_Store
+Mnesia.nonode@nohost/
