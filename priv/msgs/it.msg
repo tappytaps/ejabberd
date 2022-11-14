@@ -3,6 +3,7 @@
 %% To improve translations please read:
 %%   https://docs.ejabberd.im/developer/extending-ejabberd/localization/
 
+{" (Add * to the end of field to match substring)"," Riempire il modulo per la ricerca di utenti Jabber corrispondenti ai criteri (Aggiungere * alla fine del campo per la ricerca di una sottostringa"}.
 {" has set the subject to: "," ha modificato l'oggetto in: "}.
 {"A friendly name for the node","Un nome comodo per il nodo"}.
 {"A password is required to enter this room","Per entrare in questa stanza è prevista una password"}.
@@ -144,7 +145,6 @@
 {"Make room persistent","Rendere la stanza persistente"}.
 {"Make room public searchable","Rendere la sala visibile al pubblico"}.
 {"March","Marzo"}.
-{"Max # of items to persist","Numero massimo di elementi da conservare persistentemente"}.
 {"Max payload size in bytes","Dimensione massima del contenuto del messaggio in byte"}.
 {"Maximum Number of Occupants","Numero massimo di occupanti"}.
 {"May","Maggio"}.

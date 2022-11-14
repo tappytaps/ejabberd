@@ -5,7 +5,7 @@
 %%% Created : 16 Nov 2002 by Alexey Shchepin <alexey@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2021   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2022   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -113,10 +113,11 @@ init({Port, _, udp} = EndPoint, Module, Opts, SockOpts) ->
 			     _ ->
 				 {Port, SockOpts}
 			 end,
+    ExtraOpts2 = lists:keydelete(send_timeout, 1, ExtraOpts),
     case gen_udp:open(Port2, [binary,
 			     {active, false},
 			     {reuseaddr, true} |
-			     ExtraOpts]) of
+			     ExtraOpts2]) of
 	{ok, Socket} ->
 	    case inet:sockname(Socket) of
 		{ok, {Addr, Port1}} ->
@@ -195,7 +196,6 @@ listen_tcp(Port, SockOpts) ->
 				{active, false},
 				{reuseaddr, true},
 				{nodelay, true},
-				{send_timeout, ?TCP_SEND_TIMEOUT},
 				{send_timeout_close, true},
 				{keepalive, true} | ExtraOpts]),
     case Res of
@@ -318,6 +318,9 @@ start_connection(Module, Arity, Socket, State, Sup) ->
 		  supervisor:start_child(Sup, [{gen_tcp, Socket}, State])
 	  end,
     case Res of
+	{ok, Pid, preowned_socket} ->
+	    Module:accept(Pid),
+	    {ok, Pid};
 	{ok, Pid} ->
 	    case gen_tcp:controlling_process(Socket, Pid) of
 		ok ->
@@ -457,11 +460,19 @@ config_reloaded() ->
 		      ok;
 		  {_, OldModule, OldOpts} ->
 		      _ = stop_listener(EndPoint, OldModule, OldOpts),
-		      ets:insert(?MODULE, {EndPoint, Module, Opts}),
-		      start_listener(EndPoint, Module, Opts);
+		      case start_listener(EndPoint, Module, Opts) of
+			  {ok, _} ->
+			      ets:insert(?MODULE, {EndPoint, Module, Opts});
+			  _ ->
+			      ok
+		      end;
 		  false ->
-		      ets:insert(?MODULE, {EndPoint, Module, Opts}),
-		      start_listener(EndPoint, Module, Opts)
+		      case start_listener(EndPoint, Module, Opts) of
+			  {ok, _} ->
+			      ets:insert(?MODULE, {EndPoint, Module, Opts});
+			  _ ->
+			      ok
+		      end
 	      end
       end, New).
 
@@ -682,6 +693,8 @@ listen_opt_type(max_stanza_size) ->
     econf:pos_int(infinity);
 listen_opt_type(max_fsm_queue) ->
     econf:pos_int();
+listen_opt_type(send_timeout) ->
+    econf:timeout(second, infinity);
 listen_opt_type(shaper) ->
     econf:shaper();
 listen_opt_type(access) ->
@@ -694,6 +707,7 @@ listen_options() ->
      {transport, tcp},
      {ip, {0,0,0,0}},
      {accept_interval, 0},
+     {send_timeout, 15000},
      {backlog, 5},
      {use_proxy_protocol, false},
      {supervisor, true}].
