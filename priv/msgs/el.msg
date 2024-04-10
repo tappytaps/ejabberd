@@ -12,11 +12,6 @@
 {"A Web Page","Μία ιστοσελίδα"}.
 {"Accept","Αποδοχή"}.
 {"Access denied by service policy","Άρνηση πρόσβασης, λόγω τακτικής παροχής υπηρεσιών"}.
-{"Access model of authorize","Μοντέλο πρόσβασης της πιστοποίησης"}.
-{"Access model of open","Μοντέλο πρόσβασης του ανοικτού"}.
-{"Access model of presence","Μοντέλο πρόσβασης της παρουσίας"}.
-{"Access model of roster","Μοντέλο πρόσβασης της Λίστας Επαφών"}.
-{"Access model of whitelist","Μοντέλο πρόσβασης της Λευκής Λίστας"}.
 {"Access model","Καθορίστε το μοντέλο πρόσβασης"}.
 {"Account doesn't exist","Ο λογαριασμός δεν υπάρχει"}.
 {"Action on user","Eνέργεια για το χρήστη"}.
@@ -219,7 +214,6 @@
 {"It is not allowed to send error messages to the room. The participant (~s) has sent an error message (~s) and got kicked from the room","Δεν επιτρέπεται η αποστολή μηνυμάτων σφάλματος στο δωμάτιο. Ο συμμετέχων (~s) έχει στείλει ένα μήνυμα σφάλματος (~s) και έχει πεταχτεί έξω από την αίθουσα"}.
 {"It is not allowed to send private messages of type \"groupchat\"","Δεν επιτρέπεται η αποστολή προσωπικών μηνυμάτων του τύπου \"groupchat\""}.
 {"It is not allowed to send private messages to the conference","Δεν επιτρέπεται να στείλει προσωπικά μηνύματα για τη διάσκεψη"}.
-{"It is not allowed to send private messages","Δεν επιτρέπεται η αποστολή προσωπικών μηνυμάτων"}.
 {"Jabber ID","Ταυτότητα Jabber"}.
 {"January","Ιανουάριος"}.
 {"JID normalization denied by service policy","Απετράπη η κανονικοποίηση του JID, λόγω της τακτικής Παροχής Υπηρεσιών"}.
@@ -377,7 +371,6 @@
 {"Password:","Κωδικός πρόσβασης:"}.
 {"Path to Dir","Τοποθεσία κατάλογου αρχείων"}.
 {"Path to File","Τοποθεσία Αρχείου"}.
-{"Payload type","Τύπος φόρτου εργασιών"}.
 {"Pending","Εκκρεμεί"}.
 {"Period: ","Περίοδος: "}.
 {"Persist items to storage","Μόνιμη αποθήκευση στοιχείων"}.
@@ -538,7 +531,6 @@
 {"The sender of the last received message","Ο αποστολέας του τελευταίου εισερχομένου μηνύματος"}.
 {"The stanza MUST contain only one <active/> element, one <default/> element, or one <list/> element","Η stanza ΠΡΕΠΕΙ να περιέχει μόνο ένα στοιχείο <active />, ένα στοιχείο <default /> ή ένα στοιχείο <list />"}.
 {"The subscription identifier associated with the subscription request","Το αναγνωριστικό συνδρομής συσχετίστηκε με το αίτημα συνδρομής"}.
-{"The type of node data, usually specified by the namespace of the payload (if any)","Ο τύπος των δεδομένων του κόμβου συνήθως προσδιορίζεται από το namespace του φόρτου εργασιών (αν υπάρχουν)"}.
 {"The URL of an XSL transformation which can be applied to payloads in order to generate an appropriate message body element.","Το URL ενός μετασχηματισμού XSL το οποίο μπορεί να εφαρμοστεί σε φόρτους εργασίας για να παραχθεί το κατάλληλο στοιχείο του σώματος του μηνύματος."}.
 {"The URL of an XSL transformation which can be applied to the payload format in order to generate a valid Data Forms result that the client could display using a generic Data Forms rendering engine","Το URL ενός μετασχηματισμού XSL, το οποίο μπορεί να εφαρμοστεί στους τύπους φόρτου εργασίας για να παραχθεί έγκυρο αποτέλεσμα Data Forms, τέτοιο που ο πελάτης μπορεί να εμφανίσει, χρησιμοποιώντας μια ευρείας χρήσης μηχανή επεξεργασίας Data Forms"}.
 {"There was an error changing the password: ","Παρουσιάστηκε σφάλμα κατά την αλλαγή του κωδικού πρόσβασης: "}.

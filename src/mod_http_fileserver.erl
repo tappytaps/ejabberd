@@ -5,7 +5,7 @@
 %%% Created :
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2022   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -557,7 +557,7 @@ mod_doc() ->
       example =>
           [{?T("This example configuration will serve the files from the "
 	       "local directory '/var/www' in the address "
-	       "'http://example.org:5280/pub/archive/'. In this example a new "
+	       "'http://example.org:5280/pub/content/'. In this example a new "
 	       "content type 'ogg' is defined, 'png' is redefined, and 'jpg' "
 	       "definition is deleted:"),
 	   ["listen:",
@@ -567,7 +567,7 @@ mod_doc() ->
            "    module: ejabberd_http",
            "    request_handlers:",
            "      ...",
-           "      /pub/archive: mod_http_fileserver",
+           "      /pub/content: mod_http_fileserver",
            "      ...",
            "  ...",
            "",

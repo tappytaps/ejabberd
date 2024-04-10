@@ -5,7 +5,7 @@
 %%% Created :  8 Dec 2004 by Alexey Shchepin <alexey@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2022   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -56,7 +56,8 @@
 	 init_mssql/1,
 	 keep_alive/2,
 	 to_list/2,
-	 to_array/2]).
+	 to_array/2,
+         parse_mysql_version/2]).
 
 %% gen_fsm callbacks
 -export([init/1, handle_event/3, handle_sync_event/4,
@@ -66,14 +67,24 @@
 -export([connecting/2, connecting/3,
 	 session_established/2, session_established/3]).
 
+-ifdef(OTP_RELEASE).
+    -if(?OTP_RELEASE >= 27).
+	-type(odbc_connection_reference() ::  odbc:connection_reference()).
+    -else.
+	-type(odbc_connection_reference() ::  pid()).
+    -endif.
+-else.
+    -type(odbc_connection_reference() ::  pid()).
+-endif.
+
 -include("logger.hrl").
 -include("ejabberd_sql_pt.hrl").
 -include("ejabberd_stacktrace.hrl").
 
 -record(state,
-	{db_ref               :: undefined | pid(),
+	{db_ref               :: undefined | pid() | odbc_connection_reference(),
 	 db_type = odbc       :: pgsql | mysql | sqlite | odbc | mssql,
-	 db_version           :: undefined | non_neg_integer(),
+	 db_version           :: undefined | non_neg_integer() | {non_neg_integer(), atom(), non_neg_integer()},
 	 reconnect_count = 0  :: non_neg_integer(),
 	 host                 :: binary(),
 	 pending_requests     :: p1_queue:queue(),
@@ -93,15 +104,16 @@
 -endif.
 
 -type state() :: #state{}.
--type sql_query_simple() :: [sql_query() | binary()] | #sql_query{} |
-			    fun(() -> any()) | fun((atom(), _) -> any()).
--type sql_query() :: sql_query_simple() |
-		     [{atom() | {atom(), any()}, sql_query_simple()}].
--type sql_query_result() :: {updated, non_neg_integer()} |
-                            {error, binary() | atom()} |
-                            {selected, [binary()], [[binary()]]} |
-                            {selected, [any()]} |
-			    ok.
+-type sql_query_simple(T) :: [sql_query(T) | binary()] | binary() |
+                             #sql_query{} |
+                             fun(() -> T) | fun((atom(), _) -> T).
+-type sql_query(T) :: sql_query_simple(T) |
+                      [{atom() | {atom(), any()}, sql_query_simple(T)}].
+-type sql_query_result(T) :: {updated, non_neg_integer()} |
+                             {error, binary() | atom()} |
+                             {selected, [binary()], [[binary()]]} |
+                             {selected, [any()]} |
+                             T.
 
 %%%----------------------------------------------------------------------
 %%% API
@@ -112,14 +124,14 @@ start_link(Host, I) ->
     p1_fsm:start_link({local, Proc}, ?MODULE, [Host],
 		      fsm_limit_opts() ++ ?FSMOPTS).
 
--spec sql_query(binary(), sql_query()) -> sql_query_result().
+-spec sql_query(binary(), sql_query(T)) -> sql_query_result(T).
 sql_query(Host, Query) ->
     sql_call(Host, {sql_query, Query}).
 
 %% SQL transaction based on a list of queries
 %% This function automatically
--spec sql_transaction(binary(), [sql_query()] | fun(() -> any())) ->
-                             {atomic, any()} |
+-spec sql_transaction(binary(), [sql_query(T)] | fun(() -> T)) ->
+                             {atomic, T} |
                              {aborted, any()}.
 sql_transaction(Host, Queries)
     when is_list(Queries) ->
@@ -177,7 +189,7 @@ sync_send_event(Proc, Msg, Timeout) ->
 	    {error, Reason}
     end.
 
--spec sql_query_t(sql_query()) -> sql_query_result().
+-spec sql_query_t(sql_query(T)) -> sql_query_result(T).
 %% This function is intended to be used from inside an sql_transaction:
 sql_query_t(Query) ->
     QRes = sql_query_internal(Query),
@@ -683,7 +695,14 @@ sql_query_internal(#sql_query{} = Query) ->
                             pgsql_sql_query(Query)
                     end;
                 mysql ->
-                    generic_sql_query(Query);
+		    case {Query#sql_query.flags, ejabberd_option:sql_prepared_statements(State#state.host)} of
+			{1, _} ->
+			    generic_sql_query(Query);
+			{_, false} ->
+			    generic_sql_query(Query);
+			_ ->
+			    mysql_prepared_execute(Query, State)
+		    end;
                 sqlite ->
                     sqlite_sql_query(Query)
             end
@@ -862,6 +881,24 @@ pgsql_execute_sql_query(SQLQuery, State) ->
     Res = pgsql_execute_to_odbc(ExecuteRes),
     sql_query_format_res(Res, SQLQuery).
 
+mysql_prepared_execute(#sql_query{hash = Hash} = Query, State) ->
+    ValEsc = #sql_escape{like_escape = fun() -> ignore end, _ = fun(X) -> X end},
+    TypesEsc = #sql_escape{string = fun(_) -> string end,
+			   integer = fun(_) -> integer end,
+			   boolean = fun(_) -> bool end,
+			   in_array_string = fun(_) -> string end,
+			   like_escape = fun() -> ignore end},
+    Val = [X || X <- (Query#sql_query.args)(ValEsc), X /= ignore],
+    Types = [X || X <- (Query#sql_query.args)(TypesEsc), X /= ignore],
+    QueryFn = fun() ->
+	PrepEsc = #sql_escape{like_escape = fun() -> <<>> end, _ = fun(_) -> <<"?">> end},
+	(Query#sql_query.format_query)((Query#sql_query.args)(PrepEsc))
+	end,
+    QueryTimeout = query_timeout(State#state.host),
+    Res = p1_mysql_conn:prepared_query(State#state.db_ref, QueryFn, Hash, Val, Types,
+				       self(), [{timeout, QueryTimeout - 1000}]),
+    Res2 = mysql_to_odbc(Res),
+    sql_query_format_res(Res2, Query).
 
 sql_query_format_res({selected, _, Rows}, SQLQuery) ->
     Res =
@@ -1005,22 +1042,14 @@ sqlite_to_odbc(_Host, _) ->
 %% Open a database connection to PostgreSQL
 pgsql_connect(Server, Port, DB, Username, Password, ConnectTimeout,
 	      Transport, SSLOpts) ->
-    case pgsql:connect([{host, Server},
-                        {database, DB},
-                        {user, Username},
-                        {password, Password},
-                        {port, Port},
-			{transport, Transport},
-			{connect_timeout, ConnectTimeout},
-                        {as_binary, true}|SSLOpts]) of
-        {ok, Ref} ->
-            pgsql:squery(Ref, [<<"alter database \"">>, DB, <<"\" set ">>,
-                               <<"standard_conforming_strings='off';">>]),
-            pgsql:squery(Ref, [<<"set standard_conforming_strings to 'off';">>]),
-            {ok, Ref};
-        Err ->
-            Err
-    end.
+    pgsql:connect([{host, Server},
+                   {database, DB},
+                   {user, Username},
+                   {password, Password},
+                   {port, Port},
+                   {transport, Transport},
+                   {connect_timeout, ConnectTimeout},
+                   {as_binary, true}|SSLOpts]).
 
 %% Convert PostgreSQL query result to Erlang ODBC result formalism
 pgsql_to_odbc({ok, PGSQLResult}) ->
@@ -1061,10 +1090,10 @@ pgsql_execute_to_odbc(_) -> {updated, undefined}.
 
 %% part of init/1
 %% Open a database connection to MySQL
-mysql_connect(Server, Port, DB, Username, Password, ConnectTimeout, Transport, _) ->
+mysql_connect(Server, Port, DB, Username, Password, ConnectTimeout, Transport, SSLOpts0) ->
     SSLOpts = case Transport of
 		  ssl ->
-		      [ssl_required];
+		      [ssl_required|SSLOpts0];
 		  _ ->
 		      []
 	      end,
@@ -1103,18 +1132,47 @@ mysql_to_odbc(ok) ->
 mysql_item_to_odbc(Columns, Recs) ->
     {selected, [element(2, Column) || Column <- Columns], Recs}.
 
-to_odbc({selected, Columns, Recs}) ->
-    Rows = [lists:map(
-	      fun(I) when is_integer(I) ->
-		      integer_to_binary(I);
-		 (B) ->
-		      B
-	      end, Row) || Row <- Recs],
-    {selected, [list_to_binary(C) || C <- Columns], Rows};
+to_odbc({selected, Columns, Rows}) ->
+    Rows2 = lists:map(
+	fun(Row) ->
+	    Row2 = if is_tuple(Row) -> tuple_to_list(Row);
+		       is_list(Row) -> Row
+		   end,
+	    lists:map(
+		fun(I) when is_integer(I) -> integer_to_binary(I);
+		    (B) -> B
+		end, Row2)
+	end, Rows),
+    {selected, [list_to_binary(C) || C <- Columns], Rows2};
 to_odbc({error, Reason}) when is_list(Reason) ->
     {error, list_to_binary(Reason)};
 to_odbc(Res) ->
     Res.
+
+parse_mysql_version(SVersion, DefaultUpsert) ->
+    case re:run(SVersion, <<"(\\d+)\\.(\\d+)(?:\\.(\\d+))?(?:-([^-]*))?">>,
+                [{capture, all_but_first, binary}]) of
+        {match, [V1, V2, V3, Type]} ->
+            V = ((bin_to_int(V1)*1000)+bin_to_int(V2))*1000+bin_to_int(V3),
+            TypeA = binary_to_atom(Type, utf8),
+            Flags = case TypeA of
+                        'MariaDB' -> DefaultUpsert;
+                        _ when V >= 5007026 andalso V < 8000000 -> 1;
+                        _ when V >= 8000020 -> 1;
+                        _ -> DefaultUpsert
+                    end,
+            {ok, {V, TypeA, Flags}};
+        {match, [V1, V2, V3]} ->
+            V = ((bin_to_int(V1)*1000)+bin_to_int(V2))*1000+bin_to_int(V3),
+            Flags = case V of
+                        _ when V >= 5007026 andalso V < 8000000 -> 1;
+                        _ when V >= 8000020 -> 1;
+                        _ -> DefaultUpsert
+                    end,
+            {ok, {V, unknown, Flags}};
+        _ ->
+            error
+    end.
 
 get_db_version(#state{db_type = pgsql} = State) ->
     case pgsql:squery(State#state.db_ref,
@@ -1131,8 +1189,32 @@ get_db_version(#state{db_type = pgsql} = State) ->
             ?WARNING_MSG("Error getting pgsql version: ~p", [Res]),
             State
     end;
+get_db_version(#state{db_type = mysql, host = Host} = State) ->
+    DefaultUpsert = case lists:member(mysql_alternative_upsert, ejabberd_option:sql_flags(Host)) of
+			true -> 1;
+			_ -> 0
+		    end,
+    case mysql_to_odbc(p1_mysql_conn:squery(State#state.db_ref,
+					    [<<"select version();">>], self(),
+					    [{timeout, 5000},
+					     {result_type, binary}])) of
+	{selected, _, [SVersion]} ->
+            case parse_mysql_version(SVersion, DefaultUpsert) of
+                {ok, V} ->
+                    State#state{db_version = V};
+                error ->
+		    ?WARNING_MSG("Error parsing mysql version: ~p", [SVersion]),
+		    State
+	    end;
+	Res ->
+	    ?WARNING_MSG("Error getting mysql version: ~p", [Res]),
+	    State
+    end;
 get_db_version(State) ->
     State.
+
+bin_to_int(<<>>) -> 0;
+bin_to_int(V) -> binary_to_integer(V).
 
 log(Level, Format, Args) ->
     case Level of
@@ -1167,9 +1249,19 @@ db_opts(Host) ->
 	    SSLOpts = get_ssl_opts(Transport, Host),
 	    case Type of
 		mssql ->
-		    [mssql, <<"DRIVER=ODBC;SERVER=", Server/binary, ";UID=", User/binary,
-			      ";DATABASE=", DB/binary ,";PWD=", Pass/binary,
-			      ";PORT=", (integer_to_binary(Port))/binary ,";CLIENT_CHARSET=UTF-8;">>, Timeout];
+                    case odbc_server_is_connstring(Server) of
+                        true ->
+                            [mssql, Server, Timeout];
+                        false ->
+                            Encryption = case Transport of
+                                tcp -> <<"">>;
+                                ssl -> <<";ENCRYPTION=require;ENCRYPT=yes">>
+                            end,
+                            [mssql, <<"DRIVER=ODBC;SERVER=", Server/binary, ";DATABASE=", DB/binary,
+                                      ";UID=", User/binary, ";PWD=", Pass/binary,
+                                      ";PORT=", (integer_to_binary(Port))/binary, Encryption/binary,
+                                      ";CLIENT_CHARSET=UTF-8;">>, Timeout]
+                    end;
 		_ ->
 		    [Type, Server, Port, DB, User, Pass, Timeout, Transport, SSLOpts]
 	    end
@@ -1178,6 +1270,8 @@ db_opts(Host) ->
 warn_if_ssl_unsupported(tcp, _) ->
     ok;
 warn_if_ssl_unsupported(ssl, pgsql) ->
+    ok;
+warn_if_ssl_unsupported(ssl, mssql) ->
     ok;
 warn_if_ssl_unsupported(ssl, mysql) ->
     ok;
@@ -1206,12 +1300,12 @@ get_ssl_opts(ssl, Host) ->
 		    Opts2
 	    end;
 	false ->
-	    Opts2
+	    [{verify, verify_none}|Opts2]
     end;
 get_ssl_opts(tcp, _) ->
     [].
 
-init_mssql(Host) ->
+init_mssql_odbcinst(Host) ->
     Driver = ejabberd_option:sql_odbc_driver(Host),
     ODBCINST = io_lib:fwrite("[ODBC]~n"
 			     "Driver = ~s~n", [Driver]),
@@ -1231,6 +1325,19 @@ init_mssql(Host) ->
 	    ?ERROR_MSG("Failed to create temporary directory ~ts: ~ts",
 		       [tmp_dir(), file:format_error(Reason)]),
 	    Err
+    end.
+
+init_mssql(Host) ->
+    Server = ejabberd_option:sql_server(Host),
+    case odbc_server_is_connstring(Server) of
+        true -> ok;
+        false -> init_mssql_odbcinst(Host)
+    end.
+
+odbc_server_is_connstring(Server) ->
+    case binary:match(Server, <<"=">>) of
+        nomatch -> false;
+        _ -> true
     end.
 
 write_file_if_new(File, Payload) ->

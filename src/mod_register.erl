@@ -5,7 +5,7 @@
 %%% Created :  8 Dec 2002 by Alexey Shchepin <alexey@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2022   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -43,29 +43,17 @@
 -include_lib("xmpp/include/xmpp.hrl").
 -include("translate.hrl").
 
-start(Host, _Opts) ->
-    gen_iq_handler:add_iq_handler(ejabberd_local, Host,
-				  ?NS_REGISTER, ?MODULE, process_iq),
-    gen_iq_handler:add_iq_handler(ejabberd_sm, Host,
-				  ?NS_REGISTER, ?MODULE, process_iq),
-    ejabberd_hooks:add(c2s_pre_auth_features, Host, ?MODULE,
-		       stream_feature_register, 50),
-    ejabberd_hooks:add(c2s_unauthenticated_packet, Host,
-		       ?MODULE, c2s_unauthenticated_packet, 50),
+start(_Host, _Opts) ->
     ejabberd_mnesia:create(?MODULE, mod_register_ip,
 			[{ram_copies, [node()]}, {local_content, true},
 			 {attributes, [key, value]}]),
-    ok.
+    {ok, [{iq_handler, ejabberd_local, ?NS_REGISTER, process_iq},
+          {iq_handler, ejabberd_sm, ?NS_REGISTER, process_iq},
+          {hook, c2s_pre_auth_features, stream_feature_register, 50},
+          {hook, c2s_unauthenticated_packet, c2s_unauthenticated_packet, 50}]}.
 
-stop(Host) ->
-    ejabberd_hooks:delete(c2s_pre_auth_features, Host,
-			  ?MODULE, stream_feature_register, 50),
-    ejabberd_hooks:delete(c2s_unauthenticated_packet, Host,
-			  ?MODULE, c2s_unauthenticated_packet, 50),
-    gen_iq_handler:remove_iq_handler(ejabberd_local, Host,
-				     ?NS_REGISTER),
-    gen_iq_handler:remove_iq_handler(ejabberd_sm, Host,
-				     ?NS_REGISTER).
+stop(_Host) ->
+    ok.
 
 reload(_Host, _NewOpts, _OldOpts) ->
     ok.
@@ -664,7 +652,7 @@ mod_doc() ->
            {access_from,
             #{value => ?T("AccessName"),
               desc =>
-                  ?T("By default, 'ejabberd' doesn't allow to register new accounts "
+                  ?T("By default, 'ejabberd' doesn't allow the client to register new accounts "
                      "from s2s or existing c2s sessions. You can change it by defining "
                      "access rule in this option. Use with care: allowing registration "
                      "from s2s leads to uncontrolled massive accounts creation by rogue users.")}},

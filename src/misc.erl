@@ -8,7 +8,7 @@
 %%% Created : 30 Mar 2017 by Evgeny Khramtsov <ekhramtsov@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2022   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -41,9 +41,9 @@
 	 intersection/2, format_val/1, cancel_timer/1, unique_timestamp/0,
 	 is_mucsub_message/1, best_match/2, pmap/2, peach/2, format_exception/4,
 	 get_my_ipv4_address/0, get_my_ipv6_address/0, parse_ip_mask/1,
-	 crypto_hmac/3, crypto_hmac/4, uri_parse/1,
+	 crypto_hmac/3, crypto_hmac/4, uri_parse/1, uri_parse/2, uri_quote/1,
 	 match_ip_mask/3, format_hosts_list/1, format_cycle/1, delete_dir/1,
-	 semver_to_xxyy/1, logical_processors/0]).
+	 semver_to_xxyy/1, logical_processors/0, get_mucsub_event_type/1]).
 
 %% Deprecated functions
 -export([decode_base64/1, encode_base64/1]).
@@ -61,26 +61,53 @@
 uri_parse(URL) when is_binary(URL) ->
     uri_parse(binary_to_list(URL));
 uri_parse(URL) ->
-    case http_uri:parse(URL) of
+    uri_parse(URL, []).
+
+uri_parse(URL, Protocols) when is_binary(URL) ->
+    uri_parse(binary_to_list(URL), Protocols);
+uri_parse(URL, Protocols) ->
+    case http_uri:parse(URL, [{scheme_defaults, Protocols}]) of
 	{ok, {Scheme, UserInfo, Host, Port, Path, Query}} ->
 	    {ok, atom_to_list(Scheme), UserInfo, Host, Port, Path, Query};
 	{error, _} = E ->
 	    E
     end.
+
 -else.
 uri_parse(URL) when is_binary(URL) ->
     uri_parse(binary_to_list(URL));
 uri_parse(URL) ->
+    uri_parse(URL, [{http, 80}, {https, 443}]).
+
+uri_parse(URL, Protocols) when is_binary(URL) ->
+    uri_parse(binary_to_list(URL), Protocols);
+uri_parse(URL, Protocols) ->
     case uri_string:parse(URL) of
 	#{scheme := Scheme, host := Host, port := Port, path := Path} = M1 ->
 	    {ok, Scheme, maps:get(userinfo, M1, ""), Host, Port, Path, maps:get(query, M1, "")};
-	#{scheme := "https", host := Host, path := Path} = M2 ->
-	    {ok, "https", maps:get(userinfo, M2, ""), Host, 443, Path, maps:get(query, M2, "")};
-	#{scheme := "http", host := Host, path := Path} = M3 ->
-	    {ok, "http", maps:get(userinfo, M3, ""), Host, 80, Path, maps:get(query, M3, "")};
+	#{scheme := Scheme, host := Host, path := Path} = M2 ->
+	    case lists:keyfind(list_to_atom(Scheme), 1, Protocols) of
+		{_, Port} ->
+		    {ok, Scheme, maps:get(userinfo, M2, ""), Host, Port, Path, maps:get(query, M2, "")};
+		_ ->
+		    {error, unknown_protocol}
+	    end;
 	{error, Atom, _} ->
 	    {error, Atom}
     end.
+-endif.
+
+-ifdef(OTP_BELOW_25).
+-ifdef(OTP_BELOW_24).
+uri_quote(Data) ->
+    Data.
+-else.
+uri_quote(Data) ->
+    http_uri:encode(Data).
+-endif.
+-else.
+uri_quote(Data) ->
+    uri_string:quote(Data).
 -endif.
 
 -ifdef(USE_OLD_CRYPTO_HMAC).
@@ -154,7 +181,11 @@ unwrap_mucsub_message(_Packet) ->
     false.
 
 -spec is_mucsub_message(xmpp_element()) -> boolean().
-is_mucsub_message(#message{} = OuterMsg) ->
+is_mucsub_message(Packet) ->
+    get_mucsub_event_type(Packet) /= false.
+
+-spec get_mucsub_event_type(xmpp_element()) -> binary() | false.
+get_mucsub_event_type(#message{} = OuterMsg) ->
     case xmpp:get_subtag(OuterMsg, #ps_event{}) of
 	#ps_event{
 	    items = #ps_items{
@@ -166,18 +197,18 @@ is_mucsub_message(#message{} = OuterMsg) ->
 		 Node == ?NS_MUCSUB_NODES_PARTICIPANTS;
 		 Node == ?NS_MUCSUB_NODES_PRESENCE;
 		 Node == ?NS_MUCSUB_NODES_SUBSCRIBERS ->
-	    true;
+	    Node;
 	_ ->
 	    false
     end;
-is_mucsub_message(_Packet) ->
+get_mucsub_event_type(_Packet) ->
     false.
 
 -spec is_standalone_chat_state(stanza()) -> boolean().
 is_standalone_chat_state(Stanza) ->
     case unwrap_carbon(Stanza) of
 	#message{body = [], subject = [], sub_els = Els} ->
-	    IgnoreNS = [?NS_CHATSTATES, ?NS_DELAY, ?NS_EVENT],
+	    IgnoreNS = [?NS_CHATSTATES, ?NS_DELAY, ?NS_EVENT, ?NS_HINTS],
 	    Stripped = [El || El <- Els,
 			      not lists:member(xmpp:get_ns(El), IgnoreNS)],
 	    Stripped == [];

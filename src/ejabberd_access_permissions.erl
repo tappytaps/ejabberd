@@ -5,7 +5,7 @@
 %%% Created :  7 Sep 2016 by Paweł Chmielowski <pawel@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2022   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -377,6 +377,6 @@ validator() ->
 	fun(Os) ->
 		{proplists:get_value(from, Os, []),
 		 proplists:get_value(who, Os, none),
-		 proplists:get_value(what, Os, [])}
+		 proplists:get_value(what, Os, {none, none})}
 	end),
       [unique]).

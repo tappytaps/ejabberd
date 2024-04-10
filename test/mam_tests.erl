@@ -3,7 +3,7 @@
 %%% Created : 14 Nov 2016 by Evgeny Khramtsov <ekhramtsov@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2022   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -642,7 +642,8 @@ query_rsm_after(Config, From, To, NS) ->
 query_rsm_before(Config, From, To) ->
     lists:foreach(
       fun(NS) ->
-	      query_rsm_before(Config, From, To, NS)
+	  query_rsm_before(Config, From, To, NS),
+	  query_last_message(Config, From, To, NS)
       end, ?VERSIONS).
 
 query_rsm_before(Config, From, To, NS) ->
@@ -660,6 +661,16 @@ query_rsm_before(Config, From, To, NS) ->
 	      match_rsm_count(RSM, 5),
 	      Last
       end, <<"">>, lists:reverse([lists:seq(1, N) || N <- lists:seq(0, 5)])).
+
+query_last_message(Config, From, To, NS) ->
+    ct:comment("Retrieving last message", []),
+    QID = p1_rand:get_string(),
+    Query = #mam_query{xmlns = NS, id = QID,
+		       rsm = #rsm_set{before = <<>>, max = 1}},
+    ID = send_query(Config, Query),
+    recv_archived_messages(Config, From, To, QID, [5]),
+    RSM = ?match(#rsm_set{} = RSM, recv_fin(Config, ID, QID, NS, false), RSM),
+    match_rsm_count(RSM, 5).
 
 match_rsm_count(#rsm_set{count = undefined}, _) ->
     %% The backend doesn't support counting

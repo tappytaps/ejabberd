@@ -15,20 +15,21 @@ Requirements
 
 To compile ejabberd you need:
 
- - GNU Make
- - GCC
- - Libexpat ≥ 1.95
- - Libyaml ≥ 0.1.4
- - Erlang/OTP ≥ 19.3
- - OpenSSL ≥ 1.0.0
+- GNU Make
+- GCC
+- Libexpat ≥ 1.95
+- Libyaml ≥ 0.1.4
+- Erlang/OTP ≥ 20.0
+- OpenSSL ≥ 1.0.0
 
 Other optional libraries are:
 
- - Zlib ≥ 1.2.3, for Stream Compression support (XEP-0138)
- - PAM library, for Pluggable Authentication Modules (PAM)
- - ImageMagick's Convert program and Ghostscript fonts, for CAPTCHA
-   challenges
- - Elixir ≥ 1.10.3, to support Elixir, and alternative to rebar/rebar3
+- Zlib ≥ 1.2.3, for Stream Compression support (XEP-0138)
+- PAM library, for Pluggable Authentication Modules (PAM)
+- ImageMagick's Convert program and Ghostscript fonts, for CAPTCHA
+  challenges
+- Elixir ≥ 1.10.3, for Elixir support. It is recommended Elixir 1.13.4 or higher
+  and Erlang/OTP 23.0 or higher.
 
 If your system splits packages in libraries and development headers,
 install the development packages too.
@@ -89,13 +90,8 @@ Build an OTP Release
 Instead of installing ejabberd in the system, you can build an OTP release
 that includes all necessary to run ejabberd in a subdirectory:
 
-    ./configure --with-rebar=rebar3
-    make rel
-
-Or, if you have Elixir available and plan to develop Elixir code:
-
-    ./configure --with-rebar=mix
-    make dev
+    ./configure
+    make prod
 
 Check the full list of targets:
 

@@ -5,7 +5,7 @@
 %%% Created : 12 May 2013 by Evgeniy Khramtsov <ekhramtsov@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2013-2022   ProcessOne
+%%% ejabberd, Copyright (C) 2013-2024   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -27,7 +27,7 @@
 
 %% API
 -export([start/0, get/0, set/1, get_log_path/0, flush/0]).
--export([convert_loglevel/1, loglevels/0]).
+-export([convert_loglevel/1, loglevels/0, set_modules_fully_logged/1]).
 -ifndef(LAGER).
 -export([progress_filter/2]).
 -endif.
@@ -249,6 +249,8 @@ get_lager_version() ->
 	false -> "0.0.0"
     end.
 
+set_modules_fully_logged(_) -> ok.
+
 flush() ->
     application:stop(lager),
     application:stop(sasl).
@@ -338,8 +340,20 @@ progress_filter(#{level:=info,msg:={report,#{label:={_,progress}}}} = Event, _) 
 progress_filter(Event, _) ->
     Event.
 
+-ifdef(ELIXIR_ENABLED).
+console_template() ->
+    case (false /= code:is_loaded('Elixir.Logger'))
+        andalso
+        lists:keymember(default_formatter, 1, 'Elixir.Logger':module_info(exports)) of
+        true ->
+            [date, " ", time, " [", level, "] ", message, "\n"];
+        false ->
+            [time, " [", level, "] " | msg()]
+    end.
+-else.
 console_template() ->
     [time, " [", level, "] " | msg()].
+-endif.
 
 file_template() ->
     [time, " [", level, "] ", pid,
@@ -377,6 +391,10 @@ set(Level) when ?is_loglevel(Level) ->
 		_ -> xmpp:set_config([{debug, false}])
 	    end
     end.
+
+set_modules_fully_logged(Modules) ->
+    logger:unset_module_level(),
+    logger:set_module_level(Modules, all).
 
 -spec flush() -> ok.
 flush() ->

@@ -5,7 +5,7 @@
 %%% Created : 20 Aug 2015 by Holger Weiss <holger@zedat.fu-berlin.de>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2015-2022   ProcessOne
+%%% ejabberd, Copyright (C) 2015-2024   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -27,7 +27,7 @@
 -author('holger@zedat.fu-berlin.de').
 -behaviour(gen_server).
 -behaviour(gen_mod).
--protocol({xep, 363, '0.1'}).
+-protocol({xep, 363, '0.2', '15.10', "", ""}).
 
 -define(SERVICE_REQUEST_TIMEOUT, 5000). % 5 seconds.
 -define(CALL_TIMEOUT, 60000). % 1 minute.

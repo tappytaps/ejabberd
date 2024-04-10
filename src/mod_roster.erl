@@ -5,7 +5,7 @@
 %%% Created : 11 Dec 2002 by Alexey Shchepin <alexey@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2022   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -91,48 +91,19 @@ start(Host, Opts) ->
     Mod = gen_mod:db_mod(Opts, ?MODULE),
     Mod:init(Host, Opts),
     init_cache(Mod, Host, Opts),
-    ejabberd_hooks:add(roster_get, Host, ?MODULE,
-		       get_user_roster_items, 50),
-    ejabberd_hooks:add(roster_in_subscription, Host,
-		       ?MODULE, in_subscription, 50),
-    ejabberd_hooks:add(roster_out_subscription, Host,
-		       ?MODULE, out_subscription, 50),
-    ejabberd_hooks:add(roster_get_jid_info, Host, ?MODULE,
-		       get_jid_info, 50),
-    ejabberd_hooks:add(remove_user, Host, ?MODULE,
-		       remove_user, 50),
-    ejabberd_hooks:add(c2s_self_presence, Host, ?MODULE,
-		       c2s_self_presence, 50),
-    ejabberd_hooks:add(c2s_post_auth_features, Host,
-		       ?MODULE, get_versioning_feature, 50),
-    ejabberd_hooks:add(webadmin_page_host, Host, ?MODULE,
-		       webadmin_page, 50),
-    ejabberd_hooks:add(webadmin_user, Host, ?MODULE,
-		       webadmin_user, 50),
-    gen_iq_handler:add_iq_handler(ejabberd_sm, Host,
-				  ?NS_ROSTER, ?MODULE, process_iq).
+    {ok, [{hook, roster_get, get_user_roster_items, 50},
+          {hook, roster_in_subscription, in_subscription, 50},
+          {hook, roster_out_subscription, out_subscription, 50},
+          {hook, roster_get_jid_info, get_jid_info, 50},
+          {hook, remove_user, remove_user, 50},
+          {hook, c2s_self_presence, c2s_self_presence, 50},
+          {hook, c2s_post_auth_features, get_versioning_feature, 50},
+          {hook, webadmin_page_host, webadmin_page, 50},
+          {hook, webadmin_user, webadmin_user, 50},
+          {iq_handler, ejabberd_sm, ?NS_ROSTER, process_iq}]}.
 
-stop(Host) ->
-    ejabberd_hooks:delete(roster_get, Host, ?MODULE,
-			  get_user_roster_items, 50),
-    ejabberd_hooks:delete(roster_in_subscription, Host,
-			  ?MODULE, in_subscription, 50),
-    ejabberd_hooks:delete(roster_out_subscription, Host,
-			  ?MODULE, out_subscription, 50),
-    ejabberd_hooks:delete(roster_get_jid_info, Host,
-			  ?MODULE, get_jid_info, 50),
-    ejabberd_hooks:delete(remove_user, Host, ?MODULE,
-			  remove_user, 50),
-    ejabberd_hooks:delete(c2s_self_presence, Host, ?MODULE,
-			  c2s_self_presence, 50),
-    ejabberd_hooks:delete(c2s_post_auth_features,
-			  Host, ?MODULE, get_versioning_feature, 50),
-    ejabberd_hooks:delete(webadmin_page_host, Host, ?MODULE,
-			  webadmin_page, 50),
-    ejabberd_hooks:delete(webadmin_user, Host, ?MODULE,
-			  webadmin_user, 50),
-    gen_iq_handler:remove_iq_handler(ejabberd_sm, Host,
-				     ?NS_ROSTER).
+stop(_Host) ->
+    ok.
 
 reload(Host, NewOpts, OldOpts) ->
     NewMod = gen_mod:db_mod(NewOpts, ?MODULE),
@@ -157,8 +128,8 @@ process_iq(#iq{lang = Lang, to = To} = IQ) ->
 	false ->
 	    Txt = ?T("Query to another users is forbidden"),
 	    xmpp:make_error(IQ, xmpp:err_forbidden(Txt, Lang));
-	true ->
-	    process_local_iq(IQ)
+	{true, IQ1} ->
+	    process_local_iq(IQ1)
     end.
 
 -spec process_local_iq(iq()) -> iq().
@@ -176,7 +147,13 @@ process_local_iq(#iq{type = set, from = From, lang = Lang,
 	    Txt = ?T("Duplicated groups are not allowed by RFC6121"),
 	    xmpp:make_error(IQ, xmpp:err_bad_request(Txt, Lang));
 	false ->
-	    #jid{lserver = LServer} = From,
+	    From1 = case xmpp:get_meta(IQ, privilege_from, none) of
+			#jid{} = PrivFrom ->
+			    PrivFrom;
+			none ->
+			    From
+		    end,
+	    #jid{lserver = LServer} = From1,
 	    Access = mod_roster_opt:access(LServer),
 	    case acl:match_rule(LServer, Access, From) of
 		deny ->
@@ -567,24 +544,25 @@ transaction(LUser, LServer, LJIDs, F) ->
 
 -spec in_subscription(boolean(), presence()) -> boolean().
 in_subscription(_, #presence{from = JID, to = To,
+                             sub_els = SubEls,
 			     type = Type, status = Status}) ->
     #jid{user = User, server = Server} = To,
     Reason = if Type == subscribe -> xmpp:get_text(Status);
 		true -> <<"">>
 	     end,
     process_subscription(in, User, Server, JID, Type,
-			 Reason).
+			 Reason, SubEls).
 
 -spec out_subscription(presence()) -> boolean().
 out_subscription(#presence{from = From, to = JID, type = Type}) ->
     #jid{user = User, server = Server} = From,
-    process_subscription(out, User, Server, JID, Type, <<"">>).
+    process_subscription(out, User, Server, JID, Type, <<"">>, []).
 
 -spec process_subscription(in | out, binary(), binary(), jid(),
 			   subscribe | subscribed | unsubscribe | unsubscribed,
-			   binary()) -> boolean().
+			   binary(), [fxml:xmlel()]) -> boolean().
 process_subscription(Direction, User, Server, JID1,
-		     Type, Reason) ->
+		     Type, Reason, SubEls) ->
     LUser = jid:nodeprep(User),
     LServer = jid:nameprep(Server),
     LJID = jid:tolower(jid:remove_resource(JID1)),
@@ -618,6 +596,8 @@ process_subscription(Direction, User, Server, JID1,
 		    {Subscription, Pending} ->
 			NewItem = Item#roster{subscription = Subscription,
 					      ask = Pending,
+					      name = get_nick_subels(SubEls, Item#roster.name),
+					      xs = SubEls,
 					      askmessage = AskMessage},
 			roster_subscribe_t(LUser, LServer, LJID, NewItem),
 			case mod_roster_opt:store_current_id(LServer) of
@@ -653,6 +633,12 @@ process_subscription(Direction, User, Server, JID1,
 	    end;
 	_ ->
 	    false
+    end.
+
+get_nick_subels(SubEls, Default) ->
+    case xmpp:get_subtag(#presence{sub_els = SubEls}, #nick{}) of
+        {nick, N} -> N;
+        _ -> Default
     end.
 
 %% in_state_change(Subscription, Pending, Type) -> NewState
@@ -983,6 +969,7 @@ resend_pending_subscriptions(#{jid := JID} = State) ->
 	      Sub = #presence{from = jid:make(R#roster.jid),
 			      to = BareJID,
 			      type = subscribe,
+			      sub_els = R#roster.xs,
 			      status = xmpp:mk_text(Status)},
 	      ejabberd_c2s:send(AccState, Sub);
 	 (_, AccState) ->
@@ -1117,11 +1104,11 @@ user_roster(User, Server, Query, Lang) ->
 	++
 	[?XAE(<<"form">>,
 	      [{<<"action">>, <<"">>}, {<<"method">>, <<"post">>}],
-	      (FItems ++
-		 [?P, ?INPUT(<<"text">>, <<"newjid">>, <<"">>),
+	      (  [?P, ?INPUT(<<"text">>, <<"newjid">>, <<"">>),
 		  ?C(<<" ">>),
 		  ?INPUTT(<<"submit">>, <<"addjid">>,
-			  ?T("Add Jabber ID"))]))].
+			  ?T("Add Jabber ID"))]
+               ++ FItems))].
 
 build_contact_jid_td(RosterJID) ->
     ContactJID = jid:make(RosterJID),

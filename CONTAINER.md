@@ -1,11 +1,10 @@
 
 [![GitHub tag (latest SemVer)](https://img.shields.io/github/v/tag/processone/ejabberd?sort=semver&logo=embarcadero&label=&color=49c0c4)](https://github.com/processone/ejabberd/tags)
-[![GitHub Container](https://img.shields.io/github/v/tag/processone/ejabberd?label=container&sort=semver)](https://github.com/processone/ejabberd/pkgs/container/ejabberd)
-[![Docker Image Version (latest semver)](https://img.shields.io/docker/v/ejabberd/ecs?label=docker)](https://hub.docker.com/r/ejabberd/ecs/)
+[![GitHub Container](https://img.shields.io/github/v/tag/processone/ejabberd?label=ejabberd&sort=semver&logo=docker)](https://github.com/processone/ejabberd/pkgs/container/ejabberd)
 
 
-ejabberd Container
-==================
+`ejabberd` Container Image
+==========================
 
 [ejabberd][home] is an open-source,
 robust, scalable and extensible realtime platform built using [Erlang/OTP][erlang],
@@ -17,17 +16,17 @@ that includes [XMPP][xmpp] Server, [MQTT][mqtt] Broker and [SIP][sip] Service.
 [mqtt]: https://mqtt.org/
 [sip]: https://en.wikipedia.org/wiki/Session_Initiation_Protocol
 
-This document explains how to use the
-[ejabberd container images](https://github.com/processone/ejabberd/pkgs/container/ejabberd)
-available in the GitHub Container Registry,
+This document explains how to use the `ejabberd` container image available in
+[ghcr.io/processone/ejabberd](https://github.com/processone/ejabberd/pkgs/container/ejabberd),
 built using the files in `.github/container/`.
+This image is based in Alpine 3.19, includes Erlang/OTP 26.2 and Elixir 1.16.1.
 
-Alternatively, there are also
-[ejabberd-ecs Docker images](https://hub.docker.com/r/ejabberd/ecs/)
-available in Docker Hub,
+Alternatively, there is also the `ecs` container image available in
+[docker.io/ejabberd/ecs](https://hub.docker.com/r/ejabberd/ecs/),
 built using the
 [docker-ejabberd/ecs](https://github.com/processone/docker-ejabberd/tree/master/ecs)
 repository.
+Check the [differences between `ejabberd` and `ecs` images](https://github.com/processone/docker-ejabberd/blob/master/ecs/HUB-README.md#alternative-image-in-github).
 
 If you are using a Windows operating system, check the tutorials mentioned in
 [ejabberd Docs > Docker Image](https://docs.ejabberd.im/admin/installation/#docker-image).
@@ -154,16 +153,27 @@ Now update your ejabberd configuration file, for example:
 docker exec -it ejabberd vi conf/ejabberd.yml
 ```
 
-and add the required options:
-```
-captcha_cmd: /opt/ejabberd-22.04/lib/ejabberd-22.04/priv/bin/captcha.sh
-captcha_url: https://localhost:5443/captcha
+and add this option:
+```yaml
+captcha_cmd: /opt/ejabberd-22.04/lib/captcha.sh
 ```
 
 Finally, reload the configuration file or restart the container:
 ```bash
 docker exec ejabberd ejabberdctl reload_config
 ```
+
+If the CAPTCHA image is not visible, there may be a problem generating it
+(the ejabberd log file may show some error message);
+or the image URL may not be correctly detected by ejabberd,
+in that case you can set the correct URL manually, for example:
+```yaml
+captcha_url: https://localhost:5443/captcha
+```
+
+For more details about CAPTCHA options, please check the
+[CAPTCHA](https://docs.ejabberd.im/admin/configuration/basic/#captcha)
+documentation section.
 
 
 Advanced Container Configuration
@@ -206,15 +216,18 @@ explains how to install an additional module using docker-compose.
 ### Commands on start
 
 The ejabberdctl script reads the `CTL_ON_CREATE` environment variable
-the first time the docker container is started,
+the first time the container is started,
 and reads `CTL_ON_START` every time the container is started.
 Those variables can contain one ejabberdctl command,
 or several commands separated with the blankspace and `;` characters.
 
-Example usage (see full example [docker-compose.yml](https://github.com/processone/docker-ejabberd/issues/64#issuecomment-887741332)):
+By default failure of any of commands executed that way would
+abort start, this can be disabled by prefixing commands with `!`
+
+Example usage (or check the [full example](#customized-example)):
 ```yaml
     environment:
-      - CTL_ON_CREATE=register admin localhost asd
+      - CTL_ON_CREATE=\! register admin localhost asd
       - CTL_ON_START=stats registeredusers ;
                      check_password admin localhost asd ;
                      status
@@ -259,11 +272,10 @@ Example using environment variables (see full example [docker-compose.yml](https
 ```
 
 
-Generating a Container Image
-----------------------------
+Build a Container Image
+-----------------------
 
 This container image includes ejabberd as a standalone OTP release built using Elixir.
-
 That OTP release is configured with:
 
 - `mix.exs`: Customize ejabberd release
@@ -271,27 +283,18 @@ That OTP release is configured with:
 - `config/runtime.exs`: Customize ejabberd paths
 - `ejabberd.yml.template`: ejabberd default config file
 
-Build ejabberd Community Server base image from ejabberd master on GitHub:
+### Direct build
+
+Build ejabberd Community Server container image from ejabberd master git repository:
 
 ```bash
-docker build \
+docker buildx build \
     -t personal/ejabberd \
     -f .github/container/Dockerfile \
     .
 ```
 
-Build ejabberd Community Server base image for a given ejabberd version,
-both for amd64 and arm64 architectures:
-
-```bash
-VERSION=22.05
-git checkout $VERSION
-docker buildx build \
-    --platform=linux/amd64,linux/arm64
-    -t personal/ejabberd:$VERSION \
-    -f .github/container/Dockerfile \
-    .
-```
+### Podman build
 
 It's also possible to use podman instead of docker, just notice:
 - `EXPOSE 4369-4399` port range is not supported, remove that in Dockerfile
@@ -310,4 +313,143 @@ podman exec eja1 ejabberdctl status
 podman exec -it eja1 sh
 
 podman stop eja1
+```
+
+### Package build for `arm64`
+
+By default, `.github/container/Dockerfile` builds this container by directly compiling ejabberd,
+it is a fast and direct method.
+However, a problem with QEMU prevents building the container in QEMU using Erlang/OTP 25
+for the `arm64` architecture.
+
+Providing `--build-arg METHOD=package` is an alternate method to build the container
+used by the Github Actions workflow that provides `amd64` and `arm64` container images.
+It first builds an ejabberd binary package, and later installs it in the image.
+That method avoids using QEMU, so it can build `arm64` container images, but is extremely
+slow the first time it's used, and consequently not recommended for general use.
+
+In this case, to build the ejabberd container image for arm64 architecture:
+
+```bash
+docker buildx build \
+    --build-arg METHOD=package \
+    --platform linux/arm64 \
+    -t personal/ejabberd:$VERSION \
+    -f .github/container/Dockerfile \
+    .
+```
+
+
+Composer Examples
+-----------------
+
+### Minimal Example
+
+This is the barely minimal file to get a usable ejabberd.
+Store it as `docker-compose.yml`:
+
+```yaml
+services:
+  main:
+    image: ghcr.io/processone/ejabberd
+    container_name: ejabberd
+    ports:
+      - "5222:5222"
+      - "5269:5269"
+      - "5280:5280"
+      - "5443:5443"
+```
+
+Create and start the container with the command:
+```bash
+docker-compose up
+```
+
+### Customized Example
+
+This example shows the usage of several customizations:
+it uses a local configuration file,
+stores the mnesia database in a local path,
+registers an account when it's created,
+and checks the number of registered accounts every time it's started.
+
+Download or copy the ejabberd configuration file:
+```bash
+wget https://raw.githubusercontent.com/processone/ejabberd/master/ejabberd.yml.example
+mv ejabberd.yml.example ejabberd.yml
+```
+
+Create the database directory and allow the container access to it:
+```bash
+mkdir database
+sudo chown 9000:9000 database
+```
+
+Now write this `docker-compose.yml` file:
+```yaml
+version: '3.7'
+
+services:
+
+  main:
+    image: ghcr.io/processone/ejabberd
+    container_name: ejabberd
+    environment:
+      - CTL_ON_CREATE=register admin localhost asd
+      - CTL_ON_START=registered_users localhost ;
+                     status
+    ports:
+      - "5222:5222"
+      - "5269:5269"
+      - "5280:5280"
+      - "5443:5443"
+    volumes:
+      - ./ejabberd.yml:/opt/ejabberd/conf/ejabberd.yml:ro
+      - ./database:/opt/ejabberd/database
+```
+
+### Clustering Example
+
+In this example, the main container is created first.
+Once it is fully started and healthy, a second container is created,
+and once ejabberd is started in it, it joins the first one.
+
+An account is registered in the first node when created (and
+we ignore errors that can happen when doing that - for example
+whenn account already exists),
+and it should exist in the second node after join.
+
+Notice that in this example the main container does not have access
+to the exterior; the replica exports the ports and can be accessed.
+
+```yaml
+version: '3.7'
+
+services:
+
+  main:
+    image: ghcr.io/processone/ejabberd
+    container_name: ejabberd
+    environment:
+      - ERLANG_NODE_ARG=ejabberd@main
+      - ERLANG_COOKIE=dummycookie123
+      - CTL_ON_CREATE=\! register admin localhost asd
+
+  replica:
+    image: ghcr.io/processone/ejabberd
+    container_name: replica
+    depends_on:
+      main:
+        condition: service_healthy
+    ports:
+      - "5222:5222"
+      - "5269:5269"
+      - "5280:5280"
+      - "5443:5443"
+    environment:
+      - ERLANG_NODE_ARG=ejabberd@replica
+      - ERLANG_COOKIE=dummycookie123
+      - CTL_ON_CREATE=join_cluster ejabberd@main
+      - CTL_ON_START=registered_users localhost ;
+                     status
 ```

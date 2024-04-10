@@ -5,8 +5,10 @@
 \#*#
 .#*
 .edts
+.tool-versions
 *.dump
 /Makefile
+/doc
 /config.log
 /config.status
 /config/releases.exs

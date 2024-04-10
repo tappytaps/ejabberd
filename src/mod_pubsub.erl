@@ -5,7 +5,7 @@
 %%% Created :  1 Dec 2007 by Christophe Romain <christophe.romain@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2022   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -969,6 +969,7 @@ node_disco_info(Host, Node, _From, _Identity, _Features) ->
 			  _ -> []
 		       end,
 		Meta = [{title, get_option(Options, title, <<>>)},
+			{type, get_option(Options, type, <<>>)},
 			{description, get_option(Options, description, <<>>)},
 			{owner, [jid:make(LJID) || {LJID, Aff} <- Affs, Aff =:= owner]},
 			{publisher, [jid:make(LJID) || {LJID, Aff} <- Affs, Aff =:= publisher]},
@@ -1974,6 +1975,9 @@ delete_item(Host, Node, Publisher, ItemId, ForceNotify) ->
 	    Nidx = TNode#pubsub_node.id,
 	    Type = TNode#pubsub_node.type,
 	    Options = TNode#pubsub_node.options,
+	    ServerHost = serverhost(Host),
+	    ejabberd_hooks:run(pubsub_delete_item, ServerHost,
+			       [ServerHost, Node, Publisher, service_jid(Host), ItemId]),
 	    broadcast_retract_items(Host, Node, Nidx, Type, Options, [ItemId], ForceNotify),
 	    case get_cached_item(Host, Nidx) of
 		#pubsub_item{itemid = {ItemId, Nidx}} -> unset_cached_item(Host, Nidx);
@@ -3366,9 +3370,10 @@ get_option(Options, Var, Def) ->
 -spec node_options(host(), binary()) -> [{atom(), any()}].
 node_options(Host, Type) ->
     DefaultOpts = node_plugin_options(Host, Type),
-    case config(Host, plugins) of
-	[Type|_] -> config(Host, default_node_config, DefaultOpts);
-	_ -> DefaultOpts
+    case lists:member(Type, config(Host, plugins)) of
+	true ->
+            config(Host, default_node_config, DefaultOpts);
+	false -> DefaultOpts
     end.
 
 -spec node_plugin_options(host(), binary()) -> [{atom(), any()}].
@@ -3455,6 +3460,10 @@ get_configure_xfields(_Type, Options, Lang, Groups) ->
 		{true, {roster_groups_allowed, Value, Groups}};
 	   ({sql, _}) -> false;
 	   ({rsm, _}) -> false;
+	   ({Item, infinity}) when Item == max_items;
+				   Item == item_expire;
+				   Item == children_max ->
+	       {true, {Item, max}};
 	   (_) -> true
 	end, Options),
       Lang).
@@ -3797,7 +3806,9 @@ tree_call({_User, Server, _Resource}, Function, Args) ->
 tree_call(Host, Function, Args) ->
     Tree = tree(Host),
     ?DEBUG("Tree_call apply(~ts, ~ts, ~p) @ ~ts", [Tree, Function, Args, Host]),
-    case apply(Tree, Function, Args) of
+    Res = apply(Tree, Function, Args),
+    Res2 = ejabberd_hooks:run_fold(pubsub_tree_call, Host, Res, [Tree, Function, Args]),
+    case Res2 of
 	{error, #stanza_error{}} = Err ->
 	    Err;
 	{error, {virtual, _}} = Err ->
@@ -4403,7 +4414,7 @@ mod_doc() ->
 		     "items. Value is 'true' or 'false'. If not defined, "
 		     "pubsub does not cache last items. On systems with not"
 		     " so many nodes, caching last items speeds up pubsub "
-		     "and allows to raise user connection rate. The cost "
+		     "and allows you to raise the user connection rate. The cost "
 		     "is memory usage, as every item is stored in memory.")}},
 	   {max_item_expire_node,
 	    #{value => "timeout() | infinity",
@@ -4458,7 +4469,7 @@ mod_doc() ->
 	   {pep_mapping,
 	    #{value => "List of Key:Value",
 	      desc =>
-		  ?T("This allows to define a list of key-value to choose "
+		  ?T("In this option you can provide a list of key-value to choose "
 		     "defined node plugins on given PEP namespace. "
 		     "The following example will use 'node_tune' instead of "
 		     "'node_pep' for every PEP node with the tune namespace:"),
@@ -4483,7 +4494,7 @@ mod_doc() ->
 			  "follows standard XEP-0060 implementation."),
 		       ?T("- 'pep' plugin adds extension to handle Personal "
 			  "Eventing Protocol (XEP-0163) to the PubSub engine. "
-			  "Adding pep allows to handle PEP automatically.")]}},
+			  "When enabled, PEP is handled automatically.")]}},
 	   {vcard,
 	    #{value => ?T("vCard"),
 	      desc =>

@@ -5,7 +5,7 @@
 %%% Created : 19 Mar 2003 by Alexey Shchepin <alexey@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2022   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -25,6 +25,7 @@
 -module(mod_muc).
 -author('alexey@process-one.net').
 -protocol({xep, 45, '1.25'}).
+-protocol({xep, 249, '1.2'}).
 -ifndef(GEN_SERVER).
 -define(GEN_SERVER, gen_server).
 -endif.
@@ -50,6 +51,7 @@
 	 process_disco_items/1,
 	 process_vcard/1,
 	 process_register/1,
+	 process_iq_register/1,
 	 process_muc_unique/1,
 	 process_mucsub/1,
 	 broadcast_service_message/3,
@@ -316,6 +318,15 @@ create_room(Host, Name, Opts) ->
 store_room(ServerHost, Host, Name, Opts) ->
     store_room(ServerHost, Host, Name, Opts, undefined).
 
+maybe_store_new_room(ServerHost, Host, Name, Opts) ->
+    case {proplists:get_bool(persistent, Opts), proplists:get_value(subscribers, Opts, [])} of
+	{false, []} ->
+	    {atomic, ok};
+	{_, Subs} ->
+	    Changes = [{add_subscription, JID, Nick, Nodes} || {JID, Nick, Nodes} <- Subs],
+	    store_room(ServerHost, Host, Name, Opts, Changes)
+    end.
+
 store_room(ServerHost, Host, Name, Opts, ChangesHints) ->
     LServer = jid:nameprep(ServerHost),
     Mod = gen_mod:db_mod(LServer, ?MODULE),
@@ -416,6 +427,7 @@ handle_call({create, Room, Host, Opts}, _From,
     RMod = gen_mod:ram_db_mod(ServerHost, ?MODULE),
     case start_room(RMod, Host, ServerHost, Room, NewOpts) of
 	{ok, _} ->
+	    maybe_store_new_room(ServerHost, Host, Room, NewOpts),
 	    ejabberd_hooks:run(create_room, ServerHost, [ServerHost, Room, Host]),
 	    {reply, ok, State};
 	Err ->
@@ -431,6 +443,7 @@ handle_call({create, Room, Host, From, Nick, Opts}, _From,
     RMod = gen_mod:ram_db_mod(ServerHost, ?MODULE),
     case start_room(RMod, Host, ServerHost, Room, NewOpts, From, Nick) of
 	{ok, _} ->
+	    maybe_store_new_room(ServerHost, Host, Room, NewOpts),
 	    ejabberd_hooks:run(create_room, ServerHost, [ServerHost, Room, Host]),
 	    {reply, ok, State};
 	Err ->
@@ -663,29 +676,33 @@ process_vcard(#iq{lang = Lang} = IQ) ->
     xmpp:make_error(IQ, xmpp:err_service_unavailable(Txt, Lang)).
 
 -spec process_register(iq()) -> iq().
-process_register(#iq{type = Type, from = From, to = To, lang = Lang,
-		     sub_els = [El = #register{}]} = IQ) ->
+process_register(IQ) ->
+    case process_iq_register(IQ) of
+        {result, Result} ->
+	    xmpp:make_iq_result(IQ, Result);
+        {error, Err} ->
+	    xmpp:make_error(IQ, Err)
+    end.
+
+-spec process_iq_register(iq()) -> {result, register()} | {error, stanza_error()}.
+process_iq_register(#iq{type = Type, from = From, to = To, lang = Lang,
+		     sub_els = [El = #register{}]}) ->
     Host = To#jid.lserver,
+    RegisterDestination = jid:encode(To),
     ServerHost = ejabberd_router:host_of_route(Host),
     AccessRegister = mod_muc_opt:access_register(ServerHost),
     case acl:match_rule(ServerHost, AccessRegister, From) of
 	allow ->
 	    case Type of
 		get ->
-		    xmpp:make_iq_result(
-		      IQ, iq_get_register_info(ServerHost, Host, From, Lang));
+                    {result, iq_get_register_info(ServerHost, RegisterDestination, From, Lang)};
 		set ->
-		    case process_iq_register_set(ServerHost, Host, From, El, Lang) of
-			{result, Result} ->
-			    xmpp:make_iq_result(IQ, Result);
-			{error, Err} ->
-			    xmpp:make_error(IQ, Err)
-		    end
+		    process_iq_register_set(ServerHost, RegisterDestination, From, El, Lang)
 	    end;
 	deny ->
 	    ErrText = ?T("Access denied by service policy"),
 	    Err = xmpp:err_forbidden(ErrText, Lang),
-	    xmpp:make_error(IQ, Err)
+	    {error, Err}
     end.
 
 -spec process_disco_info(iq()) -> iq().
@@ -703,6 +720,10 @@ process_disco_info(#iq{type = get, from = From, to = To, lang = Lang,
 		      true -> [?NS_MAM_TMP, ?NS_MAM_0, ?NS_MAM_1, ?NS_MAM_2];
 		      false -> []
 		  end,
+    OccupantIdFeatures = case gen_mod:is_loaded(ServerHost, mod_muc_occupantid) of
+		      true -> [?NS_OCCUPANT_ID];
+		      false -> []
+		  end,
     RSMFeatures = case RMod:rsm_supported() of
 		      true -> [?NS_RSM];
 		      false -> []
@@ -713,7 +734,7 @@ process_disco_info(#iq{type = get, from = From, to = To, lang = Lang,
 		       end,
     Features = [?NS_DISCO_INFO, ?NS_DISCO_ITEMS,
 		?NS_MUC, ?NS_VCARD, ?NS_MUCSUB, ?NS_MUC_UNIQUE
-		| RegisterFeatures ++ RSMFeatures ++ MAMFeatures],
+		| RegisterFeatures ++ RSMFeatures ++ MAMFeatures ++ OccupantIdFeatures],
     Name = mod_muc_opt:name(ServerHost),
     Identity = #identity{category = <<"conference">>,
 			 type = <<"text">>,
@@ -1175,8 +1196,17 @@ opts_to_binary(Opts) ->
               {password, iolist_to_binary(Pass)};
          ({subject, [C|_] = Subj}) when is_integer(C), C >= 0, C =< 255 ->
               {subject, iolist_to_binary(Subj)};
-         ({subject_author, Author}) ->
-              {subject_author, iolist_to_binary(Author)};
+         ({subject_author, {AuthorNick, AuthorJID}}) ->
+              {subject_author, {iolist_to_binary(AuthorNick), AuthorJID}};
+         ({subject_author, AuthorNick}) -> % ejabberd 23.04 or older
+              {subject_author, {iolist_to_binary(AuthorNick), #jid{}}};
+         ({allow_private_messages, Value}) -> % ejabberd 23.04 or older
+              Value2 = case Value of
+                           true -> anyone;
+                           false -> none;
+                           _ -> Value
+                       end,
+              {allowpm, Value2};
          ({AffOrRole, Affs}) when (AffOrRole == affiliation) or (AffOrRole == role) ->
               {affiliations, lists:map(
                                fun({{U, S, R}, Aff}) ->
@@ -1273,7 +1303,8 @@ mod_opt_type(cleanup_affiliations_on_start) ->
 mod_opt_type(default_room_options) ->
     econf:options(
       #{allow_change_subj => econf:bool(),
-	allow_private_messages => econf:bool(),
+	allowpm =>
+	    econf:enum([anyone, participants, moderators, none]),
 	allow_private_messages_from_visitors =>
 	    econf:enum([anyone, moderators, nobody]),
 	allow_query_users => econf:bool(),
@@ -1357,7 +1388,7 @@ mod_options(Host) ->
      {cleanup_affiliations_on_start, false},
      {default_room_options,
       [{allow_change_subj,true},
-       {allow_private_messages,true},
+       {allowpm,anyone},
        {allow_query_users,true},
        {allow_user_invites,false},
        {allow_visitor_nickchange,true},
@@ -1390,6 +1421,11 @@ mod_doc() ->
 	      "nobody else can use that nickname in any room in the MUC "
 	      "service. To register a nickname, open the Service Discovery in "
 	      "your XMPP client and register in the MUC service."), "",
+	   ?T("It is also possible to register a nickname in a room, so "
+	      "nobody else can use that nickname in that room. If a nick is "
+              "registered in the MUC service, that nick cannot be registered in "
+              "any room, and vice versa: a nick that is registered in a room "
+              "cannot be registered at the MUC service."), "",
 	   ?T("This module supports clustering and load balancing. One module "
 	      "can be started per cluster node. Rooms are distributed at "
 	      "creation time on all available MUC module instances. The "
@@ -1435,11 +1471,12 @@ mod_doc() ->
                      "modify that option.")}},
            {access_register,
             #{value => ?T("AccessName"),
+              note => "improved in 23.10",
               desc =>
                   ?T("This option specifies who is allowed to register nickname "
-                     "within the Multi-User Chat service. The default is 'all' for "
+                     "within the Multi-User Chat service and rooms. The default is 'all' for "
                      "backward compatibility, which means that any user is allowed "
-                     "to register any free nick.")}},
+                     "to register any free nick in the MUC service and in the rooms.")}},
            {db_type,
             #{value => "mnesia | sql",
               desc =>
@@ -1642,7 +1679,7 @@ mod_doc() ->
             #{value => ?T("Options"),
               note => "improved in 22.05",
               desc =>
-                  ?T("This option allows to define the desired "
+                  ?T("Define the "
                      "default room options. Note that the creator of a room "
                      "can modify the options of his room at any time using an "
                      "XMPP client with MUC capability. The 'Options' are:")},
@@ -1651,11 +1688,11 @@ mod_doc() ->
                 desc =>
                     ?T("Allow occupants to change the subject. "
                        "The default value is 'true'.")}},
-             {allow_private_messages,
-              #{value => "true | false",
+             {allowpm,
+              #{value => "anyone | participants | moderators | none",
                 desc =>
-                    ?T("Occupants can send private messages to other occupants. "
-                       "The default value is 'true'.")}},
+                    ?T("Who can send private messages. "
+                       "The default value is 'anyone'.")}},
              {allow_query_users,
               #{value => "true | false",
                 desc =>
@@ -1695,7 +1732,7 @@ mod_doc() ->
                     ?T("When a user tries to join a room where they have no "
                        "affiliation (not owner, admin or member), the room "
                        "requires them to fill a CAPTCHA challenge (see section "
-                       "https://docs.ejabberd.im/admin/configuration/#captcha[CAPTCHA] "
+                       "http://../#captcha[CAPTCHA] "
                        "in order to accept their join in the room. "
                        "The default value is 'false'.")}},
              {description,

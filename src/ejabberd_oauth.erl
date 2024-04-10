@@ -5,7 +5,7 @@
 %%% Created : 20 Mar 2015 by Alexey Shchepin <alexey@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2022   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -81,7 +81,7 @@
 get_commands_spec() ->
     [
      #ejabberd_commands{name = oauth_issue_token, tags = [oauth],
-                        desc = "Issue an oauth token for the given jid",
+                        desc = "Issue an [OAuth](https://docs.ejabberd.im/developer/ejabberd-api/oauth/) token for the given jid",
                         module = ?MODULE, function = oauth_issue_token,
                         args = [{jid, string},{ttl, integer}, {scopes, string}],
                         policy = restricted,
@@ -91,16 +91,29 @@ get_commands_spec() ->
 				     "List of scopes to allow, separated by ';'"],
                         result = {result, {tuple, [{token, string}, {scopes, string}, {expires_in, string}]}}
                        },
+     #ejabberd_commands{name = oauth_issue_token, tags = [oauth],
+                        desc = "Issue an [OAuth](https://docs.ejabberd.im/developer/ejabberd-api/oauth/) token for the given jid",
+                        module = ?MODULE, function = oauth_issue_token,
+                        version = 1,
+                        note = "updated in 24.02",
+                        args = [{jid, string}, {ttl, integer}, {scopes, {list, {scope, binary}}}],
+                        policy = restricted,
+                        args_example = ["user@server.com", 3600, ["connected_users_number", "muc_online_rooms"]],
+                        args_desc = ["Jid for which issue token",
+				     "Time to live of generated token in seconds",
+				     "List of scopes to allow"],
+                        result = {result, {tuple, [{token, string}, {scopes, {list, {scope, string}}}, {expires_in, string}]}}
+                       },
      #ejabberd_commands{name = oauth_list_tokens, tags = [oauth],
-                        desc = "List oauth tokens, user, scope, and seconds to expire (only Mnesia)",
-                        longdesc = "List oauth tokens, their user and scope, and how many seconds remain until expirity",
+                        desc = "List [OAuth](https://docs.ejabberd.im/developer/ejabberd-api/oauth/) tokens, user, scope, and seconds to expire (only Mnesia)",
+                        longdesc = "List OAuth tokens, their user and scope, and how many seconds remain until expirity",
                         module = ?MODULE, function = oauth_list_tokens,
                         args = [],
                         policy = restricted,
                         result = {tokens, {list, {token, {tuple, [{token, string}, {user, string}, {scope, string}, {expires_in, string}]}}}}
                        },
      #ejabberd_commands{name = oauth_revoke_token, tags = [oauth],
-                        desc = "Revoke authorization for a token",
+                        desc = "Revoke authorization for an [OAuth](https://docs.ejabberd.im/developer/ejabberd-api/oauth/) token",
 			note = "changed in 22.05",
                         module = ?MODULE, function = oauth_revoke_token,
                         args = [{token, binary}],
@@ -109,7 +122,7 @@ get_commands_spec() ->
                         result_desc = "Result code"
                        },
      #ejabberd_commands{name = oauth_add_client_password, tags = [oauth],
-                        desc = "Add OAUTH client_id with password grant type",
+                        desc = "Add [OAuth](https://docs.ejabberd.im/developer/ejabberd-api/oauth/) client_id with password grant type",
                         module = ?MODULE, function = oauth_add_client_password,
                         args = [{client_id, binary},
                                 {client_name, binary},
@@ -118,7 +131,7 @@ get_commands_spec() ->
                         result = {res, restuple}
                        },
      #ejabberd_commands{name = oauth_add_client_implicit, tags = [oauth],
-                        desc = "Add OAUTH client_id with implicit grant type",
+                        desc = "Add [OAuth](https://docs.ejabberd.im/developer/ejabberd-api/oauth/) client_id with implicit grant type",
                         module = ?MODULE, function = oauth_add_client_implicit,
                         args = [{client_id, binary},
                                 {client_name, binary},
@@ -127,7 +140,7 @@ get_commands_spec() ->
                         result = {res, restuple}
                        },
      #ejabberd_commands{name = oauth_remove_client, tags = [oauth],
-                        desc = "Remove OAUTH client_id",
+                        desc = "Remove [OAuth](https://docs.ejabberd.im/developer/ejabberd-api/oauth/) client_id",
                         module = ?MODULE, function = oauth_remove_client,
                         args = [{client_id, binary}],
                         policy = restricted,
@@ -135,8 +148,10 @@ get_commands_spec() ->
                        }
     ].
 
-oauth_issue_token(Jid, TTLSeconds, ScopesString) ->
+oauth_issue_token(Jid, TTLSeconds, [Head|_] = ScopesString) when is_integer(Head) ->
     Scopes = [list_to_binary(Scope) || Scope <- string:tokens(ScopesString, ";")],
+    oauth_issue_token(Jid, TTLSeconds, Scopes);
+oauth_issue_token(Jid, TTLSeconds, Scopes) ->
     try jid:decode(list_to_binary(Jid)) of
         #jid{luser =Username, lserver = Server} ->
             Ctx1 = #oauth_ctx{password = admin_generated},
@@ -244,8 +259,9 @@ terminate(_Reason, _State) ->
 
 code_change(_OldVsn, State, _Extra) -> {ok, State}.
 
-
-get_client_identity({client, ClientID}, Ctx) ->
+get_client_identity(<<"">>, Ctx) ->
+    {ok, {Ctx, {client, unknown_client}}};
+get_client_identity(ClientID, Ctx) when is_binary(ClientID) ->
     {ok, {Ctx, {client, ClientID}}}.
 
 verify_redirection_uri(_ClientID, RedirectURI, Ctx) ->
@@ -498,6 +514,10 @@ process(_Handlers,
 		 path = [_, <<"authorization_token">>]}) ->
     ResponseType = proplists:get_value(<<"response_type">>, Q, <<"">>),
     ClientId = proplists:get_value(<<"client_id">>, Q, <<"">>),
+    JidEls = case proplists:get_value(<<"jid">>, Q, <<"">>) of
+                <<"">> -> [?INPUTID(<<"email">>, <<"username">>, <<"">>)];
+                Jid -> [?C(Jid), ?INPUT(<<"hidden">>, <<"username">>, Jid)]
+            end,
     RedirectURI = proplists:get_value(<<"redirect_uri">>, Q, <<"">>),
     Scope = proplists:get_value(<<"scope">>, Q, <<"">>),
     State = proplists:get_value(<<"state">>, Q, <<"">>),
@@ -505,8 +525,8 @@ process(_Handlers,
         ?XAE(<<"form">>,
              [{<<"action">>, <<"authorization_token">>},
               {<<"method">>, <<"post">>}],
-             [?LABEL(<<"username">>, [?CT(?T("User (jid)")), ?C(<<": ">>)]),
-              ?INPUTID(<<"email">>, <<"username">>, <<"">>),
+             [?LABEL(<<"username">>, [?CT(?T("User (jid)")), ?C(<<": ">>)])
+             ] ++ JidEls ++ [
               ?BR,
               ?LABEL(<<"password">>, [?CT(?T("Password")), ?C(<<": ">>)]),
               ?INPUTID(<<"password">>, <<"password">>, <<"">>),
@@ -747,6 +767,7 @@ json_error(Code, Error, Reason) ->
     json_response(Code, Body).
 
 json_error_desc(access_denied)          -> <<"Access denied">>;
+json_error_desc(badpass)                -> <<"Bad password">>;
 json_error_desc(unsupported_grant_type) -> <<"Unsupported grant type">>;
 json_error_desc(invalid_scope)          -> <<"Invalid scope">>.
 

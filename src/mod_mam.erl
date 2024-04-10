@@ -5,7 +5,7 @@
 %%% Created :  4 Jul 2013 by Evgeniy Khramtsov <ekhramtsov@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2013-2022   ProcessOne
+%%% ejabberd, Copyright (C) 2013-2024   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -25,9 +25,10 @@
 
 -module(mod_mam).
 
--protocol({xep, 313, '0.6.1'}).
+-protocol({xep, 313, '0.6.1', '15.06', "", ""}).
 -protocol({xep, 334, '0.2'}).
 -protocol({xep, 359, '0.5.0'}).
+-protocol({xep, 425, '0.2.1', '23.04', "", ""}).
 -protocol({xep, 441, '0.2.0'}).
 
 -behaviour(gen_mod).
@@ -44,7 +45,8 @@
 	 mod_options/1, remove_mam_for_user_with_peer/3, remove_mam_for_user/2,
 	 is_empty_for_user/2, is_empty_for_room/3, check_create_room/4,
 	 process_iq/3, store_mam_message/7, make_id/0, wrap_as_mucsub/2, select/7,
-	 delete_old_messages_batch/5, delete_old_messages_status/1, delete_old_messages_abort/1]).
+	 delete_old_messages_batch/5, delete_old_messages_status/1, delete_old_messages_abort/1,
+	 remove_message_from_archive/3]).
 
 -include_lib("xmpp/include/xmpp.hrl").
 -include("logger.hrl").
@@ -67,7 +69,8 @@
 			      all | chat | groupchat) -> any().
 -callback extended_fields() -> [mam_query:property() | #xdata_field{}].
 -callback store(xmlel(), binary(), {binary(), binary()}, chat | groupchat,
-		jid(), binary(), recv | send, integer()) -> ok | any().
+		jid(), binary(), recv | send, integer(), binary(),
+                {true, binary()} | false) -> ok | any().
 -callback write_prefs(binary(), binary(), #archive_prefs{}, binary()) -> ok | any().
 -callback get_prefs(binary(), binary()) -> {ok, #archive_prefs{}} | error | {error, db_failure}.
 -callback select(binary(), jid(), jid(), mam_query:result(),
@@ -352,6 +355,23 @@ remove_mam_for_user_with_peer(User, Server, Peer) ->
 	{error, <<"Invalid peer JID">>}
     end.
 
+-spec remove_message_from_archive(
+        User :: binary() | {User :: binary(), Host :: binary()},
+        Server :: binary(), StanzaId :: integer()) ->
+    ok | {error, binary()}.
+remove_message_from_archive(User, Server, StanzaId) when is_binary(User) ->
+    remove_message_from_archive({User, Server}, Server, StanzaId);
+remove_message_from_archive({_User, _Host} = UserHost, Server, StanzaId) ->
+    Mod = gen_mod:db_mod(Server, ?MODULE),
+    case Mod:remove_from_archive(UserHost, Server, StanzaId) of
+	ok ->
+	    ok;
+	{error, Bin} when is_binary(Bin) ->
+	    {error, Bin};
+	{error, _} ->
+	    {error, <<"Db returned error">>}
+    end.
+
 get_module_host(LServer) ->
     try gen_mod:db_mod(LServer, ?MODULE)
     catch error:{module_not_loaded, ?MODULE, LServer} ->
@@ -446,6 +466,8 @@ offline_message({_Action, #message{from = Peer, to = To} = Pkt} = Acc) ->
 
 -spec muc_filter_message(message(), mod_muc_room:state(),
 			 binary()) -> message().
+muc_filter_message(#message{meta = #{mam_ignore := true}} = Pkt, _MUCState, _FromNick) ->
+    Pkt;
 muc_filter_message(#message{from = From} = Pkt,
 		   #state{config = Config, jid = RoomJID} = MUCState,
 		   FromNick) ->
@@ -490,6 +512,17 @@ set_stanza_id(Pkt, JID, ID) ->
     StanzaID = #stanza_id{by = BareJID, id = ID},
     NewEls = [Archived, StanzaID|xmpp:get_els(Pkt)],
     xmpp:set_els(Pkt, NewEls).
+
+-spec get_origin_id(stanza()) -> binary().
+get_origin_id(#message{type = groupchat} = Pkt) ->
+    integer_to_binary(get_stanza_id(Pkt));
+get_origin_id(#message{} = Pkt) ->
+    case xmpp:get_subtag(Pkt, #origin_id{}) of
+        #origin_id{id = ID} ->
+            ID;
+        _ ->
+            xmpp:get_id(Pkt)
+    end.
 
 -spec mark_stored_msg(message(), jid()) -> message().
 mark_stored_msg(#message{meta = #{stanza_id := ID}} = Pkt, JID) ->
@@ -564,7 +597,8 @@ disco_sm_features(empty, From, To, Node, Lang) ->
 disco_sm_features({result, OtherFeatures},
 		  #jid{luser = U, lserver = S},
 		  #jid{luser = U, lserver = S}, <<"">>, _Lang) ->
-    {result, [?NS_MAM_TMP, ?NS_MAM_0, ?NS_MAM_1, ?NS_MAM_2, ?NS_SID_0 |
+    {result, [?NS_MAM_TMP, ?NS_MAM_0, ?NS_MAM_1, ?NS_MAM_2, ?NS_SID_0,
+              ?NS_MESSAGE_RETRACT |
 	      OtherFeatures]};
 disco_sm_features(Acc, _From, _To, _Node, _Lang) ->
     Acc.
@@ -1017,9 +1051,16 @@ store_mam_message(Pkt, U, S, Peer, Nick, Type, Dir) ->
     LServer = ejabberd_router:host_of_route(S),
     US = {U, S},
     ID = get_stanza_id(Pkt),
+    OriginID = get_origin_id(Pkt),
+    Retract = case xmpp:get_subtag(Pkt, #message_retract{}) of
+                  #message_retract{id = RID} when RID /= <<"">> ->
+                      {true, RID};
+                  _ ->
+                      false
+              end,
     El = xmpp:encode(Pkt),
     Mod = gen_mod:db_mod(LServer, ?MODULE),
-    Mod:store(El, LServer, US, Type, Peer, Nick, Dir, ID),
+    Mod:store(El, LServer, US, Type, Peer, Nick, Dir, ID, OriginID, Retract),
     Pkt.
 
 write_prefs(LUser, LServer, Host, Default, Always, Never) ->
@@ -1316,8 +1357,9 @@ msg_to_el(#archive_msg{timestamp = TS, packet = El, nick = Nick,
 		   end,
 	    Pkt3 = maybe_update_from_to(
 		     Pkt2, JidRequestor, JidArchive, Peer, MsgType, Nick),
+	    Pkt4 = xmpp:put_meta(Pkt3, archive_nick, Nick),
 	    Delay = #delay{stamp = TS, from = jid:make(LServer)},
-	    {ok, #forwarded{sub_els = [Pkt3], delay = Delay}}
+	    {ok, #forwarded{sub_els = [Pkt4], delay = Delay}}
     catch _:{xmpp_codec, Why} ->
 	    ?ERROR_MSG("Failed to decode raw element ~p from message "
 		       "archive of user ~ts: ~ts",
@@ -1448,9 +1490,9 @@ get_commands_spec() ->
     [#ejabberd_commands{name = delete_old_mam_messages, tags = [purge],
 			desc = "Delete MAM messages older than DAYS",
 			longdesc = "Valid message TYPEs: "
-				   "\"chat\", \"groupchat\", \"all\".",
+				   "`chat`, `groupchat`, `all`.",
 			module = ?MODULE, function = delete_old_messages,
-			args_desc = ["Type of messages to delete (chat, groupchat, all)",
+			args_desc = ["Type of messages to delete (`chat`, `groupchat`, `all`)",
                                      "Days to keep messages"],
 			args_example = [<<"all">>, 31],
 			args = [{type, binary}, {days, integer}],
@@ -1459,10 +1501,10 @@ get_commands_spec() ->
 			desc = "Delete MAM messages older than DAYS",
 			note = "added in 22.05",
 			longdesc = "Valid message TYPEs: "
-				   "\"chat\", \"groupchat\", \"all\".",
+				   "`chat`, `groupchat`, `all`.",
 			module = ?MODULE, function = delete_old_messages_batch,
 			args_desc = ["Name of host where messages should be deleted",
-				     "Type of messages to delete (chat, groupchat, all)",
+				     "Type of messages to delete (`chat`, `groupchat`, `all`)",
 				     "Days to keep messages",
 				     "Number of messages to delete per batch",
 				     "Desired rate of messages to delete per minute"],

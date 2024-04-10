@@ -5,7 +5,7 @@
 %%% Created :  5 Jan 2003 by Alexey Shchepin <alexey@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2022   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -27,7 +27,7 @@
 
 -author('alexey@process-one.net').
 
--protocol({xep, 13, '1.2'}).
+-protocol({xep, 13, '1.2', '16.02', "", ""}).
 -protocol({xep, 22, '1.4'}).
 -protocol({xep, 23, '1.3'}).
 -protocol({xep, 160, '1.0'}).
@@ -61,7 +61,8 @@
 	 c2s_copy_session/2,
 	 webadmin_page/3,
 	 webadmin_user/4,
-	 webadmin_user_parse_query/5]).
+	 webadmin_user_parse_query/5,
+	 c2s_handle_bind2_inline/1]).
 
 -export([mod_opt_type/1, mod_options/1, mod_doc/0, depends/2]).
 
@@ -120,51 +121,24 @@ start(Host, Opts) ->
     Mod = gen_mod:db_mod(Opts, ?MODULE),
     Mod:init(Host, Opts),
     init_cache(Mod, Host, Opts),
-    ejabberd_hooks:add(offline_message_hook, Host, ?MODULE,
-		       store_packet, 50),
-    ejabberd_hooks:add(c2s_self_presence, Host, ?MODULE, c2s_self_presence, 50),
-    ejabberd_hooks:add(remove_user, Host,
-		       ?MODULE, remove_user, 50),
-    ejabberd_hooks:add(disco_sm_features, Host,
-		       ?MODULE, get_sm_features, 50),
-    ejabberd_hooks:add(disco_local_features, Host,
-		       ?MODULE, get_sm_features, 50),
-    ejabberd_hooks:add(disco_sm_identity, Host,
-		       ?MODULE, get_sm_identity, 50),
-    ejabberd_hooks:add(disco_sm_items, Host,
-		       ?MODULE, get_sm_items, 50),
-    ejabberd_hooks:add(disco_info, Host, ?MODULE, get_info, 50),
-    ejabberd_hooks:add(c2s_handle_info, Host, ?MODULE, c2s_handle_info, 50),
-    ejabberd_hooks:add(c2s_copy_session, Host, ?MODULE, c2s_copy_session, 50),
-    ejabberd_hooks:add(webadmin_page_host, Host,
-		       ?MODULE, webadmin_page, 50),
-    ejabberd_hooks:add(webadmin_user, Host,
-		       ?MODULE, webadmin_user, 50),
-    ejabberd_hooks:add(webadmin_user_parse_query, Host,
-		       ?MODULE, webadmin_user_parse_query, 50),
-    gen_iq_handler:add_iq_handler(ejabberd_sm, Host, ?NS_FLEX_OFFLINE,
-				  ?MODULE, handle_offline_query).
+    {ok, [{hook, offline_message_hook, store_packet, 50},
+          {hook, c2s_self_presence, c2s_self_presence, 50},
+          {hook, remove_user, remove_user, 50},
+          {hook, disco_sm_features, get_sm_features, 50},
+          {hook, disco_local_features, get_sm_features, 50},
+          {hook, disco_sm_identity, get_sm_identity, 50},
+          {hook, disco_sm_items, get_sm_items, 50},
+          {hook, disco_info, get_info, 50},
+          {hook, c2s_handle_info, c2s_handle_info, 50},
+          {hook, c2s_copy_session, c2s_copy_session, 50},
+	  {hook, c2s_handle_bind2_inline, c2s_handle_bind2_inline, 50},
+          {hook, webadmin_page_host, webadmin_page, 50},
+          {hook, webadmin_user, webadmin_user, 50},
+          {hook, webadmin_user_parse_query,  webadmin_user_parse_query, 50},
+          {iq_handler, ejabberd_sm, ?NS_FLEX_OFFLINE, handle_offline_query}]}.
 
-stop(Host) ->
-    ejabberd_hooks:delete(offline_message_hook, Host,
-			  ?MODULE, store_packet, 50),
-    ejabberd_hooks:delete(c2s_self_presence, Host, ?MODULE, c2s_self_presence, 50),
-    ejabberd_hooks:delete(remove_user, Host, ?MODULE,
-			  remove_user, 50),
-    ejabberd_hooks:delete(disco_sm_features, Host, ?MODULE, get_sm_features, 50),
-    ejabberd_hooks:delete(disco_local_features, Host, ?MODULE, get_sm_features, 50),
-    ejabberd_hooks:delete(disco_sm_identity, Host, ?MODULE, get_sm_identity, 50),
-    ejabberd_hooks:delete(disco_sm_items, Host, ?MODULE, get_sm_items, 50),
-    ejabberd_hooks:delete(disco_info, Host, ?MODULE, get_info, 50),
-    ejabberd_hooks:delete(c2s_handle_info, Host, ?MODULE, c2s_handle_info, 50),
-    ejabberd_hooks:delete(c2s_copy_session, Host, ?MODULE, c2s_copy_session, 50),
-    ejabberd_hooks:delete(webadmin_page_host, Host,
-			  ?MODULE, webadmin_page, 50),
-    ejabberd_hooks:delete(webadmin_user, Host,
-			  ?MODULE, webadmin_user, 50),
-    ejabberd_hooks:delete(webadmin_user_parse_query, Host,
-			  ?MODULE, webadmin_user_parse_query, 50),
-    gen_iq_handler:remove_iq_handler(ejabberd_sm, Host, ?NS_FLEX_OFFLINE).
+stop(_Host) ->
+    ok.
 
 reload(Host, NewOpts, OldOpts) ->
     NewMod = gen_mod:db_mod(NewOpts, ?MODULE),
@@ -325,6 +299,10 @@ c2s_copy_session(State, #{resend_offline := Flag}) ->
 c2s_copy_session(State, _) ->
     State.
 
+c2s_handle_bind2_inline({#{jid := #jid{luser = LUser, lserver = LServer}} = State, Els, Results}) ->
+    delete_all_msgs(LUser, LServer),
+    {State, Els, Results}.
+
 -spec handle_offline_query(iq()) -> iq().
 handle_offline_query(#iq{from = #jid{luser = U1, lserver = S1},
 			 to = #jid{luser = U2, lserver = S2},
@@ -473,14 +451,17 @@ need_to_store(LServer, #message{type = Type} = Packet) ->
 					_ ->
 					    true
 				    end,
-			    case {Store, mod_offline_opt:store_empty_body(LServer)} of
-				{false, _} ->
+			    case {misc:get_mucsub_event_type(Packet), Store,
+				  mod_offline_opt:store_empty_body(LServer)} of
+				{?NS_MUCSUB_NODES_PRESENCE, _, _} ->
 				    false;
-				{_, true} ->
+				{_, false, _} ->
+				    false;
+				{_, _, true} ->
 				    true;
-				{_, false} ->
+				{_, _, false} ->
 				    Packet#message.body /= [];
-				{_, unless_chat_state} ->
+				{_, _, unless_chat_state} ->
 				    not misc:is_standalone_chat_state(Packet)
 			    end
 		    end

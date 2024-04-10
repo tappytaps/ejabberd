@@ -3,6 +3,7 @@
 %% To improve translations please read:
 %%   https://docs.ejabberd.im/developer/extending-ejabberd/localization/
 
+{" (Add * to the end of field to match substring)"," Gebruik de velden om te zoeken (Voeg achteraan het teken * toe om te zoeken naar alles wat met het eerste deel begint.)."}.
 {" has set the subject to: "," veranderde het onderwerp in: "}.
 {"A friendly name for the node","Bijnaam voor deze knoop"}.
 {"A password is required to enter this room","U hebt een wachtwoord nodig om deze chatruimte te kunnen betreden"}.
@@ -129,7 +130,6 @@
 {"is now known as","heet nu"}.
 {"It is not allowed to send private messages of type \"groupchat\"","Er mogen geen privéberichten van het type \"groupchat\" worden verzonden"}.
 {"It is not allowed to send private messages to the conference","Er mogen geen privéberichten naar de chatruimte worden verzonden"}.
-{"It is not allowed to send private messages","Het is niet toegestaan priveberichten te sturen"}.
 {"Jabber ID","Jabber ID"}.
 {"January","Januari"}.
 {"joins the room","betrad de chatruimte"}.

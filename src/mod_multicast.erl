@@ -5,7 +5,7 @@
 %%% Created : 29 May 2007 by Badlop <badlop@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2022   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -27,7 +27,7 @@
 
 -author('badlop@process-one.net').
 
--protocol({xep, 33, '1.1'}).
+-protocol({xep, 33, '1.1', '15.04', "", ""}).
 
 -behaviour(gen_server).
 
@@ -407,7 +407,7 @@ route_grouped(LServer, LService, From, Groups, RestOfAddresses, Packet) ->
 		route_single ->
 		    route_individual(From, CC, BCC, OtherCC ++ RestOfAddresses, Packet);
 		{route_multicast, Service, Limits} ->
-		    route_multicast(From, Service, CC, BCC, OtherCC ++ RestOfAddresses, Packet, Limits)
+		    route_multicast(From, jid:make(Service), CC, BCC, OtherCC ++ RestOfAddresses, Packet, Limits)
 	    end
 	end, ok, Groups).
 

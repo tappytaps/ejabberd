@@ -2,7 +2,7 @@
 %%% Created : 16 Dec 2016 by Evgeny Khramtsov <ekhramtsov@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2022   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -360,10 +360,17 @@ bounce_message_queue(FromTo, State) ->
 
 -spec bounce_packet(xmpp_element(), state()) -> state().
 bounce_packet(Pkt, State) when ?is_stanza(Pkt) ->
-    Lang = xmpp:get_lang(Pkt),
-    Err = mk_bounce_error(Lang, State),
-    ejabberd_router:route_error(Pkt, Err),
-    State;
+    #{server_host := Host} = State,
+    case ejabberd_hooks:run_fold(
+           s2s_out_bounce_packet, Host, State, [Pkt]) of
+        ignore ->
+            State;
+        State2 ->
+            Lang = xmpp:get_lang(Pkt),
+            Err = mk_bounce_error(Lang, State2),
+            ejabberd_router:route_error(Pkt, Err),
+            State2
+    end;
 bounce_packet(_, State) ->
     State.
 

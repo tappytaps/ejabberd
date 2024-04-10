@@ -7,7 +7,7 @@
 %%% Created :  5 Mar 2005 by Alexey Shchepin <alexey@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2022   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -72,7 +72,7 @@
          user_desc = <<"">>                           :: binary(),
          user_uid = <<"">>                            :: binary(),
          uid_format = <<"">>                          :: binary(),
-	 uid_format_re                                :: undefined | re:mp(),
+	 uid_format_re                                :: undefined | re_mp(),
          filter = <<"">>                              :: binary(),
          ufilter = <<"">>                             :: binary(),
          rfilter = <<"">>                             :: binary(),
@@ -395,14 +395,14 @@ get_member_jid(#state{user_jid_attr = UserJIDAttr, user_uid = UIDAttr} = State,
                                                 [{<<"%u">>, UID}])],
                            [UserJIDAttr]),
     case Entries of
-        [] ->
-            {error, error};
         [#eldap_entry{attributes = [{UserJIDAttr, [MemberJID | _]}]} | _] ->
             try jid:decode(MemberJID) of
                 #jid{luser = U, lserver = S} -> {U, S}
             catch
                 error:{bad_jid, _} -> {error, Host}
-            end
+            end;
+      _ ->
+        {error, error}
     end.
 
 extract_members(State, Extractor, AuthChecker, #eldap_entry{attributes = Attrs}, {DescAcc, JIDsAcc}) ->

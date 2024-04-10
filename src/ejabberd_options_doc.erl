@@ -1,5 +1,5 @@
 %%%----------------------------------------------------------------------
-%%% ejabberd, Copyright (C) 2002-2022   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -303,6 +303,8 @@ doc() ->
       #{value => "true | false",
         desc =>
             ?T("Whether to allow installation of third-party modules or not. "
+               "See https://docs.ejabberd.im/developer/extending-ejabberd/modules/#ejabberd-contrib"
+               "[ejabberd-contrib] documentation section. "
                "The default value is 'true'.")}},
      {allow_multiple_connections,
       #{value => "true | false",
@@ -371,28 +373,37 @@ doc() ->
         note => "improved in 20.01",
         desc =>
             [?T("The option defines in what format the users passwords "
-               "are stored:"), "",
+               "are stored, plain text or in http://../authentication/#scram[SCRAM] format:"), "",
             ?T("* 'plain': The password is stored as plain text "
                "in the database. This is risky because the passwords "
                "can be read if your database gets compromised. "
                "This is the default value. This format allows clients to "
                "authenticate using: the old Jabber Non-SASL (XEP-0078), "
-               "SASL PLAIN, SASL DIGEST-MD5, and SASL SCRAM-SHA-1. "), "",
+               "SASL PLAIN, SASL DIGEST-MD5, and SASL SCRAM-SHA-1/256/512(-PLUS). "), "",
             ?T("* 'scram': The password is not stored, only some information "
-               "that allows to verify the hash provided by the client. "
+               "required to verify the hash provided by the client. "
                "It is impossible to obtain the original plain password "
                "from the stored information; for this reason, when this "
                "value is configured it cannot be changed to plain anymore. "
                "This format allows clients to authenticate using: "
-               "SASL PLAIN and SASL SCRAM-SHA-1."),
-            ?T("The default value is 'plain'.")]}},
+               "SASL PLAIN and SASL SCRAM-SHA-1/256/512(-PLUS). The SCRAM variant "
+               "depends on the _`auth_scram_hash`_ option."), "",
+            ?T("The default value is 'plain'."), ""]}},
      {auth_scram_hash,
       #{value => "sha | sha256 | sha512",
         desc =>
-        ?T("Hash algorithm that should be used to store password in SCRAM format. "
+        ?T("Hash algorithm that should be used to store password in http://../authentication/#scram[SCRAM] format. "
            "You shouldn't change this if you already have passwords generated with "
            "a different algorithm - users that have such passwords will not be able "
            "to authenticate. The default value is 'sha'.")}},
+     {auth_external_user_exists_check,
+      #{value => "true | false",
+        note => "added in 23.10",
+        desc =>
+        ?T("Supplement check for user existence based on 'mod_last' data, for authentication "
+           "methods that don't have a way to reliably tell if a user exists (like is the case for "
+           "'jwt' and certificate based authentication). This helps with processing offline message "
+           "for those users. The default value is 'true'.")}},
      {auth_use_cache,
       #{value => "true | false",
         desc =>
@@ -454,13 +465,14 @@ doc() ->
              ?T("For server connections, this 'ca_file' option is overridden by the http://../toplevel/#s2s-cafile[s2s_cafile] option."), ""
             ]}},
      {captcha_cmd,
-      #{value => ?T("Path"),
-        note => "improved in 21.10",
+      #{value => ?T("Path | ModuleName"),
+        note => "improved in 23.01",
         desc =>
             ?T("Full path to a script that generates http://../basic/#captcha[CAPTCHA] images. "
-               "@VERSION@ is replaced with ejabberd version number in XX.YY format. "
-               "@SEMVER@ is replaced with ejabberd version number in semver format "
+               "'@VERSION@' is replaced with ejabberd version number in 'XX.YY' format. "
+               "'@SEMVER@' is replaced with ejabberd version number in semver format "
                "when compiled with Elixir's mix, or XX.YY format otherwise. "
+               "Alternatively, it can be the name of a module that implements ejabberd CAPTCHA support. "
                "There is no default value: when this option is not "
                "set, CAPTCHA functionality is completely disabled."),
         example =>
@@ -476,11 +488,17 @@ doc() ->
       #{value => "String",
         desc => ?T("Deprecated. Use _`captcha_url`_ instead.")}},
      {captcha_url,
-      #{value => ?T("URL"),
+      #{value => ?T("URL | auto | undefined"),
+        note => "improved in 23.04",
         desc =>
             ?T("An URL where http://../basic/#captcha[CAPTCHA] requests should be sent. NOTE: you need "
                "to configure 'request_handlers' for 'ejabberd_http' listener "
-               "as well. There is no default value.")}},
+               "as well. "
+               "If set to 'auto', it builds the URL using a 'request_handler' "
+               "already enabled, with encryption if available. "
+               "If set to 'undefined', it builds the URL using "
+               "the deprecated _`captcha_host`_ + /captcha. "
+               "The default value is 'auto'.")}},
      {certfiles,
       #{value => "[Path, ...]",
         desc =>
@@ -534,6 +552,16 @@ doc() ->
              "",
              "acl:",
              "  admin: USERBOB"]}},
+      {disable_sasl_scram_downgrade_protection,
+          #{value => "true | false",
+              desc =>
+                ?T("Allows to disable sending data required by "
+                "'XEP-0474: SASL SCRAM Downgrade Protection'. "
+                "There are known buggy clients (like those that use strophejs 1.6.2) "
+                "which will not be able to authenticatate when servers sends data from "
+                "that specification. This options allows server to disable it to allow "
+                "even buggy clients connects, but in exchange decrease MITM protection. "
+                "The default value of this option is 'false' which enables this extension.")}},
      {disable_sasl_mechanisms,
       #{value => "[Mechanism, ...]",
         desc =>
@@ -567,7 +595,7 @@ doc() ->
                  "'destination' - an instance is chosen by the full JID of "
                  "the packet's 'to' attribute; "
                  "'source' - by the full JID of the packet's 'from' attribute; "
-                 "'bare_destination' - by the the bare JID (without resource) "
+                 "'bare_destination' - by the bare JID (without resource) "
                  "of the packet's 'to' attribute; "
                  "'bare_source' - by the bare JID (without resource) of the "
                  "packet's 'from' attribute is used. The default value is 'random'.")}},
@@ -663,6 +691,14 @@ doc() ->
                  "file 'Filename'. The options that do not match this "
                  "criteria are not accepted. The default value is to include "
                  "all options.")}}]},
+     {install_contrib_modules,
+      #{value => "[Module, ...]",
+        note => "added in 23.10",
+        desc =>
+            ?T("Modules to install from "
+               "https://docs.ejabberd.im/developer/extending-ejabberd/modules/#ejabberd-contrib"
+               "[ejabberd-contrib] at start time. "
+               "The default value is an empty list of modules: '[]'.")}},
      {jwt_auth_only_rule,
       #{value => ?T("AccessName"),
         desc =>
@@ -676,7 +712,7 @@ doc() ->
       #{value => ?T("FieldName"),
         desc =>
             ?T("By default, the JID is defined in the '\"jid\"' JWT field. "
-               "This option allows to specify other JWT field name "
+               "In this option you can specify other JWT field name "
                "where the JID is defined.")}},
      {jwt_key,
       #{value => ?T("FilePath"),
@@ -835,6 +871,12 @@ doc() ->
         desc =>
             ?T("The time period to rate-limit log messages "
                "by. Defaults to 1 second.")}},
+     {log_modules_fully,
+      #{value => "[Module, ...]",
+        note => "added in 23.01",
+        desc =>
+            ?T("List of modules that will log everything "
+               "independently from the general loglevel option.")}},
      {max_fsm_queue,
       #{value => ?T("Size"),
         desc =>
@@ -854,7 +896,7 @@ doc() ->
         desc =>
             ?T("Time to wait for an XMPP stream negotiation to complete. "
                "When timeout occurs, the corresponding XMPP stream is closed. "
-               "The default value is '30' seconds.")}},
+               "The default value is '120' seconds.")}},
      {net_ticktime,
       #{value => "timeout()",
         desc =>
@@ -871,8 +913,8 @@ doc() ->
             {?T("Whether to use 'new' SQL schema. All schemas are located "
                 "at <https://github.com/processone/ejabberd/tree/~s/sql>. "
                 "There are two schemas available. The default legacy schema "
-                "allows to store one XMPP domain into one ejabberd database. "
-                "The 'new' schema allows to handle several XMPP domains in a "
+                "stores one XMPP domain into one ejabberd database. "
+                "The 'new' schema can handle several XMPP domains in a "
                 "single ejabberd database. Using this 'new' schema is best when "
                 "serving several XMPP domains and/or changing domains from "
                 "time to time. This avoid need to manage several databases and "
@@ -880,6 +922,11 @@ doc() ->
                 "configuration flag '--enable-new-sql-schema' which is set "
                 "at compile time."),
              [binary:part(ejabberd_config:version(), {0,5})]}}},
+     {update_sql_schema,
+      #{value => "true | false",
+        desc =>
+            ?T("Allow ejabberd to update SQL schema. "
+               "The default value is 'true'.")}},
      {oauth_access,
       #{value => ?T("AccessName"),
         desc => ?T("By default creating OAuth tokens is not allowed. "
@@ -959,11 +1006,14 @@ doc() ->
                "memory drops below this 'Percent', OOM killer is deactivated. "
                "The default value is '80' percents.")}},
      {outgoing_s2s_families,
-      #{value => "[ipv4 | ipv6, ...]",
+      #{value => "[ipv6 | ipv4, ...]",
+        note => "changed in 23.01",
         desc =>
             ?T("Specify which address families to try, in what order. "
-               "The default is '[ipv4, ipv6]' which means it first tries "
-               "connecting with IPv4, if that fails it tries using IPv6.")}},
+               "The default is '[ipv6, ipv4]' which means it first tries "
+               "connecting with IPv6, if that fails it tries using IPv4. "
+               "This option is obsolete and irrelevant when using ejabberd 23.01 "
+               "and Erlang/OTP 22, or newer versions of them.")}},
      {outgoing_s2s_ipv4_address,
       #{value => "Address",
         note => "added in 20.12",
@@ -1283,9 +1333,9 @@ doc() ->
         note => "added in 20.12",
         desc =>
             ?T("Path to the ODBC driver to use to connect to a Microsoft SQL "
-               "Server database. This option is only valid if the _`sql_type`_ "
-               "option is set to 'mssql'. "
-               "The default value is: 'libtdsodbc.so'")}},
+               "Server database. This option only applies if the _`sql_type`_ "
+               "option is set to 'mssql' and _`sql_server`_  is not an ODBC "
+               "connection string. The default value is: 'libtdsodbc.so'")}},
      {sql_password,
       #{value => ?T("Password"),
         desc =>
@@ -1308,7 +1358,13 @@ doc() ->
         note => "added in 20.01",
         desc =>
 	    ?T("This option is 'true' by default, and is useful to disable "
-	       "prepared statements. The option is valid for PostgreSQL.")}},
+	       "prepared statements. The option is valid for PostgreSQL and MySQL.")}},
+     {sql_flags,
+      #{value => "[mysql_alternative_upsert]",
+        note => "added in 24.02",
+        desc =>
+	    ?T("This option accepts a list of SQL flags, and is empty by default. "
+               "'mysql_alternative_upsert' forces the alternative upsert implementation in MySQL.")}},
      {sql_query_timeout,
       #{value => "timeout()",
         desc =>
@@ -1324,14 +1380,15 @@ doc() ->
      {sql_server,
       #{value => ?T("Host"),
         desc =>
-            ?T("A hostname or an IP address of the SQL server. "
+            ?T("The hostname or IP address of the SQL server. For _`sql_type`_ "
+               "'mssql' or 'odbc' this can also be an ODBC connection string. "
                "The default value is 'localhost'.")}},
      {sql_ssl,
       #{value => "true | false",
         note => "improved in 20.03",
         desc =>
             ?T("Whether to use SSL encrypted connections to the "
-               "SQL server. The option is only available for MySQL and "
+               "SQL server. The option is only available for MySQL, MS SQL and "
                "PostgreSQL. The default value is 'false'.")}},
      {sql_ssl_cafile,
       #{value => ?T("Path"),
@@ -1340,7 +1397,8 @@ doc() ->
                "be used to verify SQL connections. Implies _`sql_ssl`_ "
                "and _`sql_ssl_verify`_ options are set to 'true'. "
                "There is no default which means "
-               "certificate verification is disabled.")}},
+               "certificate verification is disabled. "
+               "This option has no effect for MS SQL.")}},
      {sql_ssl_certfile,
       #{value => ?T("Path"),
         desc =>
@@ -1348,13 +1406,15 @@ doc() ->
                "for SSL connections to the SQL server. Implies _`sql_ssl`_ "
                "option is set to 'true'. There is no default which means "
                "ejabberd won't provide a client certificate to the SQL "
-               "server.")}},
+               "server. "
+               "This option has no effect for MS SQL.")}},
      {sql_ssl_verify,
       #{value => "true | false",
         desc =>
             ?T("Whether to verify SSL connection to the SQL server against "
                "CA root certificates defined in _`sql_ssl_cafile`_ option. "
                "Implies _`sql_ssl`_ option is set to 'true'. "
+               "This option has no effect for MS SQL. "
                "The default value is 'false'.")}},
      {sql_start_interval,
       #{value => "timeout()",
@@ -1373,7 +1433,7 @@ doc() ->
                "contains the header 'X-Forwarded-For'. You can specify "
                "'all' to allow all proxies, or specify a list of IPs, "
                "possibly with masks. The default value is an empty list. "
-               "This allows, if enabled, to be able to know the real IP "
+               "Using this option you can know the real IP "
                "of the request, for admin purpose, or security configuration "
                "(for example using 'mod_fail2ban'). IMPORTANT: The proxy MUST "
                "be configured to set the 'X-Forwarded-For' header if you "

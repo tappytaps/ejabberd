@@ -3,7 +3,7 @@
 %%% Created : 15 Oct 2016 by Evgeny Khramtsov <ekhramtsov@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2022   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -1242,7 +1242,7 @@ config_private_messages_master(Config) ->
     [104] = set_config(Config, [{allow_private_messages_from_visitors, nobody}]),
     wait_for_slave(Config),
     [104] = set_config(Config, [{allow_private_messages_from_visitors, anyone},
-				    {allow_private_messages, false}]),
+				    {allowpm, none}]),
     ct:comment("Fail trying to send a private message"),
     send(Config, #message{to = PeerNickJID, type = chat}),
     #message{from = PeerNickJID, type = error} = ErrMsg = recv_message(Config),

@@ -5,7 +5,7 @@
 %%% Created :  2 Jan 2003 by Alexey Shchepin <alexey@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2022   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -29,6 +29,7 @@
 
 -protocol({xep, 54, '1.2'}).
 -protocol({xep, 55, '1.3'}).
+-protocol({xep, 153, '1.1'}).
 
 -behaviour(gen_server).
 -behaviour(gen_mod).

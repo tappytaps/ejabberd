@@ -12,11 +12,6 @@
 {"A Web Page","Eine Webseite"}.
 {"Accept","Akzeptieren"}.
 {"Access denied by service policy","Zugriff aufgrund der Dienstrichtlinien verweigert"}.
-{"Access model of authorize","Zugriffsmodell von 'authorize'"}.
-{"Access model of open","Zugriffsmodell von 'open'"}.
-{"Access model of presence","Zugriffsmodell von 'presence'"}.
-{"Access model of roster","Zugriffsmodell der Kontaktliste"}.
-{"Access model of whitelist","Zugriffsmodell von 'whitelist'"}.
 {"Access model","Zugriffsmodell"}.
 {"Account doesn't exist","Konto existiert nicht"}.
 {"Action on user","Aktion auf Benutzer"}.
@@ -229,11 +224,12 @@
 {"It is not allowed to send error messages to the room. The participant (~s) has sent an error message (~s) and got kicked from the room","Es ist nicht erlaubt Fehlermeldungen an den Raum zu senden. Der Teilnehmer (~s) hat eine Fehlermeldung (~s) gesendet und wurde aus dem Raum geworfen"}.
 {"It is not allowed to send private messages of type \"groupchat\"","Es ist nicht erlaubt private Nachrichten des Typs \"groupchat\" zu senden"}.
 {"It is not allowed to send private messages to the conference","Es ist nicht erlaubt private Nachrichten an die Konferenz zu senden"}.
-{"It is not allowed to send private messages","Es ist nicht erlaubt private Nachrichten zu senden"}.
 {"Jabber ID","Jabber-ID"}.
 {"January","Januar"}.
 {"JID normalization denied by service policy","JID-Normalisierung aufgrund der Dienstrichtlinien verweigert"}.
 {"JID normalization failed","JID-Normalisierung fehlgeschlagen"}.
+{"Joined MIX channels of ~ts","Beigetretene MIX-Channels von ~ts"}.
+{"Joined MIX channels:","Beigetretene MIX-Channels:"}.
 {"joins the room","betritt den Raum"}.
 {"July","Juli"}.
 {"June","Juni"}.
@@ -372,6 +368,7 @@
 {"Only members may query archives of this room","Nur Mitglieder dürfen den Verlauf dieses Raumes abrufen"}.
 {"Only moderators and participants are allowed to change the subject in this room","Nur Moderatoren und Teilnehmer dürfen das Thema in diesem Raum ändern"}.
 {"Only moderators are allowed to change the subject in this room","Nur Moderatoren dürfen das Thema in diesem Raum ändern"}.
+{"Only moderators are allowed to retract messages","Nur Moderatoren dürfen Nachrichten zurückziehen"}.
 {"Only moderators can approve voice requests","Nur Moderatoren können Sprachrecht-Anforderungen genehmigen"}.
 {"Only occupants are allowed to send messages to the conference","Nur Teilnehmer dürfen Nachrichten an die Konferenz senden"}.
 {"Only occupants are allowed to send queries to the conference","Nur Teilnehmer dürfen Anfragen an die Konferenz senden"}.
@@ -395,7 +392,6 @@
 {"Password:","Passwort:"}.
 {"Path to Dir","Pfad zum Verzeichnis"}.
 {"Path to File","Pfad zur Datei"}.
-{"Payload type","Nutzdatentyp"}.
 {"Pending","Ausstehend"}.
 {"Period: ","Zeitraum: "}.
 {"Persist items to storage","Items dauerhaft speichern"}.
@@ -494,6 +490,7 @@
 {"Specify the access model","Geben Sie das Zugangsmodell an"}.
 {"Specify the event message type","Geben Sie den Ereignisnachrichtentyp an"}.
 {"Specify the publisher model","Geben Sie das Veröffentlichermodell an"}.
+{"Stanza id is not valid","Stanza-ID ist ungültig"}.
 {"Stanza ID","Stanza-ID"}.
 {"Statically specify a replyto of the node owner(s)","Ein 'replyto' des/der Nodebesitzer(s) statisch angeben"}.
 {"Statistics of ~p","Statistiken von ~p"}.
@@ -561,7 +558,6 @@
 {"The sender of the last received message","Der Absender der letzten erhaltenen Nachricht"}.
 {"The stanza MUST contain only one <active/> element, one <default/> element, or one <list/> element","Das Stanza darf nur ein <active/>-Element, ein <default/>-Element oder ein <list/>-Element enthalten"}.
 {"The subscription identifier associated with the subscription request","Die mit der Abonnement-Anforderung verknüpfte Abonnement-Bezeichnung"}.
-{"The type of node data, usually specified by the namespace of the payload (if any)","Die Art der Knotendaten, üblicherweise vom Namensraum der Nutzdaten angegeben (gegebenenfalls)"}.
 {"The URL of an XSL transformation which can be applied to payloads in order to generate an appropriate message body element.","Die URL einer XSL-Transformation welche auf Nutzdaten angewendet werden kann, um ein geeignetes Nachrichtenkörper-Element zu generieren."}.
 {"The URL of an XSL transformation which can be applied to the payload format in order to generate a valid Data Forms result that the client could display using a generic Data Forms rendering engine","Die URL einer XSL-Transformation welche auf das Nutzdaten-Format angewendet werden kann, um ein gültiges Data Forms-Ergebnis zu generieren das der Client mit Hilfe einer generischen Data Forms-Rendering-Engine anzeigen könnte"}.
 {"There was an error changing the password: ","Es trat ein Fehler beim Ändern des Passwortes auf: "}.
@@ -639,6 +635,7 @@
 {"Value of '~s' should be integer","Wert von '~s' sollte eine Ganzzahl sein"}.
 {"Value 'set' of 'type' attribute is not allowed","Wert 'set' des 'type'-Attributs ist nicht erlaubt"}.
 {"vCard User Search","vCard-Benutzer-Suche"}.
+{"View joined MIX channels","Beitretene MIX-Channel ansehen"}.
 {"View Queue","Warteschlange ansehen"}.
 {"View Roster","Kontaktliste ansehen"}.
 {"Virtual Hosts","Virtuelle Hosts"}.

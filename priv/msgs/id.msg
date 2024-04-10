@@ -12,11 +12,6 @@
 {"A Web Page","Halaman web"}.
 {"Accept","Diterima"}.
 {"Access denied by service policy","Akses ditolak oleh kebijakan layanan"}.
-{"Access model of authorize","Model akses otorisasi"}.
-{"Access model of open","Model akses terbuka"}.
-{"Access model of presence","Model akses kehadiran"}.
-{"Access model of roster","model akses daftar kontak"}.
-{"Access model of whitelist","Model akses daftar putih"}.
 {"Access model","Model akses"}.
 {"Account doesn't exist","Akun tidak ada"}.
 {"Action on user","Tindakan pada pengguna"}.
@@ -207,7 +202,6 @@
 {"is now known as","sekarang dikenal sebagai"}.
 {"It is not allowed to send private messages of type \"groupchat\"","Hal ini tidak diperbolehkan untuk mengirim pesan pribadi jenis \"groupchat \""}.
 {"It is not allowed to send private messages to the conference","Hal ini tidak diperbolehkan untuk mengirim pesan pribadi ke konferensi"}.
-{"It is not allowed to send private messages","Hal ini tidak diperbolehkan untuk mengirim pesan pribadi"}.
 {"Jabber ID","Jabber ID"}.
 {"January","Januari"}.
 {"joins the room","bergabung ke ruangan"}.
@@ -289,7 +283,6 @@
 {"Password","Sandi"}.
 {"Path to Dir","Jalur ke Dir"}.
 {"Path to File","Jalur ke File"}.
-{"Payload type","Tipe payload"}.
 {"Pending","Tertunda"}.
 {"Period: ","Periode: "}.
 {"Persist items to storage","Pertahankan item ke penyimpanan"}.

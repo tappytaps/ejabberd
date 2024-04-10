@@ -5,7 +5,7 @@
 %%% Created : 18 Apr 2020 by Holger Weiss <holger@zedat.fu-berlin.de>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2020-2022   ProcessOne
+%%% ejabberd, Copyright (C) 2020-2024   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -25,7 +25,7 @@
 
 -module(mod_stun_disco).
 -author('holger@zedat.fu-berlin.de').
--protocol({xep, 215, '0.7'}).
+-protocol({xep, 215, '0.7', '20.04', "", ""}).
 
 -behaviour(gen_server).
 -behaviour(gen_mod).
