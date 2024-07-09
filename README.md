@@ -17,9 +17,11 @@
     <a href="https://github.com/processone/ejabberd/actions/workflows/ci.yml" alt="CI">
        <img src="https://github.com/processone/ejabberd/actions/workflows/ci.yml/badge.svg" /></a>
     <a href="https://coveralls.io/github/processone/ejabberd?branch=master" alt="Coverage Status">
-       <img src="https://coveralls.io/repos/github/processone/ejabberd/badge.svg?branch=master "Coverage in coveralls.io"" /></a>
+       <img src="https://coveralls.io/repos/github/processone/ejabberd/badge.svg?branch=master" /></a>
     <a href="https://hosted.weblate.org/projects/ejabberd/ejabberd-po/" alt="Translation status">
-       <img src="https://hosted.weblate.org/widgets/ejabberd/-/ejabberd-po/svg-badge.svg"" /></a>
+       <img src="https://hosted.weblate.org/widgets/ejabberd/-/ejabberd-po/svg-badge.svg" /></a>
+    <a href="https://docs.ejabberd.im/" alt="ejabberd Docs">
+       <img src="https://img.shields.io/github/v/tag/processone/docs.ejabberd.im?sort=semver&logo=&label=docs&logoWidth=0" /></a>
 </p>
 
 
@@ -107,14 +109,14 @@ and [ejabberd translations](https://github.com/processone/ejabberd-po/) under MI
 [erlang]: https://www.erlang.org/
 [features]: https://docs.ejabberd.im/admin/introduction/
 [fluux]: https://fluux.io/
-[homebrew]: https://docs.ejabberd.im/admin/installation/#homebrew
+[homebrew]: https://docs.ejabberd.im/admin/install/homebrew/
 [hubecs]: https://hub.docker.com/r/ejabberd/ecs/
 [im]: https://ejabberd.im/
 [issues]: https://github.com/processone/ejabberd/issues
 [localization]: https://docs.ejabberd.im/developer/extending-ejabberd/localization/
 [mqtt]: https://mqtt.org/
 [muc]: xmpp:ejabberd@conference.process-one.net
-[osp]: https://docs.ejabberd.im/admin/installation/#operating-system-packages
+[osp]: https://docs.ejabberd.im/admin/install/os-package/
 [p1contact]: https://www.process-one.net/en/company/contact/
 [p1download]: https://www.process-one.net/en/ejabberd/downloads/
 [p1home]: https://www.process-one.net/en/ejabberd/

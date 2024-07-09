@@ -108,6 +108,7 @@ max_fsm_queue: 1000
 queue_type: file
 modules:
   mod_adhoc: []
+  mod_admin_extra: []
   mod_admin_update_sql: []
   mod_announce: []
   mod_configure: []
@@ -160,6 +161,8 @@ certfiles:
   - CERTFILE
 
 new_sql_schema: NEW_SCHEMA
+
+update_sql_schema: UPDATE_SQL_SCHEMA
 
 api_permissions:
   "public commands":

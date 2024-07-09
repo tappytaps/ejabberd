@@ -27,6 +27,7 @@
 -protocol({rfc, 3921}).
 -protocol({rfc, 6120}).
 -protocol({rfc, 6121}).
+-protocol({xep, 138, '2.1'}).
 
 %% ejabberd_listener callbacks
 -export([start/3, start_link/3, accept/1, listen_opt_type/1, listen_options/0]).
@@ -52,7 +53,8 @@
 -export([get_presence/1, set_presence/2, resend_presence/1, resend_presence/2,
 	 open_session/1, call/3, cast/2, send/2, close/1, close/2, stop_async/1,
 	 reply/2, copy_state/2, set_timeout/2, route/2, format_reason/2,
-	 host_up/1, host_down/1, send_ws_ping/1, bounce_message_queue/2]).
+	 host_up/1, host_down/1, send_ws_ping/1, bounce_message_queue/2,
+	 reset_vcard_xupdate_resend_presence/1]).
 
 -include_lib("xmpp/include/xmpp.hrl").
 -include("logger.hrl").
@@ -107,6 +109,10 @@ resend_presence(Pid) ->
 -spec resend_presence(pid(), jid() | undefined) -> boolean().
 resend_presence(Pid, To) ->
     route(Pid, {resend_presence, To}).
+
+-spec reset_vcard_xupdate_resend_presence(pid()) -> boolean().
+reset_vcard_xupdate_resend_presence(Pid) ->
+    route(Pid, reset_vcard_xupdate_resend_presence).
 
 -spec close(pid()) -> ok;
 	   (state()) -> state().
@@ -246,6 +252,13 @@ process_info(#{lserver := LServer} = State, {route, Packet}) ->
        true ->
 	    State1
     end;
+process_info(State, reset_vcard_xupdate_resend_presence) ->
+    case maps:get(pres_last, State, error) of
+	error -> State;
+	Pres ->
+	    Pres2 = xmpp:remove_subtag(Pres, #vcard_xupdate{}),
+	    process_self_presence(State#{pres_last => Pres2}, Pres2)
+    end;
 process_info(#{jid := JID} = State, {resend_presence, To}) ->
     case maps:get(pres_last, State, error) of
 	error -> State;
@@ -277,6 +290,7 @@ reject_unauthenticated_packet(State, _Pkt) ->
 process_auth_result(#{sasl_mech := Mech, auth_module := AuthModule,
 		      socket := Socket, ip := IP, lserver := LServer} = State,
 		    true, User) ->
+    misc:set_proc_label({?MODULE, User, LServer}),
     ?INFO_MSG("(~ts) Accepted c2s ~ts authentication for ~ts@~ts by ~ts backend from ~ts",
               [xmpp_socket:pp(Socket), Mech, User, LServer,
                ejabberd_auth:backend_type(AuthModule),
@@ -604,6 +618,7 @@ init([State, Opts]) ->
 		    access => Access,
 		    shaper => Shaper},
     State2 = xmpp_stream_in:set_timeout(State1, Timeout),
+    misc:set_proc_label({?MODULE, init_state}),
     ejabberd_hooks:run_fold(c2s_init, {ok, State2}, [Opts]).
 
 handle_call(get_presence, From, #{jid := JID} = State) ->

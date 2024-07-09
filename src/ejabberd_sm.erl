@@ -56,11 +56,13 @@
 	 get_vh_session_number/1,
 	 get_vh_by_backend/1,
 	 force_update_presence/1,
+	 reset_vcard_xupdate_resend_presence/1,
 	 connected_users/0,
 	 connected_users_number/0,
 	 user_resources/2,
 	 kick_user/2,
 	 kick_user/3,
+	 kick_user_restuple/2,
 	 get_session_pid/3,
 	 get_session_sid/3,
 	 get_session_sids/2,
@@ -926,6 +928,15 @@ force_update_presence({LUser, LServer}) ->
 		  end,
 		  Ss).
 
+-spec reset_vcard_xupdate_resend_presence({binary(), binary()}) -> ok.
+reset_vcard_xupdate_resend_presence({LUser, LServer}) ->
+    Mod = get_sm_backend(LServer),
+    Ss = get_sessions(Mod, LUser, LServer),
+    lists:foreach(
+	fun(#session{sid = {_, Pid}}) ->
+	    ejabberd_c2s:reset_vcard_xupdate_resend_presence(Pid)
+	end, Ss).
+
 -spec get_sm_backend(binary()) -> module().
 
 get_sm_backend(Host) ->
@@ -1037,7 +1048,19 @@ get_commands_spec() ->
 			args_example = [<<"user1">>, <<"example.com">>],
 			result_desc = "Number of resources that were kicked",
 			result_example = 3,
-			result = {num_resources, integer}}].
+			result = {num_resources, integer}},
+
+     #ejabberd_commands{name = kick_user, tags = [session],
+			desc = "Disconnect user's active sessions",
+			module = ?MODULE, function = kick_user_restuple,
+			version = 2,
+			note = "modified in 24.06",
+			args = [{user, binary}, {host, binary}],
+			args_desc = ["User name", "Server name"],
+			args_example = [<<"user1">>, <<"example.com">>],
+			result_desc = "The result text indicates the number of sessions that were kicked",
+			result_example = {ok, <<"Kicked sessions: 2">>},
+			result = {res, restuple}}].
 
 -spec connected_users() -> [binary()].
 
@@ -1071,6 +1094,10 @@ kick_user(User, Server, Resource) ->
 	none -> false;
 	Pid -> ejabberd_c2s:route(Pid, kick)
     end.
+
+kick_user_restuple(User, Server) ->
+    NumberBin = integer_to_binary(kick_user(User, Server)),
+    {ok, <<"Kicked sessions: ", NumberBin/binary>>}.
 
 make_sid() ->
     {misc:unique_timestamp(), self()}.

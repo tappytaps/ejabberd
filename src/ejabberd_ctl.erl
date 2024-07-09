@@ -32,7 +32,8 @@
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
 	 terminate/2, code_change/3]).
--export([get_commands_spec/0]).
+-export([get_commands_spec/0, format_arg/2,
+         get_usage_command/4]).
 
 -include("ejabberd_ctl.hrl").
 -include("ejabberd_commands.hrl").
@@ -366,15 +367,15 @@ format_arg(Arg, string) ->
     Parse = "~" ++ NumChars ++ "c",
     format_arg2(Arg, Parse);
 format_arg(Arg, {list, {_ArgName, ArgFormat}}) ->
-    [format_arg(Element, ArgFormat) || Element <- string:tokens(Arg, ",")];
+    [format_arg(string:trim(Element), ArgFormat) || Element <- string:tokens(Arg, ",")];
 format_arg(Arg, {list, ArgFormat}) ->
-    [format_arg(Element, ArgFormat) || Element <- string:tokens(Arg, ",")];
+    [format_arg(string:trim(Element), ArgFormat) || Element <- string:tokens(Arg, ",")];
 format_arg(Arg, {tuple, Elements}) ->
     Args = string:tokens(Arg, ":"),
     list_to_tuple(format_args(Args, Elements));
 format_arg(Arg, Format) ->
     S = unicode:characters_to_binary(Arg, utf8),
-    JSON = jiffy:decode(S),
+    JSON = misc:json_decode(S),
     mod_http_api:format_arg(JSON, Format).
 
 format_arg2(Arg, Parse)->
@@ -409,13 +410,13 @@ format_result([A|_]=String, {_Name, string}, _Version) when is_list(String) and 
     io_lib:format("~ts", [String]);
 
 format_result(Binary, {_Name, binary}, _Version) when is_binary(Binary) ->
-    io_lib:format("~ts", [binary_to_list(Binary)]);
+    io_lib:format("~ts", [Binary]);
 
 format_result(String, {_Name, binary}, _Version) when is_list(String) ->
     io_lib:format("~ts", [String]);
 
 format_result(Binary, {_Name, string}, _Version) when is_binary(Binary) ->
-    io_lib:format("~ts", [binary_to_list(Binary)]);
+    io_lib:format("~ts", [Binary]);
 
 format_result(Atom, {_Name, string}, _Version) when is_atom(Atom) ->
     io_lib:format("~ts", [atom_to_list(Atom)]);
@@ -597,17 +598,9 @@ get_shell_info() ->
 	_:_ -> {78, false}
     end.
 
-%% Erlang/OTP 20.0 introduced string:find/2, but we must support old 19.3
-string_find([], _SearchPattern) ->
-    nomatch;
-string_find([A | String], [A]) ->
-    String;
-string_find([_ | String], SearchPattern) ->
-    string_find(String, SearchPattern).
-
 %% Split this command description in several lines of proper length
 prepare_description(DescInit, MaxC, Desc) ->
-    case string_find(Desc, "\n") of
+    case string:find(Desc, "\n") of
         nomatch ->
             prepare_description2(DescInit, MaxC, Desc);
         _ ->
@@ -786,7 +779,7 @@ print_usage_help(MaxC, ShCode) ->
 	   longdesc = lists:flatten(LongDesc),
 	   args = ArgsDef,
 	   result = {help, string}},
-    print_usage_command2("help", C, MaxC, ShCode).
+    print(get_usage_command2("help", C, MaxC, ShCode), []).
 
 
 %%-----------------------------
@@ -848,11 +841,14 @@ maybe_add_policy_arguments(Args, _) ->
 -spec print_usage_command(Cmd::string(), MaxC::integer(),
                           ShCode::boolean(), Version::integer()) -> ok.
 print_usage_command(Cmd, MaxC, ShCode, Version) ->
+    print(get_usage_command(Cmd, MaxC, ShCode, Version), []).
+
+get_usage_command(Cmd, MaxC, ShCode, Version) ->
     Name = list_to_atom(Cmd),
     C = ejabberd_commands:get_command_definition(Name, Version),
-    print_usage_command2(Cmd, C, MaxC, ShCode).
+    get_usage_command2(Cmd, C, MaxC, ShCode).
 
-print_usage_command2(Cmd, C, MaxC, ShCode) ->
+get_usage_command2(Cmd, C, MaxC, ShCode) ->
     #ejabberd_commands{
 		     tags = TagsAtoms,
 		     definer = Definer,
@@ -926,12 +922,12 @@ print_usage_command2(Cmd, C, MaxC, ShCode) ->
 			  false -> ""
 		      end,
 
-    case Cmd of
-        "help" -> ok;
-        _ -> print([NameFmt, "\n", ArgsFmt, "\n", ReturnsFmt,
-                    "\n\n", ExampleFmt, TagsFmt, "\n\n", ModuleFmt, NoteFmt, DescFmt, "\n\n"], [])
+    First = case Cmd of
+        "help" -> "";
+        _ -> [NameFmt, "\n", ArgsFmt, "\n", ReturnsFmt,
+                    "\n\n", ExampleFmt, TagsFmt, "\n\n", ModuleFmt, NoteFmt, DescFmt, "\n\n"]
     end,
-    print([LongDescFmt, NoteEjabberdctlList, NoteEjabberdctlTuple], []).
+    [First, LongDescFmt, NoteEjabberdctlList, NoteEjabberdctlTuple].
 
 %%-----------------------------
 %% Format Arguments Help
@@ -972,11 +968,14 @@ format_usage_ctype1({Name, Type, Description}, Indentation, ShCode) ->
 
 
 format_usage_ctype(Type, _Indentation)
-  when (Type==atom) or (Type==integer) or (Type==string) or (Type==binary) or (Type==rescode) or (Type==restuple)->
+  when (Type==atom) or (Type==integer) or (Type==string) or (Type==binary)
+       or (Type==rescode) or (Type==restuple) ->
     io_lib:format("~p", [Type]);
 
 format_usage_ctype({Name, Type}, _Indentation)
-  when (Type==atom) or (Type==integer) or (Type==string) or (Type==binary) or (Type==rescode) or (Type==restuple)->
+  when (Type==atom) or (Type==integer) or (Type==string) or (Type==binary)
+       or (Type==rescode) or (Type==restuple)
+       or (Type==any) ->
     io_lib:format("~p::~p", [Name, Type]);
 
 format_usage_ctype({Name, {list, ElementDef}}, Indentation) ->

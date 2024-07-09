@@ -61,6 +61,7 @@
 -type component() :: ejabberd_sm | ejabberd_local.
 -type registration() ::
         {hook, atom(), atom(), integer()} |
+        {hook, atom(), atom(), integer(), binary() | global} |
         {hook, atom(), module(), atom(), integer()} |
         {iq_handler, component(), binary(), atom()} |
         {iq_handler, component(), binary(), module(), atom()}.
@@ -74,6 +75,7 @@
 -callback mod_opt_type(atom()) -> econf:validator().
 -callback mod_options(binary()) -> [{atom(), term()} | atom()].
 -callback mod_doc() -> #{desc => binary() | [binary()],
+                         note => string(),
                          opts => [opt_doc()],
                          example => [string()] | [{binary(), [string()]}]}.
 -callback depends(binary(), opts()) -> [{module(), hard | soft}].
@@ -340,7 +342,9 @@ add_registrations(Host, Module, Registrations) ->
     lists:foreach(
       fun({hook, Hook, Function, Seq}) ->
               ejabberd_hooks:add(Hook, Host, Module, Function, Seq);
-         ({hook, Hook, Module1, Function, Seq}) ->
+         ({hook, Hook, Function, Seq, Host1}) when is_integer(Seq) ->
+              ejabberd_hooks:add(Hook, Host1, Module, Function, Seq);
+         ({hook, Hook, Module1, Function, Seq}) when is_integer(Seq) ->
               ejabberd_hooks:add(Hook, Host, Module1, Function, Seq);
          ({iq_handler, Component, NS, Function}) ->
               gen_iq_handler:add_iq_handler(
@@ -355,7 +359,9 @@ del_registrations(Host, Module, Registrations) ->
     lists:foreach(
       fun({hook, Hook, Function, Seq}) ->
               ejabberd_hooks:delete(Hook, Host, Module, Function, Seq);
-         ({hook, Hook, Module1, Function, Seq}) ->
+         ({hook, Hook, Function, Seq, Host1}) when is_integer(Seq) ->
+              ejabberd_hooks:delete(Hook, Host1, Module, Function, Seq);
+         ({hook, Hook, Module1, Function, Seq}) when is_integer(Seq) ->
               ejabberd_hooks:delete(Hook, Host, Module1, Function, Seq);
          ({iq_handler, Component, NS, _Function}) ->
               gen_iq_handler:remove_iq_handler(Component, Host, NS);

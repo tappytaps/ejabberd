@@ -48,7 +48,7 @@ write_doap_head()
     <download-page rdf:resource="https://www.process-one.net/en/ejabberd/downloads/"/>
     <download-mirror rdf:resource="https://github.com/processone/ejabberd/tags"/>
     <license rdf:resource="https://raw.githubusercontent.com/processone/ejabberd/master/COPYING"/>
-    <schema:logo rdf:resource="https://docs.ejabberd.im/static/shared/images/footer_logo_e@2x.png"/>
+    <schema:logo rdf:resource="https://docs.ejabberd.im/assets/img/footer_logo_e@2x.png"/>
     <bug-database rdf:resource="https://github.com/processone/ejabberd/issues"/>
     <support-forum rdf:resource="xmpp:ejabberd@conference.process-one.net?join"/>
     <repository>
@@ -75,7 +75,7 @@ write_rfcs()
     out=$2
     int=$(echo $1 | sed 's/^0*//')
 
-    imp=$(grep "\-protocol({rfc, $int," $BASE/src/* | sed "s/.*src\/\(.*\).erl.*'\([0-9.-]*\)'.*/\1 \2/")
+    imp=$(grep "\-protocol({rfc, $int," $BASE/src/* | sed "s/.*src\/\(.*\).erl.*'\([0-9.-x]*\)'.*/\1 \2/")
     [ "$imp" = "" ] && imp="NA 0.0"
 
     echo "    <implements rdf:resource=\"https://www.rfc-editor.org/info/$rfc\"/>" >>$out
@@ -87,16 +87,16 @@ write_xeps()
     out=$2
     comments2=""
     int=$(echo $1 | sed 's/^0*//')
-    imp=$(grep "\-protocol({xep, $int," $BASE/src/* | sed "s/.*src\/\(.*\).erl.*'\([0-9.-]*\)'.*/\1 \2/")
+    imp=$(grep "\-protocol({xep, $int," $BASE/src/* | sed "s/.*src\/\(.*\).erl.*'\([0-9.-x]*\)'.*/\1 \2/")
     [ "$imp" = "" ] && imp="NA 0.0"
 
-    sourcefiles=$(grep "\-protocol({xep, $int," $BASE/src/* | sed "s/.*src\/\(.*\).erl.*'\([0-9.-]*\)'.*/\1/" | tr '\012' ',' | sed 's|,$||' | sed 's|,|, |g' | sed 's|^ejabberd$||')
+    sourcefiles=$(grep "\-protocol({xep, $int," $BASE/src/* | sed "s/.*src\/\(.*\).erl.*'\([0-9.-x]*\)'.*/\1/" | tr '\012' ',' | sed 's|,$||' | sed 's|,|, |g' | sed 's|^ejabberd$||')
 
-    versionsold=$(grep "\-protocol({xep, $int, .*'})\." $BASE/src/* | sed "s/.*'\([0-9.-]*\)'.*/\1/" | head -1)
-    versionsnew=$(grep "\-protocol({xep, $int, .*\"})\." $BASE/src/* | sed "s/.*'\([0-9.-]*\)', '.*/\1/" | head -1)
+    versionsold=$(grep "\-protocol({xep, $int, .*'})\." $BASE/src/* | sed "s/.*'\([0-9.-x]*\)'.*/\1/" | head -1)
+    versionsnew=$(grep "\-protocol({xep, $int, .*\"})\." $BASE/src/* | sed "s/.*'\([0-9.-x]*\)', '.*/\1/" | head -1)
     versions="$versionsold$versionsnew"
 
-    since=$(grep "\-protocol({xep, $int, .*\"})\." $BASE/src/* | sed "s/.*', '\([0-9.-]*\)',.*/\1/" | head -1)
+    since=$(grep "\-protocol({xep, $int, .*\"})\." $BASE/src/* | sed "s/.*', '\([0-9.-x]*\)',.*/\1/" | head -1)
     status=$(grep "\-protocol({xep, $int, .*\"})\." $BASE/src/* | sed "s/.*', \"\([a-z]*\)\", \".*/\1/" | head -1)
 
     comments=$(grep "\-protocol({xep, $int, .*\"})\." $BASE/src/* | sed "s/.*\", \"\(.*\)\"}.*/\1/" | head -1)

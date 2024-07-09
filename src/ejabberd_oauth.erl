@@ -54,6 +54,8 @@
          oauth_add_client_implicit/3,
          oauth_remove_client/1]).
 
+-export([web_menu_main/2, web_page_main/2]).
+
 -include_lib("xmpp/include/xmpp.hrl").
 -include("logger.hrl").
 -include("ejabberd_http.hrl").
@@ -81,7 +83,7 @@
 get_commands_spec() ->
     [
      #ejabberd_commands{name = oauth_issue_token, tags = [oauth],
-                        desc = "Issue an [OAuth](https://docs.ejabberd.im/developer/ejabberd-api/oauth/) token for the given jid",
+                        desc = "Issue an _`oauth.md|OAuth`_ token for the given jid",
                         module = ?MODULE, function = oauth_issue_token,
                         args = [{jid, string},{ttl, integer}, {scopes, string}],
                         policy = restricted,
@@ -92,7 +94,7 @@ get_commands_spec() ->
                         result = {result, {tuple, [{token, string}, {scopes, string}, {expires_in, string}]}}
                        },
      #ejabberd_commands{name = oauth_issue_token, tags = [oauth],
-                        desc = "Issue an [OAuth](https://docs.ejabberd.im/developer/ejabberd-api/oauth/) token for the given jid",
+                        desc = "Issue an _`oauth.md|OAuth`_ optionredir token for the given jid",
                         module = ?MODULE, function = oauth_issue_token,
                         version = 1,
                         note = "updated in 24.02",
@@ -105,7 +107,7 @@ get_commands_spec() ->
                         result = {result, {tuple, [{token, string}, {scopes, {list, {scope, string}}}, {expires_in, string}]}}
                        },
      #ejabberd_commands{name = oauth_list_tokens, tags = [oauth],
-                        desc = "List [OAuth](https://docs.ejabberd.im/developer/ejabberd-api/oauth/) tokens, user, scope, and seconds to expire (only Mnesia)",
+                        desc = "List _`oauth.md|OAuth`_ tokens, user, scope, and seconds to expire (only Mnesia)",
                         longdesc = "List OAuth tokens, their user and scope, and how many seconds remain until expirity",
                         module = ?MODULE, function = oauth_list_tokens,
                         args = [],
@@ -113,7 +115,7 @@ get_commands_spec() ->
                         result = {tokens, {list, {token, {tuple, [{token, string}, {user, string}, {scope, string}, {expires_in, string}]}}}}
                        },
      #ejabberd_commands{name = oauth_revoke_token, tags = [oauth],
-                        desc = "Revoke authorization for an [OAuth](https://docs.ejabberd.im/developer/ejabberd-api/oauth/) token",
+                        desc = "Revoke authorization for an _`oauth.md|OAuth`_ token",
 			note = "changed in 22.05",
                         module = ?MODULE, function = oauth_revoke_token,
                         args = [{token, binary}],
@@ -122,7 +124,7 @@ get_commands_spec() ->
                         result_desc = "Result code"
                        },
      #ejabberd_commands{name = oauth_add_client_password, tags = [oauth],
-                        desc = "Add [OAuth](https://docs.ejabberd.im/developer/ejabberd-api/oauth/) client_id with password grant type",
+                        desc = "Add _`oauth.md|OAuth`_ client_id with password grant type",
                         module = ?MODULE, function = oauth_add_client_password,
                         args = [{client_id, binary},
                                 {client_name, binary},
@@ -131,7 +133,7 @@ get_commands_spec() ->
                         result = {res, restuple}
                        },
      #ejabberd_commands{name = oauth_add_client_implicit, tags = [oauth],
-                        desc = "Add [OAuth](https://docs.ejabberd.im/developer/ejabberd-api/oauth/) client_id with implicit grant type",
+                        desc = "Add _`oauth.md|OAuth`_ client_id with implicit grant type",
                         module = ?MODULE, function = oauth_add_client_implicit,
                         args = [{client_id, binary},
                                 {client_name, binary},
@@ -140,7 +142,7 @@ get_commands_spec() ->
                         result = {res, restuple}
                        },
      #ejabberd_commands{name = oauth_remove_client, tags = [oauth],
-                        desc = "Remove [OAuth](https://docs.ejabberd.im/developer/ejabberd-api/oauth/) client_id",
+                        desc = "Remove _`oauth.md|OAuth`_ client_id",
                         module = ?MODULE, function = oauth_remove_client,
                         args = [{client_id, binary}],
                         policy = restricted,
@@ -230,6 +232,8 @@ init([]) ->
     application:set_env(oauth2, expiry_time, Expire div 1000),
     application:start(oauth2),
     ejabberd_commands:register_commands(get_commands_spec()),
+    ejabberd_hooks:add(webadmin_menu_main, ?MODULE, web_menu_main, 50),
+    ejabberd_hooks:add(webadmin_page_main, ?MODULE, web_page_main, 50),
     ejabberd_hooks:add(config_reloaded, ?MODULE, config_reloaded, 50),
     erlang:send_after(expire(), self(), clean),
     {ok, ok}.
@@ -255,6 +259,8 @@ handle_info(Info, State) ->
     {noreply, State}.
 
 terminate(_Reason, _State) ->
+    ejabberd_hooks:delete(webadmin_menu_main, ?MODULE, web_menu_main, 50),
+    ejabberd_hooks:delete(webadmin_page_main, ?MODULE, web_page_main, 50),
     ejabberd_hooks:delete(config_reloaded, ?MODULE, config_reloaded, 50).
 
 code_change(_OldVsn, State, _Extra) -> {ok, State}.
@@ -721,11 +727,10 @@ process(_Handlers,
                                       ExpiresIn
                               end,
                     {ok, VerifiedScope} = oauth2_response:scope(Response),
-                    json_response(200, {[
-                                         {<<"access_token">>, AccessToken},
-                                         {<<"token_type">>, Type},
-                                         {<<"scope">>, str:join(VerifiedScope, <<" ">>)},
-                                         {<<"expires_in">>, Expires}]});
+                    json_response(200, #{<<"access_token">> => AccessToken,
+                                         <<"token_type">> => Type,
+                                         <<"scope">> => str:join(VerifiedScope, <<" ">>),
+                                         <<"expires_in">> => Expires});
                 {error, Error} when is_atom(Error) ->
                     json_error(400, <<"invalid_grant">>, Error)
             end;
@@ -756,14 +761,14 @@ json_response(Code, Body) ->
     {Code, [{<<"Content-Type">>, <<"application/json;charset=UTF-8">>},
            {<<"Cache-Control">>, <<"no-store">>},
            {<<"Pragma">>, <<"no-cache">>}],
-     jiffy:encode(Body)}.
+     misc:json_encode(Body)}.
 
 %% OAauth error are defined in:
 %% https://tools.ietf.org/html/draft-ietf-oauth-v2-25#section-5.2
 json_error(Code, Error, Reason) ->
     Desc = json_error_desc(Reason),
-    Body = {[{<<"error">>, Error},
-             {<<"error_description">>, Desc}]},
+    Body = #{<<"error">> => Error,
+             <<"error_description">> => Desc},
     json_response(Code, Body).
 
 json_error_desc(access_denied)          -> <<"Access denied">>;
@@ -795,3 +800,30 @@ logo() ->
 	{error, _} ->
 	    <<>>
     end.
+
+%%%
+%%% WebAdmin
+%%%
+
+%% @format-begin
+
+web_menu_main(Acc, _Lang) ->
+    Acc ++ [{<<"oauth">>, <<"OAuth">>}].
+
+web_page_main(_, #request{path = [<<"oauth">>]} = R) ->
+    Head = ?H1GLraw(<<"OAuth">>, <<"developer/ejabberd-api/oauth/">>, <<"OAuth">>),
+    Set = [?X(<<"hr">>),
+           ?XAC(<<"h2">>, [{<<"id">>, <<"token">>}], <<"Token">>),
+           ?XE(<<"blockquote">>,
+               [ejabberd_web_admin:make_command(oauth_list_tokens, R),
+                ejabberd_web_admin:make_command(oauth_issue_token, R),
+                ejabberd_web_admin:make_command(oauth_revoke_token, R)]),
+           ?X(<<"hr">>),
+           ?XAC(<<"h2">>, [{<<"id">>, <<"client">>}], <<"Client">>),
+           ?XE(<<"blockquote">>,
+               [ejabberd_web_admin:make_command(oauth_add_client_implicit, R),
+                ejabberd_web_admin:make_command(oauth_add_client_password, R),
+                ejabberd_web_admin:make_command(oauth_remove_client, R)])],
+    {stop, Head ++ Set};
+web_page_main(Acc, _) ->
+    Acc.

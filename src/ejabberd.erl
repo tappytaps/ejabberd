@@ -30,6 +30,7 @@
 -protocol({rfc, 6122}).
 -protocol({rfc, 7590}).
 -protocol({xep, 4, '2.9'}).
+-protocol({xep, 59, '1.0'}).
 -protocol({xep, 86, '1.0'}).
 -protocol({xep, 106, '1.1'}).
 -protocol({xep, 170, '1.0'}).
@@ -44,6 +45,7 @@
 -protocol({xep, 424, '0.4.0', '24.02', "", ""}).
 -protocol({xep, 440, '0.4.0', '24.02', "", ""}).
 -protocol({xep, 474, '0.3.0', '24.02', "", ""}).
+-protocol({xep, 485, '0.2.0', '24.02', "", "mod_pubsub_serverinfo in ejabberd-contrib.git"}).
 
 -export([start/0, stop/0, halt/0, start_app/1, start_app/2,
 	 get_pid_file/0, check_apps/0, module_name/1, is_loaded/0]).
@@ -160,11 +162,11 @@ exit_or_halt(Reason, StartFlag) ->
 
 get_module_file(App, Mod) ->
     BaseName = atom_to_list(Mod),
-    case code:lib_dir(App, ebin) of
+    case code:lib_dir(App) of
         {error, _} ->
             BaseName;
         Dir ->
-            filename:join([Dir, BaseName ++ ".beam"])
+            filename:join([Dir, "ebin", BaseName ++ ".beam"])
     end.
 
 module_name([Dir, _, <<H,_/binary>> | _] = Mod) when H >= 65, H =< 90 ->

@@ -34,13 +34,15 @@
 /priv/bin/captcha*sh
 /priv/sql
 /rel/ejabberd
+/recompile.log
 /_build
 /database/
 /.rebar
-/rebar.lock
 /log/
 .DS_Store
 Mnesia.nonode@nohost/
+/TAGS
+/tags
 # Binaries created with tools/make-{binaries,installers,packages}:
 /ejabberd_*.deb
 /ejabberd-*.rpm
