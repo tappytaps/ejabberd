@@ -587,7 +587,7 @@ process_admin(Host, #request{path = [<<"online-users">> | RPath], lang = Lang} =
     Res = [make_command(connected_users_vhost,
                         R,
                         [{<<"host">>, Host}],
-                        [{table_options, {2, RPath}},
+                        [{table_options, {100, RPath}},
                          {result_links, [{sessions, user, Level, <<"">>}]}])],
     make_xhtml([?XCT(<<"h1">>, ?T("Online Users"))] ++ Res, Host, R, AJID, Level);
 process_admin(Host,
@@ -1684,14 +1684,11 @@ make_command2(Name, Request, BaseArguments, Options) ->
     ResultLinks = proplists:get_value(result_links, Options, []),
     TO = proplists:get_value(table_options, Options, {999999, []}),
     Style = proplists:get_value(style, Options, normal),
-    #request{us = {RUser, RServer},
-             ip = RIp,
-             host = RHost} =
-        Request,
+    #request{us = {RUser, RServer}, ip = RIp} = Request,
     CallerInfo =
         #{usr => {RUser, RServer, <<"">>},
           ip => RIp,
-          caller_host => RHost,
+          caller_host => RServer,
           caller_module => ?MODULE},
     try {ejabberd_commands:get_command_definition(Name),
          ejabberd_access_permissions:can_access(Name, CallerInfo)}
@@ -2226,8 +2223,11 @@ make_result(Binary,
     when (ElementName == ResultName) or (ElementName == unknown_element_name) ->
     First = proplists:get_value(first, ArgumentsUsed),
     Second = proplists:get_value(second, ArgumentsUsed),
+    FirstUrlencoded =
+        hd(string:replace(
+               misc:url_encode(First), "%40", "@")),
     {GroupId, Host} =
-        case jid:decode(First) of
+        case jid:decode(FirstUrlencoded) of
             #jid{luser = <<"">>, lserver = G} ->
                 {G, Second};
             #jid{luser = G, lserver = H} ->

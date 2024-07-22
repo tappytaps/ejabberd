@@ -673,7 +673,7 @@ get_pruned_event_id(PrunedEvent) ->
 
 encode_canonical_json(JSON) ->
     JSON2 = sort_json(JSON),
-    misc:json_encode(JSON2).
+    misc:json_encode_with_kv_lists(JSON2).
 
 sort_json(#{} = Map) ->
     Map2 = maps:map(fun(_K, V) ->
@@ -924,10 +924,10 @@ mod_doc() ->
 	   {matrix_id_as_jid,
             #{value => "true | false",
               desc =>
-                  ?T("If set to 'false', all packets failing to be delivered via an XMPP "
+                  ?T("If set to 'true', all packets failing to be delivered via an XMPP "
 		     "server-to-server connection will then be routed to the Matrix gateway "
 		     "by translating a Jabber ID 'user@matrixdomain.tld' to a Matrix user "
-		     "identifier '@user:matrixdomain.tld'. When set to 'true', messages "
+		     "identifier '@user:matrixdomain.tld'. When set to 'false', messages "
 		     "must be explicitly sent to the matrix gateway service Jabber ID to be "
 		     "routed to a remote Matrix server. In this case, to send a message to "
 		     "Matrix user '@user:matrixdomain.tld', the client must send a message "
