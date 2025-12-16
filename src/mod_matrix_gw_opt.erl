@@ -6,9 +6,10 @@
 -export([host/1]).
 -export([key/1]).
 -export([key_name/1]).
+-export([leave_timeout/1]).
 -export([matrix_domain/1]).
 -export([matrix_id_as_jid/1]).
--export([persist/1]).
+-export([notary_servers/1]).
 
 -spec host(gen_mod:opts() | global | binary()) -> binary().
 host(Opts) when is_map(Opts) ->
@@ -16,7 +17,7 @@ host(Opts) when is_map(Opts) ->
 host(Host) ->
     gen_mod:get_module_opt(Host, mod_matrix_gw, host).
 
--spec key(gen_mod:opts() | global | binary()) -> any().
+-spec key(gen_mod:opts() | global | binary()) -> {binary(),binary()}.
 key(Opts) when is_map(Opts) ->
     gen_mod:get_opt(key, Opts);
 key(Host) ->
@@ -27,6 +28,12 @@ key_name(Opts) when is_map(Opts) ->
     gen_mod:get_opt(key_name, Opts);
 key_name(Host) ->
     gen_mod:get_module_opt(Host, mod_matrix_gw, key_name).
+
+-spec leave_timeout(gen_mod:opts() | global | binary()) -> non_neg_integer().
+leave_timeout(Opts) when is_map(Opts) ->
+    gen_mod:get_opt(leave_timeout, Opts);
+leave_timeout(Host) ->
+    gen_mod:get_module_opt(Host, mod_matrix_gw, leave_timeout).
 
 -spec matrix_domain(gen_mod:opts() | global | binary()) -> binary().
 matrix_domain(Opts) when is_map(Opts) ->
@@ -40,9 +47,9 @@ matrix_id_as_jid(Opts) when is_map(Opts) ->
 matrix_id_as_jid(Host) ->
     gen_mod:get_module_opt(Host, mod_matrix_gw, matrix_id_as_jid).
 
--spec persist(gen_mod:opts() | global | binary()) -> boolean().
-persist(Opts) when is_map(Opts) ->
-    gen_mod:get_opt(persist, Opts);
-persist(Host) ->
-    gen_mod:get_module_opt(Host, mod_matrix_gw, persist).
+-spec notary_servers(gen_mod:opts() | global | binary()) -> [binary()].
+notary_servers(Opts) when is_map(Opts) ->
+    gen_mod:get_opt(notary_servers, Opts);
+notary_servers(Host) ->
+    gen_mod:get_module_opt(Host, mod_matrix_gw, notary_servers).
 

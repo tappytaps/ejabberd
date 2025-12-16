@@ -1,11 +1,11 @@
 %%%----------------------------------------------------------------------
 %%% File    : mod_configure.erl
 %%% Author  : Alexey Shchepin <alexey@process-one.net>
-%%% Purpose : Support for online configuration of ejabberd
+%%% Purpose : Support for online configuration of ejabberd using XEP-0050
 %%% Created : 19 Jan 2003 by Alexey Shchepin <alexey@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -27,7 +27,7 @@
 
 -author('alexey@process-one.net').
 
--protocol({xep, 133, '1.3.0', '13.10', "complete", ""}).
+-protocol({xep, 133, '1.3.1', '13.10', "partial", ""}).
 
 -behaviour(gen_mod).
 
@@ -36,6 +36,7 @@
 	 adhoc_local_items/4, adhoc_local_commands/4,
 	 get_sm_identity/5, get_sm_features/5, get_sm_items/5,
 	 adhoc_sm_items/4, adhoc_sm_commands/4, mod_options/1,
+	 mod_opt_type/1,
 	 depends/2, mod_doc/0]).
 
 -include("logger.hrl").
@@ -92,6 +93,10 @@ depends(_Host, _Opts) ->
 -spec tokenize(binary()) -> [binary()].
 tokenize(Node) -> str:tokens(Node, <<"/#">>).
 
+acl_match_rule(Host, From) ->
+    Access = mod_configure_opt:access(Host),
+    acl:match_rule(Host, Access, From).
+
 -spec get_sm_identity([identity()], jid(), jid(), binary(), binary()) -> [identity()].
 get_sm_identity(Acc, _From, _To, Node, Lang) ->
     case Node of
@@ -131,24 +136,48 @@ get_local_identity(Acc, _From, _To, Node, Lang) ->
 	  ?INFO_COMMAND(?T("Add User"), Lang);
       ?NS_ADMINL(<<"delete-user">>) ->
 	  ?INFO_COMMAND(?T("Delete User"), Lang);
+      ?NS_ADMINL(<<"disable-user">>) ->
+	  ?INFO_COMMAND(?T("Disable User"), Lang);
+      ?NS_ADMINL(<<"reenable-user">>) ->
+	  ?INFO_COMMAND(?T("Re-Enable User"), Lang);
       ?NS_ADMINL(<<"end-user-session">>) ->
 	  ?INFO_COMMAND(?T("End User Session"), Lang);
       ?NS_ADMINL(<<"change-user-password">>) ->
 	  ?INFO_COMMAND(?T("Change User Password"), Lang);
+      ?NS_ADMINL(<<"get-user-roster">>) ->
+	  ?INFO_COMMAND(?T("Get User Roster"), Lang);
       ?NS_ADMINL(<<"get-user-lastlogin">>) ->
 	  ?INFO_COMMAND(?T("Get User Last Login Time"), Lang);
       ?NS_ADMINL(<<"user-stats">>) ->
 	  ?INFO_COMMAND(?T("Get User Statistics"), Lang);
-      ?NS_ADMINL(<<"get-registered-users-list">>) ->
-	  ?INFO_COMMAND(?T("Get List of Registered Users"),
-			Lang);
       ?NS_ADMINL(<<"get-registered-users-num">>) ->
 	  ?INFO_COMMAND(?T("Get Number of Registered Users"),
 			Lang);
-      ?NS_ADMINL(<<"get-online-users-list">>) ->
-	  ?INFO_COMMAND(?T("Get List of Online Users"), Lang);
+      ?NS_ADMINL(<<"get-disabled-users-num">>) ->
+	  ?INFO_COMMAND(?T("Get Number of Disabled Users"),
+			Lang);
       ?NS_ADMINL(<<"get-online-users-num">>) ->
 	  ?INFO_COMMAND(?T("Get Number of Online Users"), Lang);
+      ?NS_ADMINL(<<"get-active-users-num">>) ->
+	  ?INFO_COMMAND(?T("Get Number of Active Users"), Lang);
+      ?NS_ADMINL(<<"get-idle-users-num">>) ->
+	  ?INFO_COMMAND(?T("Get Number of Idle Users"), Lang);
+      ?NS_ADMINL(<<"get-registered-users-list">>) ->
+	  ?INFO_COMMAND(?T("Get List of Registered Users"),
+			Lang);
+      ?NS_ADMINL(<<"get-disabled-users-list">>) ->
+	  ?INFO_COMMAND(?T("Get List of Disabled Users"),
+			Lang);
+      ?NS_ADMINL(<<"get-online-users-list">>) ->
+	  ?INFO_COMMAND(?T("Get List of Online Users"), Lang);
+      ?NS_ADMINL(<<"get-active-users">>) ->
+	  ?INFO_COMMAND(?T("Get List of Active Users"), Lang);
+      ?NS_ADMINL(<<"get-idle-users">>) ->
+	  ?INFO_COMMAND(?T("Get List of Idle Users"), Lang);
+      ?NS_ADMINL(<<"restart">>) ->
+	  ?INFO_COMMAND(?T("Restart Service"), Lang);
+      ?NS_ADMINL(<<"shutdown">>) ->
+	  ?INFO_COMMAND(?T("Shut Down Service"), Lang);
       _ -> Acc
     end.
 
@@ -167,7 +196,7 @@ get_sm_features(Acc, From,
     case gen_mod:is_loaded(LServer, mod_adhoc) of
       false -> Acc;
       _ ->
-	  Allow = acl:match_rule(LServer, configure, From),
+	  Allow = acl_match_rule(LServer, From),
 	  case Node of
 	    <<"config">> -> ?INFO_RESULT(Allow, [?NS_COMMANDS], Lang);
 	    _ -> Acc
@@ -182,7 +211,7 @@ get_local_features(Acc, From,
       false -> Acc;
       _ ->
 	  LNode = tokenize(Node),
-	  Allow = acl:match_rule(LServer, configure, From),
+	  Allow = acl_match_rule(LServer, From),
 	  case LNode of
 	    [<<"config">>] -> ?INFO_RESULT(Allow, [], Lang);
 	    [<<"user">>] -> ?INFO_RESULT(Allow, [], Lang);
@@ -215,21 +244,43 @@ get_local_features(Acc, From,
 		?INFO_RESULT(Allow, [?NS_COMMANDS], Lang);
 	    ?NS_ADMINL(<<"delete-user">>) ->
 		?INFO_RESULT(Allow, [?NS_COMMANDS], Lang);
+	    ?NS_ADMINL(<<"disable-user">>) ->
+		?INFO_RESULT(Allow, [?NS_COMMANDS], Lang);
+	    ?NS_ADMINL(<<"reenable-user">>) ->
+		?INFO_RESULT(Allow, [?NS_COMMANDS], Lang);
 	    ?NS_ADMINL(<<"end-user-session">>) ->
 		?INFO_RESULT(Allow, [?NS_COMMANDS], Lang);
 	    ?NS_ADMINL(<<"change-user-password">>) ->
+		?INFO_RESULT(Allow, [?NS_COMMANDS], Lang);
+	    ?NS_ADMINL(<<"get-user-roster">>) ->
 		?INFO_RESULT(Allow, [?NS_COMMANDS], Lang);
 	    ?NS_ADMINL(<<"get-user-lastlogin">>) ->
 		?INFO_RESULT(Allow, [?NS_COMMANDS], Lang);
 	    ?NS_ADMINL(<<"user-stats">>) ->
 		?INFO_RESULT(Allow, [?NS_COMMANDS], Lang);
+	    ?NS_ADMINL(<<"get-registered-users-num">>) ->
+		?INFO_RESULT(Allow, [?NS_COMMANDS], Lang);
+	    ?NS_ADMINL(<<"get-disabled-users-num">>) ->
+		?INFO_RESULT(Allow, [?NS_COMMANDS], Lang);
+	    ?NS_ADMINL(<<"get-online-users-num">>) ->
+		?INFO_RESULT(Allow, [?NS_COMMANDS], Lang);
+	    ?NS_ADMINL(<<"get-active-users-num">>) ->
+		?INFO_RESULT(Allow, [?NS_COMMANDS], Lang);
+	    ?NS_ADMINL(<<"get-idle-users-num">>) ->
+		?INFO_RESULT(Allow, [?NS_COMMANDS], Lang);
 	    ?NS_ADMINL(<<"get-registered-users-list">>) ->
 		?INFO_RESULT(Allow, [?NS_COMMANDS], Lang);
-	    ?NS_ADMINL(<<"get-registered-users-num">>) ->
+	    ?NS_ADMINL(<<"get-disabled-users-list">>) ->
 		?INFO_RESULT(Allow, [?NS_COMMANDS], Lang);
 	    ?NS_ADMINL(<<"get-online-users-list">>) ->
 		?INFO_RESULT(Allow, [?NS_COMMANDS], Lang);
-	    ?NS_ADMINL(<<"get-online-users-num">>) ->
+	    ?NS_ADMINL(<<"get-active-users">>) ->
+		?INFO_RESULT(Allow, [?NS_COMMANDS], Lang);
+	    ?NS_ADMINL(<<"get-idle-users">>) ->
+		?INFO_RESULT(Allow, [?NS_COMMANDS], Lang);
+	    ?NS_ADMINL(<<"restart">>) ->
+		?INFO_RESULT(Allow, [?NS_COMMANDS], Lang);
+	    ?NS_ADMINL(<<"shutdown">>) ->
 		?INFO_RESULT(Allow, [?NS_COMMANDS], Lang);
 	    _ -> Acc
 	  end
@@ -240,7 +291,7 @@ get_local_features(Acc, From,
 		     jid(), jid(), binary()) -> mod_disco:items_acc().
 adhoc_sm_items(Acc, From, #jid{lserver = LServer} = To,
 	       Lang) ->
-    case acl:match_rule(LServer, configure, From) of
+    case acl_match_rule(LServer, From) of
       allow ->
 	  Items = case Acc of
 		    {result, Its} -> Its;
@@ -266,7 +317,7 @@ get_sm_items(Acc, From,
 		    {result, Its} -> Its;
 		    empty -> []
 		  end,
-	  case {acl:match_rule(LServer, configure, From), Node} of
+	  case {acl_match_rule(LServer, From), Node} of
 	    {allow, <<"">>} ->
 		Nodes = [?NODEJID(To, ?T("Configuration"),
 				  <<"config">>),
@@ -295,13 +346,13 @@ get_user_resources(User, Server) ->
 			jid(), jid(), binary()) -> mod_disco:items_acc().
 adhoc_local_items(Acc, From,
 		  #jid{lserver = LServer, server = Server} = To, Lang) ->
-    case acl:match_rule(LServer, configure, From) of
+    case acl_match_rule(LServer, From) of
       allow ->
 	  Items = case Acc of
 		    {result, Its} -> Its;
 		    empty -> []
 		  end,
-	  PermLev = get_permission_level(From),
+	  PermLev = get_permission_level(From, LServer),
 	  Nodes = recursively_get_local_items(PermLev, LServer,
 					      <<"">>, Server, Lang),
 	  Nodes1 = lists:filter(
@@ -348,9 +399,10 @@ recursively_get_local_items(PermLev, LServer, Node,
 	end,
 	Items)).
 
--spec get_permission_level(jid()) -> global | vhost.
-get_permission_level(JID) ->
-    case acl:match_rule(global, configure, JID) of
+-spec get_permission_level(jid(), binary()) -> global | vhost.
+get_permission_level(JID, Host) ->
+    Access = mod_configure_opt:access(Host),
+    case acl:match_rule(global, Access, JID) of
       allow -> global;
       deny -> vhost
     end.
@@ -361,7 +413,7 @@ get_permission_level(JID) ->
 	case Allow of
 	  deny -> Fallback;
 	  allow ->
-	      PermLev = get_permission_level(From),
+	      PermLev = get_permission_level(From, LServer),
 	      case get_local_items({PermLev, LServer}, LNode,
 				   jid:encode(To), Lang)
 		  of
@@ -381,11 +433,11 @@ get_local_items(Acc, From, #jid{lserver = LServer} = To,
 		    {result, Its} -> Its;
 		    empty -> []
 		  end,
-	  Allow = acl:match_rule(LServer, configure, From),
+	  Allow = acl_match_rule(LServer, From),
 	  case Allow of
 	    deny -> {result, Items};
 	    allow ->
-		PermLev = get_permission_level(From),
+		PermLev = get_permission_level(From, LServer),
 		case get_local_items({PermLev, LServer}, [],
 				     jid:encode(To), Lang)
 		    of
@@ -400,7 +452,7 @@ get_local_items(Acc, From, #jid{lserver = LServer} = To,
       false -> Acc;
       _ ->
 	  LNode = tokenize(Node),
-	  Allow = acl:match_rule(LServer, configure, From),
+	  Allow = acl_match_rule(LServer, From),
 	  Err = xmpp:err_forbidden(?T("Access denied by service policy"), Lang),
 	  case LNode of
 	    [<<"config">>] ->
@@ -441,21 +493,43 @@ get_local_items(Acc, From, #jid{lserver = LServer} = To,
 		?ITEMS_RESULT(Allow, LNode, {error, Err});
 	    ?NS_ADMINL(<<"delete-user">>) ->
 		?ITEMS_RESULT(Allow, LNode, {error, Err});
+	    ?NS_ADMINL(<<"disable-user">>) ->
+		?ITEMS_RESULT(Allow, LNode, {error, Err});
+	    ?NS_ADMINL(<<"reenable-user">>) ->
+		?ITEMS_RESULT(Allow, LNode, {error, Err});
 	    ?NS_ADMINL(<<"end-user-session">>) ->
 		?ITEMS_RESULT(Allow, LNode, {error, Err});
 	    ?NS_ADMINL(<<"change-user-password">>) ->
+		?ITEMS_RESULT(Allow, LNode, {error, Err});
+	    ?NS_ADMINL(<<"get-user-roster">>) ->
 		?ITEMS_RESULT(Allow, LNode, {error, Err});
 	    ?NS_ADMINL(<<"get-user-lastlogin">>) ->
 		?ITEMS_RESULT(Allow, LNode, {error, Err});
 	    ?NS_ADMINL(<<"user-stats">>) ->
 		?ITEMS_RESULT(Allow, LNode, {error, Err});
+	    ?NS_ADMINL(<<"get-registered-users-num">>) ->
+		?ITEMS_RESULT(Allow, LNode, {error, Err});
+	    ?NS_ADMINL(<<"get-disabled-users-num">>) ->
+		?ITEMS_RESULT(Allow, LNode, {error, Err});
+	    ?NS_ADMINL(<<"get-online-users-num">>) ->
+		?ITEMS_RESULT(Allow, LNode, {error, Err});
+	    ?NS_ADMINL(<<"get-active-users-num">>) ->
+		?ITEMS_RESULT(Allow, LNode, {error, Err});
+	    ?NS_ADMINL(<<"get-idle-users-num">>) ->
+		?ITEMS_RESULT(Allow, LNode, {error, Err});
 	    ?NS_ADMINL(<<"get-registered-users-list">>) ->
 		?ITEMS_RESULT(Allow, LNode, {error, Err});
-	    ?NS_ADMINL(<<"get-registered-users-num">>) ->
+	    ?NS_ADMINL(<<"get-disabled-users-list">>) ->
 		?ITEMS_RESULT(Allow, LNode, {error, Err});
 	    ?NS_ADMINL(<<"get-online-users-list">>) ->
 		?ITEMS_RESULT(Allow, LNode, {error, Err});
-	    ?NS_ADMINL(<<"get-online-users-num">>) ->
+	    ?NS_ADMINL(<<"get-active-users">>) ->
+		?ITEMS_RESULT(Allow, LNode, {error, Err});
+	    ?NS_ADMINL(<<"get-idle-users">>) ->
+		?ITEMS_RESULT(Allow, LNode, {error, Err});
+	    ?NS_ADMINL(<<"restart">>) ->
+		?ITEMS_RESULT(Allow, LNode, {error, Err});
+	    ?NS_ADMINL(<<"shutdown">>) ->
 		?ITEMS_RESULT(Allow, LNode, {error, Err});
 	    _ -> Acc
 	  end
@@ -482,22 +556,41 @@ get_local_items(_Host, [<<"user">>], Server, Lang) ->
      [?NODE(?T("Add User"), (?NS_ADMINX(<<"add-user">>))),
       ?NODE(?T("Delete User"),
 	    (?NS_ADMINX(<<"delete-user">>))),
+      ?NODE(?T("Disable User"),
+	    (?NS_ADMINX(<<"disable-user">>))),
+      ?NODE(?T("Re-Enable User"),
+	    (?NS_ADMINX(<<"reenable-user">>))),
       ?NODE(?T("End User Session"),
 	    (?NS_ADMINX(<<"end-user-session">>))),
       ?NODE(?T("Change User Password"),
 	    (?NS_ADMINX(<<"change-user-password">>))),
+      ?NODE(?T("Get User Roster"),
+	    (?NS_ADMINX(<<"get-user-roster">>))),
       ?NODE(?T("Get User Last Login Time"),
 	    (?NS_ADMINX(<<"get-user-lastlogin">>))),
       ?NODE(?T("Get User Statistics"),
 	    (?NS_ADMINX(<<"user-stats">>))),
-      ?NODE(?T("Get List of Registered Users"),
-	    (?NS_ADMINX(<<"get-registered-users-list">>))),
       ?NODE(?T("Get Number of Registered Users"),
 	    (?NS_ADMINX(<<"get-registered-users-num">>))),
+      ?NODE(?T("Get Number of Disabled Users"),
+	    (?NS_ADMINX(<<"get-disabled-users-num">>))),
+      ?NODE(?T("Get Number of Online Users"),
+	    (?NS_ADMINX(<<"get-online-users-num">>))),
+      ?NODE(?T("Get Number of Active Users"),
+	    (?NS_ADMINX(<<"get-active-users-num">>))),
+      ?NODE(?T("Get Number of Idle Users"),
+	    (?NS_ADMINX(<<"get-idle-users-num">>))),
+      ?NODE(?T("Get List of Registered Users"),
+	    (?NS_ADMINX(<<"get-registered-users-list">>))),
+      ?NODE(?T("Get List of Disabled Users"),
+	    (?NS_ADMINX(<<"get-disabled-users-list">>))),
       ?NODE(?T("Get List of Online Users"),
 	    (?NS_ADMINX(<<"get-online-users-list">>))),
-      ?NODE(?T("Get Number of Online Users"),
-	    (?NS_ADMINX(<<"get-online-users-num">>)))]};
+      ?NODE(?T("Get List of Active Users"),
+	    (?NS_ADMINX(<<"get-active-users">>))),
+      ?NODE(?T("Get List of Idle Users"),
+	    (?NS_ADMINX(<<"get-idle-users">>)))
+     ]};
 get_local_items(_Host, [<<"http:">> | _], _Server,
 		_Lang) ->
     {result, []};
@@ -546,6 +639,10 @@ get_local_items({global, _Host},
 	    <<"running nodes/", ENode/binary, "/backup">>),
       ?NODE(?T("Import Users From jabberd14 Spool Files"),
 	    <<"running nodes/", ENode/binary, "/import">>),
+      ?NODE(?T("Restart Service"),
+	    (?NS_ADMINX(<<"restart">>))),
+      ?NODE(?T("Shut Down Service"),
+	    (?NS_ADMINX(<<"shutdown">>))),
       ?NODE(?T("Restart Service"),
 	    <<"running nodes/", ENode/binary, "/restart">>),
       ?NODE(?T("Shut Down Service"),
@@ -690,7 +787,7 @@ get_stopped_nodes(_Lang) ->
 
 -define(COMMANDS_RESULT(LServerOrGlobal, From, To,
 			Request, Lang),
-	case acl:match_rule(LServerOrGlobal, configure, From) of
+	case acl_match_rule(LServerOrGlobal, From) of
 	  deny -> {error, xmpp:err_forbidden(?T("Access denied by service policy"), Lang)};
 	  allow -> adhoc_local_commands(From, To, Request)
 	end).
@@ -991,6 +1088,24 @@ get_form(_Host, ?NS_ADMINL(<<"delete-user">>), Lang) ->
 				   label = tr(Lang, ?T("Jabber ID")),
 				   required = true,
 				   var = <<"accountjids">>}]}};
+get_form(_Host, ?NS_ADMINL(<<"disable-user">>), Lang) ->
+    {result,
+     #xdata{title = tr(Lang, ?T("Disable User")),
+	    type = form,
+	    fields = [?HFIELD(),
+		      #xdata_field{type = 'jid-multi',
+				   label = tr(Lang, ?T("Jabber ID")),
+				   required = true,
+				   var = <<"accountjids">>}]}};
+get_form(_Host, ?NS_ADMINL(<<"reenable-user">>), Lang) ->
+    {result,
+     #xdata{title = tr(Lang, ?T("Re-Enable User")),
+	    type = form,
+	    fields = [?HFIELD(),
+		      #xdata_field{type = 'jid-multi',
+				   label = tr(Lang, ?T("Jabber ID")),
+				   required = true,
+				   var = <<"accountjids">>}]}};
 get_form(_Host, ?NS_ADMINL(<<"end-user-session">>),
 	 Lang) ->
     {result,
@@ -1015,6 +1130,16 @@ get_form(_Host, ?NS_ADMINL(<<"change-user-password">>),
 				   label = tr(Lang, ?T("Password")),
 				   required = true,
 				   var = <<"password">>}]}};
+get_form(_Host, ?NS_ADMINL(<<"get-user-roster">>),
+	 Lang) ->
+    {result,
+     #xdata{title = tr(Lang, ?T("Get User Roster")),
+	    type = form,
+	    fields = [?HFIELD(),
+		      #xdata_field{type = 'jid-multi',
+				   label = tr(Lang, ?T("Jabber ID")),
+				   required = true,
+				   var = <<"accountjids">>}]}};
 get_form(_Host, ?NS_ADMINL(<<"get-user-lastlogin">>),
 	 Lang) ->
     {result,
@@ -1034,16 +1159,6 @@ get_form(_Host, ?NS_ADMINL(<<"user-stats">>), Lang) ->
 				   label = tr(Lang, ?T("Jabber ID")),
 				   var = <<"accountjid">>,
 				   required = true}]}};
-get_form(Host, ?NS_ADMINL(<<"get-registered-users-list">>), Lang) ->
-    Values = [jid:encode(jid:make(U, Host))
-              || {U, _} <- ejabberd_auth:get_users(Host)],
-    {result, completed,
-     #xdata{type = form,
-	    fields = [?HFIELD(),
-		      #xdata_field{type = 'jid-multi',
-				   label = tr(Lang, ?T("The list of all users")),
-				   var = <<"registereduserjids">>,
-				   values = Values}]}};
 get_form(Host,
 	 ?NS_ADMINL(<<"get-registered-users-num">>), Lang) ->
     Num = integer_to_binary(ejabberd_auth:count_users(Host)),
@@ -1054,6 +1169,68 @@ get_form(Host,
 				   label = tr(Lang, ?T("Number of registered users")),
 				   var = <<"registeredusersnum">>,
 				   values = [Num]}]}};
+get_form(Host,
+	 ?NS_ADMINL(<<"get-disabled-users-num">>), Lang) ->
+    Num = integer_to_binary(mod_admin_extra:count_banned(Host)),
+    {result, completed,
+     #xdata{type = form,
+	    fields = [?HFIELD(),
+		      #xdata_field{type = 'text-single',
+				   label = tr(Lang, ?T("Number of disabled users")),
+				   var = <<"disabledusersnum">>,
+				   values = [Num]}]}};
+get_form(Host, ?NS_ADMINL(<<"get-online-users-num">>),
+	 Lang) ->
+    Num = integer_to_binary(ejabberd_sm:get_vh_session_number(Host)),
+    {result, completed,
+     #xdata{type = form,
+	    fields = [?HFIELD(),
+		      #xdata_field{type = 'text-single',
+				   label = tr(Lang, ?T("Number of online users")),
+				   var = <<"onlineusersnum">>,
+				   values = [Num]}]}};
+get_form(Host, ?NS_ADMINL(<<"get-active-users-num">>),
+	 Lang) ->
+    Num = integer_to_binary(mod_admin_extra:status_num(Host, [<<"available">>,
+                                                              <<"chat">>,
+                                                              <<"dnd">>])),
+    {result, completed,
+     #xdata{type = form,
+	    fields = [?HFIELD(),
+		      #xdata_field{type = 'text-single',
+				   label = tr(Lang, ?T("Number of active users")),
+				   var = <<"activeusersnum">>,
+				   values = [Num]}]}};
+get_form(Host, ?NS_ADMINL(<<"get-idle-users-num">>),
+	 Lang) ->
+    Num = integer_to_binary(mod_admin_extra:status_num(Host, [<<"away">>,
+                                                              <<"xa">>])),
+    {result, completed,
+     #xdata{type = form,
+	    fields = [?HFIELD(),
+		      #xdata_field{type = 'text-single',
+				   label = tr(Lang, ?T("Number of idle users")),
+				   var = <<"idleusersnum">>,
+				   values = [Num]}]}};
+get_form(Host, ?NS_ADMINL(<<"get-registered-users-list">>), Lang) ->
+    Values = [jid:encode(jid:make(U, Host))
+              || {U, _} <- ejabberd_auth:get_users(Host)],
+    {result, completed,
+     #xdata{type = form,
+	    fields = [?HFIELD(),
+		      #xdata_field{type = 'jid-multi',
+				   label = tr(Lang, ?T("The list of all users")),
+				   var = <<"registereduserjids">>,
+				   values = Values}]}};
+get_form(Host, ?NS_ADMINL(<<"get-disabled-users-list">>), Lang) ->
+    Values = mod_admin_extra:list_banned(Host),
+    {result, completed,
+     #xdata{type = form,
+	    fields = [?HFIELD(),
+		      #xdata_field{type = 'jid-multi',
+				   label = tr(Lang, ?T("The list of all disabled users")),
+				   var = <<"disableduserjids">>,
+				   values = Values}]}};
 get_form(Host, ?NS_ADMINL(<<"get-online-users-list">>), Lang) ->
     Accounts = [jid:encode(jid:make(U, Host))
               || {U, _, _} <- ejabberd_sm:get_vh_session_list(Host)],
@@ -1065,16 +1242,36 @@ get_form(Host, ?NS_ADMINL(<<"get-online-users-list">>), Lang) ->
 				   label = tr(Lang, ?T("The list of all online users")),
 				   var = <<"onlineuserjids">>,
 				   values = Values}]}};
-get_form(Host, ?NS_ADMINL(<<"get-online-users-num">>),
-	 Lang) ->
-    Num = integer_to_binary(ejabberd_sm:get_vh_session_number(Host)),
+get_form(Host, ?NS_ADMINL(<<"get-active-users">>), Lang) ->
+    RR = mod_admin_extra:status_list(Host, [<<"available">>, <<"chat">>, <<"dnd">>]),
+    Accounts = [jid:encode(jid:make(U, S))
+              || {U, S, _Resource, _Priority, _StatusText} <- RR],
+    Values = lists:usort(Accounts),
     {result, completed,
      #xdata{type = form,
 	    fields = [?HFIELD(),
-		      #xdata_field{type = 'text-single',
-				   label = tr(Lang, ?T("Number of online users")),
-				   var = <<"onlineusersnum">>,
-				   values = [Num]}]}};
+		      #xdata_field{type = 'jid-multi',
+				   label = tr(Lang, ?T("The list of all active users")),
+				   var = <<"activeuserjids">>,
+				   values = Values}]}};
+get_form(Host, ?NS_ADMINL(<<"get-idle-users">>), Lang) ->
+    RR = mod_admin_extra:status_list(Host, [<<"away">>, <<"xa">>]),
+    Accounts = [jid:encode(jid:make(U, S))
+              || {U, S, _Resource, _Priority, _StatusText} <- RR],
+    Values = lists:usort(Accounts),
+    {result, completed,
+     #xdata{type = form,
+	    fields = [?HFIELD(),
+		      #xdata_field{type = 'jid-multi',
+				   label = tr(Lang, ?T("The list of all idle users")),
+				   var = <<"idleuserjids">>,
+				   values = Values}]}};
+get_form(Host, ?NS_ADMINL(<<"restart">>), Lang) ->
+    get_form(Host,
+	 [<<"running nodes">>, misc:atom_to_binary(node()), <<"restart">>], Lang);
+get_form(Host, ?NS_ADMINL(<<"shutdown">>), Lang) ->
+    get_form(Host,
+	 [<<"running nodes">>, misc:atom_to_binary(node()), <<"shutdown">>], Lang);
 get_form(_Host, _, _Lang) ->
     {error, xmpp:err_service_unavailable()}.
 
@@ -1268,7 +1465,7 @@ set_form(From, Host, ?NS_ADMINL(<<"add-user">>), _Lang,
     Server = AccountJID#jid.lserver,
     true = lists:member(Server, ejabberd_option:hosts()),
     true = Server == Host orelse
-	     get_permission_level(From) == global,
+	     get_permission_level(From, Host) == global,
     case ejabberd_auth:try_register(User, Server, Password) of
 	ok -> {result, undefined};
 	{error, exists} -> {error, xmpp:err_conflict()};
@@ -1284,12 +1481,48 @@ set_form(From, Host, ?NS_ADMINL(<<"delete-user">>),
 			     User = JID#jid.luser,
 			     Server = JID#jid.lserver,
 			     true = Server == Host orelse
-				      get_permission_level(From) == global,
+				      get_permission_level(From, Host) == global,
 			     true = ejabberd_auth:user_exists(User, Server),
 			     {User, Server}
 		     end,
 		     AccountStringList),
     [ejabberd_auth:remove_user(User, Server)
+     || {User, Server} <- ASL2],
+    {result, undefined};
+set_form(From, Host, ?NS_ADMINL(<<"disable-user">>),
+	 _Lang, XData) ->
+    AccountStringList = get_values(<<"accountjids">>,
+				   XData),
+    [_ | _] = AccountStringList,
+    ASL2 = lists:map(fun (AccountString) ->
+			     JID = jid:decode(AccountString),
+			     User = JID#jid.luser,
+			     Server = JID#jid.lserver,
+			     true = Server == Host orelse
+				      get_permission_level(From, Host) == global,
+			     true = ejabberd_auth:user_exists(User, Server),
+			     {User, Server}
+		     end,
+		     AccountStringList),
+    [mod_admin_extra:ban_account_v2(User, Server, <<"">>)
+     || {User, Server} <- ASL2],
+    {result, undefined};
+set_form(From, Host, ?NS_ADMINL(<<"reenable-user">>),
+	 _Lang, XData) ->
+    AccountStringList = get_values(<<"accountjids">>,
+				   XData),
+    [_ | _] = AccountStringList,
+    ASL2 = lists:map(fun (AccountString) ->
+			     JID = jid:decode(AccountString),
+			     User = JID#jid.luser,
+			     Server = JID#jid.lserver,
+			     true = Server == Host orelse
+				      get_permission_level(From, Host) == global,
+			     true = ejabberd_auth:user_exists(User, Server),
+			     {User, Server}
+		     end,
+		     AccountStringList),
+    [mod_admin_extra:unban_account(User, Server)
      || {User, Server} <- ASL2],
     {result, undefined};
 set_form(From, Host, ?NS_ADMINL(<<"end-user-session">>),
@@ -1298,7 +1531,7 @@ set_form(From, Host, ?NS_ADMINL(<<"end-user-session">>),
     JID = jid:decode(AccountString),
     LServer = JID#jid.lserver,
     true = LServer == Host orelse
-	     get_permission_level(From) == global,
+	     get_permission_level(From, Host) == global,
     case JID#jid.lresource of
 	<<>> ->
 	    ejabberd_sm:kick_user(JID#jid.luser, JID#jid.lserver);
@@ -1314,10 +1547,35 @@ set_form(From, Host,
     User = JID#jid.luser,
     Server = JID#jid.lserver,
     true = Server == Host orelse
-	     get_permission_level(From) == global,
+	     get_permission_level(From, Host) == global,
     true = ejabberd_auth:user_exists(User, Server),
     ejabberd_auth:set_password(User, Server, Password),
     {result, undefined};
+set_form(From, Host,
+	 ?NS_ADMINL(<<"get-user-roster">>), Lang, XData) ->
+    AccountStringList = get_values(<<"accountjids">>,
+				   XData),
+    [_ | _] = AccountStringList,
+    ASL2 = lists:map(fun (AccountString) ->
+			     JID = jid:decode(AccountString),
+			     User = JID#jid.luser,
+			     Server = JID#jid.lserver,
+			     true = Server == Host orelse
+				      get_permission_level(From, Host) == global,
+			     true = ejabberd_auth:user_exists(User, Server),
+			     {User, Server}
+		     end,
+		     AccountStringList),
+    Contacts = [mod_admin_extra:get_roster(User, Server) || {User, Server} <- ASL2],
+    Jids = [lists:join(<<"; ">>, [Jid, Name, Subscription, lists:join(<<", ">>, Groups)])
+            || {Jid, Name, Subscription, _, Groups} <- lists:flatten(Contacts)],
+    {result,
+     #xdata{type = result,
+	    fields = [?HFIELD(),
+		      ?XMFIELD('jid-multi', ?T("Jabber ID"),
+			      <<"accountjids">>, AccountStringList),
+		      ?XMFIELD('text-multi', ?T("Contacts"),
+			       <<"contacts">>, Jids)]}};
 set_form(From, Host,
 	 ?NS_ADMINL(<<"get-user-lastlogin">>), Lang, XData) ->
     AccountString = get_value(<<"accountjid">>, XData),
@@ -1325,7 +1583,7 @@ set_form(From, Host,
     User = JID#jid.luser,
     Server = JID#jid.lserver,
     true = Server == Host orelse
-	     get_permission_level(From) == global,
+	     get_permission_level(From, Host) == global,
     FLast = case ejabberd_sm:get_user_resources(User,
 						Server)
 		of
@@ -1344,7 +1602,7 @@ set_form(From, Host,
 	      _ -> tr(Lang, ?T("Online"))
 	    end,
     {result,
-     #xdata{type = form,
+     #xdata{type = result,
 	    fields = [?HFIELD(),
 		      ?XFIELD('jid-single', ?T("Jabber ID"),
 			      <<"accountjid">>, AccountString),
@@ -1357,7 +1615,7 @@ set_form(From, Host, ?NS_ADMINL(<<"user-stats">>), Lang,
     User = JID#jid.luser,
     Server = JID#jid.lserver,
     true = Server == Host orelse
-	     get_permission_level(From) == global,
+	     get_permission_level(From, Host) == global,
     Resources = ejabberd_sm:get_user_resources(User,
 					       Server),
     IPs1 = [ejabberd_sm:get_user_ip(User, Server, Resource)
@@ -1369,7 +1627,7 @@ set_form(From, Host, ?NS_ADMINL(<<"user-stats">>), Lang,
 				    [{User, Server}]),
     Rostersize = integer_to_binary(erlang:length(Items)),
     {result,
-     #xdata{type = form,
+     #xdata{type = result,
 	    fields = [?HFIELD(),
 		      ?XFIELD('jid-single', ?T("Jabber ID"),
 			      <<"accountjid">>, AccountString),
@@ -1379,6 +1637,14 @@ set_form(From, Host, ?NS_ADMINL(<<"user-stats">>), Lang,
 			       <<"ipaddresses">>, IPs),
 		      ?XMFIELD('text-multi', ?T("Resources"),
 			       <<"onlineresources">>, Resources)]}};
+set_form(From, Host, ?NS_ADMINL(<<"restart">>), Lang,
+	 XData) ->
+    set_form(From, Host,
+	 [<<"running nodes">>, misc:atom_to_binary(node()), <<"restart">>], Lang, XData);
+set_form(From, Host, ?NS_ADMINL(<<"shutdown">>), Lang,
+	 XData) ->
+    set_form(From, Host,
+	 [<<"running nodes">>, misc:atom_to_binary(node()), <<"shutdown">>], Lang, XData);
 set_form(_From, _Host, _, _Lang, _XData) ->
     {error, xmpp:err_service_unavailable()}.
 
@@ -1448,7 +1714,7 @@ adhoc_sm_commands(_Acc, From,
 		  #jid{user = User, server = Server, lserver = LServer},
 		  #adhoc_command{lang = Lang, node = <<"config">>,
 				 action = Action, xdata = XData} = Request) ->
-    case acl:match_rule(LServer, configure, From) of
+    case acl_match_rule(LServer, From) of
 	deny ->
 	    {error, xmpp:err_forbidden(?T("Access denied by service policy"), Lang)};
 	allow ->
@@ -1530,12 +1796,108 @@ set_sm_form(_User, _Server, _Node, _Request) ->
 tr(Lang, Text) ->
     translate:translate(Lang, Text).
 
-mod_options(_) -> [].
+-spec mod_opt_type(atom()) -> econf:validator().
+mod_opt_type(access) ->
+    econf:acl().
+
+-spec mod_options(binary()) -> [{services, [tuple()]} | {atom(), any()}].
+mod_options(_Host) ->
+    [{access, configure}].
+
+%% All ad-hoc commands implemented by mod_configure are available as API Commands:
+%% - add-user                  -> register
+%% - delete-user               -> unregister
+%% - disable-user              -> ban_account
+%% - reenable-user             -> unban_account
+%% - end-user-session          -> kick_session / kick_user
+%% - change-user-password      -> change_password
+%% - get-user-lastlogin        -> get_last
+%% - get-user-roster           -> get_roster
+%% - get-user-lastlogin        -> get_last
+%% - user-stats                -> user_sessions_info
+%% - edit-blacklist            -> not ad-hoc or API command available !!!
+%% - edit-whitelist            -> not ad-hoc or API command available !!!
+%% - get-registered-users-num  -> stats
+%% - get-disabled-users-num    -> count_banned
+%% - get-online-users-num      -> stats
+%% - get-active-users-num      -> status_num
+%% - get-idle-users-num        -> status_num
+%% - get-registered-users-list -> registered_users
+%% - get-disabled-users-list   -> list_banned
+%% - get-online-users-list     -> connected_users
+%% - get-active-users          -> status_list
+%% - get-idle-users            -> status_list
+%% - stopped nodes             -> list_cluster_detailed
+%% - DB                        -> mnesia_list_tables and mnesia_table_change_storage
+%% - edit-admin                -> not ad-hoc or API command available !!!
+%% - restart                   -> restart_kindly
+%% - shutdown                  -> stop_kindly
+%% - backup                    -> backup
+%% - restore                   -> restore
+%% - textfile                  -> dump
+%% - import/file               -> import_file
+%% - import/dir                -> import_dir
+
+%%
+%% An exclusive feature available only in this module is to list items and discover them:
+%% - outgoing s2s
+%% - online users
+%% - all users
 
 mod_doc() ->
     #{desc =>
-          ?T("The module provides server configuration functionality via "
-             "https://xmpp.org/extensions/xep-0050.html[XEP-0050: Ad-Hoc Commands]. "
-             "Implements many commands as defined in "
-             "https://xmpp.org/extensions/xep-0133.html[XEP-0133: Service Administration]. "
-             "This module requires _`mod_adhoc`_ to be loaded.")}.
+          [?T("The module provides server configuration functionalities using "
+              "https://xmpp.org/extensions/xep-0030.html[XEP-0030: Service Discovery] and "
+              "https://xmpp.org/extensions/xep-0050.html[XEP-0050: Ad-Hoc Commands]:"),
+           "",
+           "- List and discover outgoing s2s, online client sessions and all registered accounts",
+           "- Most of the ad-hoc commands defined in "
+           "  https://xmpp.org/extensions/xep-0133.html[XEP-0133: Service Administration]",
+           "- Additional custom ad-hoc commands specific to ejabberd",
+           "",
+           ?T("Ad-hoc commands from XEP-0133 that behave differently to the XEP:"),
+           "",
+           " - `get-user-roster`: returns standard fields instead of roster items that client cannot display",
+           "",
+           ?T("Those ad-hoc commands from XEP-0133 do not include in the response "
+              "the client that executed the command:"),
+           "",
+           " - `get-active-users-num`",
+           " - `get-idle-users-num`",
+           " - `get-active-users`",
+           " - `get-idle-users`",
+           "",
+           ?T("Those ad-hoc commands from XEP-0133 are not implemented:"),
+           "",
+           " - `edit-blacklist`",
+           " - `edit-whitelist`",
+           " - `edit-admin`",
+           "",
+           ?T("This module requires _`mod_adhoc`_ (to execute the commands), "
+              "and recommends _`mod_disco`_ (to discover the commands). "),
+           "",
+           ?T("Please notice that all the ad-hoc commands implemented by this module "
+              "have an equivalent "
+              "https://docs.ejabberd.im/developer/ejabberd-api/[API Command] "
+              "that you can execute using _`mod_adhoc_api`_ or any other API frontend.")],
+      note => "improved in 25.10",
+      opts =>
+          [{access,
+            #{value => ?T("AccessName"),
+              note => "added in 25.03",
+              desc =>
+                  ?T("This option defines which access rule will be used to "
+                     "control who is allowed to access the features provided by this module. "
+                     "The default value is 'configure'.")}}],
+      example =>
+          ["acl:",
+           "  admin:",
+           "    user: sun@localhost",
+           "",
+           "access_rules:",
+           "  configure:",
+           "    allow: admin",
+           "",
+           "modules:",
+           "  mod_configure:",
+           "    access: configure"]}.

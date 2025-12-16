@@ -1,3 +1,465 @@
+## Version 25.10
+
+#### Ad-hoc Commands
+
+- `mod_configure`: New ad-hoc commands that were missing from XEP-0133
+- `mod_adhoc_api`: Add support for asynchronous command calling
+- `mod_adhoc_api`: If argument is a list of jids, type is `jid-multi`
+- `mod_adhoc_api`: If field has several values, type is `text-multi`
+
+#### API Commands
+
+- Add commands argument type `binary_or_list`
+- `mod_http_api`: Format sub elements for tuples from maps
+- `mod_admin_extra`: Improve roster API commands documentation
+- `mod_announce`: New API commands, reusing existing ad-hoc functions
+- `ejabberd_admin`: New API command `restart_kindly`, improve `stop_kindly`
+- `mod_admin_extra`: New API commands `list_banned` and `count_banned`
+- `mod_admin_extra`: Improve API command `status_list`: support for status to be a list
+- `mod_muc_admin`: New API commands `muc_get_registered_nick` and nicks ([#4468](https://github.com/processone/ejabberd/issues/4468))
+- Use `mod_private:del_data` in `unban_account` API command
+
+#### Configuration
+
+- Rename `New` SQL schema to `Multihost`, and `Default` to `Singlehost` ([#4456](https://github.com/processone/ejabberd/issues/4456))
+- Add config transformer from `use_new_schema` -> `sql_multihost_schema`
+- `mod_sip`: Fix problem parsing `via` in `yconf` library ([#4444](https://github.com/processone/ejabberd/issues/4444))
+
+#### Erlang/OTP support
+
+- Enable feature `maybe_expr` in the compiler for Erlang/OTP 26 ([#4459](https://github.com/processone/ejabberd/issues/4459))
+- Enable feature `maybe_expr` also in the runtime for Erlang/OTP 25
+- Runtime: Remove Erlang 24 which won't work anymore with `maybe_expr`
+- Remove `EX_RULE` and `EX_STACK` macros only used with ancient erlang
+
+#### GitHub Workflows
+
+- CI: Bump XMPP-Interop-Testing/xmpp-interop-tests-action ([#4469](https://github.com/processone/ejabberd/issues/4469))
+- CI: Don't care to include commit details in the CT logs HTML page
+- CI and Runtime: Reorganize steps to run in parallel, and ARM runner ([#4460](https://github.com/processone/ejabberd/issues/4460))
+- Add local composite actions to manage ejabberd and databases
+- Container: Build ARM in native runner instead of QEMU, merge and clean
+- Installers: Generate ARM installers in native runner
+- Tests: Run agnostic-database tests only once, not for every backend
+- Tests: The odbc backend is not actually used in Commont Tests
+- Weekly: New workflow that condenses CI, test all erlang without caching
+
+#### Installers and Container
+
+- Bump Erlang/OTP version to 27.3.4.3 in installers and container
+- Bump Expat 2.7.3, OpenSSL 3.5.4, unixODBC 2.3.14 in installers
+
+#### MUC
+
+- `mod_mam`: New option `archive_muc_as_mucsub`
+- `mod_muc`: Check if room is hibernated before calling mod_muc process
+- `mod_muc`: Update implementation of XEP-0317 Hats to version 0.3.1 ([#4380](https://github.com/processone/ejabberd/issues/4380))
+- `mod_muc`: Make mod_muc_sql properly handle new hats data ([#4380](https://github.com/processone/ejabberd/issues/4380))
+- `mod_muc_room`: Don't require password if user is owner of room
+- `mod_muc_admin`: Use in WebAdmin the new API commands that get nick registers
+
+#### Core and Modules
+
+- `ejabberd_http_ws`: Pass HTTP headers from WS to C2S connection ([#4471](https://github.com/processone/ejabberd/issues/4471))
+- `ejabberd_listener`: Properly pass `send_timeout` option to listener sockets
+- `ejabberdctl`: When ping returns pang, return also status code 1 ([#4327](https://github.com/processone/ejabberd/issues/4327))
+- `ext_mod`: Print module status message after installation
+- `misc`: json_encode should always call json with our filter
+- `mod_admin_update_sql`: Use same index name than when creating database
+- `mod_block_strangers`: Clarify `access` and `captcha` documentation ([#4221](https://github.com/processone/ejabberd/issues/4221))
+- `mod_http_upload`: Encode URL before parsing, as done before `bba1a1e3c` ([#4450](https://github.com/processone/ejabberd/issues/4450))
+- `mod_private`: Add `del_data/3`, `get_users_with_data/2`, `count_users_with_data/2`
+- `mod_pubsub`: Don't catch `exit:{aborted, _}` inside mnesia transactions
+- `mod_push`: Run new hook `push_send_notification` ([#4383](https://github.com/processone/ejabberd/issues/4383))
+- WebAdmin: Respect newline and whitespace characters in results
+
+## Version 25.08
+
+#### API Commands
+
+- `ban_account`: Run `sm_kick_user` event when kicking account ([#4415](https://github.com/processone/ejabberd/issues/4415))
+- `ban_account`: No need to change password ([#4415](https://github.com/processone/ejabberd/issues/4415))
+- `mnesia_change`: New command in `ejabberdctl` script that helps changing the mnesia node name
+
+#### Configuration
+
+- Rename `auth_password_types_hidden_in_scram1` option to `auth_password_types_hidden_in_sasl1`
+- `econf`: If a host in configuration is encoded IDNA, decode it ([#3519](https://github.com/processone/ejabberd/issues/3519))
+- `ejabberd_config`: New predefined keyword `HOST_URL_ENCODE`
+- `ejabberd.yml.example`: Use `HOST_URL_ENCODE` to handle case when vhost is non-latin1
+- `mod_conversejs`: Add option `conversejs_plugins` ([#4413](https://github.com/processone/ejabberd/issues/4413))
+- `mod_matrix_gw`: Add `leave_timeout` option ([#4386](https://github.com/processone/ejabberd/issues/4386))
+
+#### Documentation and Tests
+
+- `COMPILE.md`: Mention dependencies and add link to Docs ([#4431](https://github.com/processone/ejabberd/issues/4431))
+- `ejabberd_doc`: Document commands tags for modules
+- CI: bump XMPP-Interop-Testing/xmpp-interop-tests-action ([#4425](https://github.com/processone/ejabberd/issues/4425))
+- Runtime: Raise the minimum Erlang tested to Erlang/OTP 24
+
+#### Installers and Container
+
+- Bump Erlang/OTP version to 27.3.4.2
+- Bump OpenSSL version to 3.5.2
+- `make-binaries`: Disable Linux-PAM's `logind` support
+
+#### Core and Modules
+
+- Bump `p1_acme` to fix `'AttributePKCS-10'` and OTP 28 ([processone/p1_acme#4](https://github.com/processone/p1_acme/issues/4))
+- Prevent loops in `xml_compress:decode` with corrupted data
+- `ejabberd_auth_mnesia`: Fix issue with filtering duplicates in `get_users()`
+- `ejabberd_listener`: Add secret in temporary unix domain socket path ([#4422](https://github.com/processone/ejabberd/issues/4422))
+- `ejabberd_listener`: Log error when cannot set definitive unix socket ([#4422](https://github.com/processone/ejabberd/issues/4422))
+- `ejabberd_listener`: Try to create provisional socket in final directory ([#4422](https://github.com/processone/ejabberd/issues/4422))
+- `ejabberd_logger`: Print log lines colorized in console when using rebar3
+- `mod_conversejs`: Ensure assets_path ends in `/` as required by Converse ([#4414](https://github.com/processone/ejabberd/issues/4414))
+- `mod_conversejs`: Ensure plugins URL is separated with `/` ([#4413](https://github.com/processone/ejabberd/issues/4413))
+- `mod_http_upload`: Encode URLs into IDNA when showing to XMPP client ([#3519](https://github.com/processone/ejabberd/issues/3519))
+- `mod_matrix_gw`: Add support for null values in `is_canonical_json` ([#4421](https://github.com/processone/ejabberd/issues/4421))
+- `mod_matrix_gw`: Don't send empty direct Matrix messages ([#4420](https://github.com/processone/ejabberd/issues/4420))
+- `mod_matrix_gw`: Matrix gateway updates
+- `mod_muc`: Report db failures when restoring rooms
+- `mod_muc`: Unsubscribe users from members-only rooms when expelled ([#4412](https://github.com/processone/ejabberd/issues/4412))
+- `mod_providers`: New module to serve easily XMPP Providers files
+- `mod_register`: Don't duplicate welcome subject and message
+- `mod_scram_upgrade`: Fix format of passwords updates
+- `mod_scram_upgrade`: Only offer upgrades to methods that aren't already stored
+
+## Version 25.07
+
+#### Security fix
+
+- `ext_mod`: Add temporary workaround for zip including absolute path
+
+#### Compilation
+
+- Raise the minimum Elixir tested version to 1.14.0 ([#4281](https://github.com/processone/ejabberd/issues/4281))
+- Raise Erlang/OTP minimum requirement to 25.0 ([#4281](https://github.com/processone/ejabberd/issues/4281))
+- `configure.ac`: Allow to specify minimal erlang version using `--with-min-erlang`
+- `Makefile.in`: Add target `test-<group>`
+- `rebar3-format.sh`: Replace csplit with perl
+- Container: Bump Erlang/OTP 27.3.4.1, Elixir 1.18.4
+- Installers: Bump Erlang/OTP 27.3.4.1, Elixir 1.18.4, libexpat 2.7.1, OpenSSL 3.5.1
+
+#### Configuration and Tests
+
+- Add `rest_proxy*` options to configure proxy used by rest module
+- `ejabberd_c2s`: Add `auth_password_types_hidden_in_scram1` option
+- `ejabberd_http`: Remove unused `default_host` option and state element
+- `ejabberd_http`: New option `hosts_alias` and function `resolve_host_alias/1` ([#4400](https://github.com/processone/ejabberd/issues/4400))
+- New predefined keywords: `CONFIG_PATH` and `LOG_PATH`
+- Fix macro used in string options when defined in env var
+- Use auxiliary function to get `$HOME`, use Mnesia directory when not set ([#4402](https://github.com/processone/ejabberd/issues/4402))
+- `ejabberd_config`: Better `lists:uniq` substitute
+- Tests: update readme and compose to work with current sw versions
+- Update Elvis to 4.1.1, fix some warnings and enable their tests
+
+#### Erlang/OTP 28 support
+
+- Add workaround in `p1_acme` for Jose 1.11.10 not supporting OTP 28 `ecPrivkeyVer1` ([#4393](https://github.com/processone/ejabberd/issues/4393))
+- Bump `fast_xml` and `xmpp` for improved Erlang/OTP 28 support
+- Bump `xmpp` and `p1_acme` patched with Erlang/OTP 28 support
+- Fix `make options` in Erlang/OTP 28 ([#4352](https://github.com/processone/ejabberd/issues/4352))
+- Fix crash in `rebar3 cover` with Erlang/OTP 28 ([#4353](https://github.com/processone/ejabberd/issues/4353))
+- Rebar/Rebar3: Update binaries to work with Erlang/OTP 25-28 ([#4354](https://github.com/processone/ejabberd/issues/4354))
+- CI and Runtime: Add Erlang/OTP 28 to the versions matrix
+
+#### SQL
+
+- Fix mnesia to sql exporter after changes to auth tables
+- Update code for switching to new schema type to users table changes
+- Add mssql specific implementation of `delete_old_mam_messages`
+- Make `delete_old_mam_messages_batch` work with sqlite
+- `ejabberd_sm_sql`: Use misc:encode_pid/1
+- `mysql.sql`: Fix typo in commit 7862c6a when creating users table
+- `pg.sql`: Fix missing comma in postgres schema ([#4409](https://github.com/processone/ejabberd/issues/4409))
+
+#### Core and Modules
+
+- `ejabberd_s2s_in`: Allow S2S connections to accept client certificates that have only server purpose ([#4392](https://github.com/processone/ejabberd/issues/4392))
+- `ext_mod`: Recommend to write README.md instead txt (processone/ejabberd-contrib#363)
+- `ext_mod`: Support library path installed from Debian (processone/ejabberd-contrib#363)
+- `ext_mod`: When upgrading module, clean also the compiled directories
+- `gen_mod`: Add support to prepare module stopping before actually stopping any module
+- `mod_antispam`: Imported from ejabberd-contrib and improved ([#4373](https://github.com/processone/ejabberd/issues/4373))
+- `mod_auth_fast`: Clear tokens on kick, change pass and unregister ([#4397](https://github.com/processone/ejabberd/issues/4397))([#4398](https://github.com/processone/ejabberd/issues/4398))([#4399](https://github.com/processone/ejabberd/issues/4399))
+- `mod_conversejs`: Add link in WebAdmin to local Converse if configured
+- `mod_mam`: Present mam full text search in xep-431 compatible way
+- `mod_mam_mnesia`: Handle objects that don't need conversion in `transform/0`
+- `mod_matrix_gw`: Don't send empty messages in Matrix rooms ([#4385](https://github.com/processone/ejabberd/issues/4385))
+- `mod_matrix_gw`: Support older Matrix rooms versions starting from version 4
+- `mod_matrix_gw`: When encoding JSON, handle term that is key-value list ([#4379](https://github.com/processone/ejabberd/issues/4379))
+- `mod_matrix_gw_s2s`: Fix key validation in `check_signature`
+- `mod_mix` and `mod_muc_rtbl`: Support list of IDs in `pubsub-items-retract` (processone/xmpp#100)
+- `mod_pubsub_serverinfo`: Imported module from ejabberd-contrib ([#4408](https://github.com/processone/ejabberd/issues/4408))
+- `mod_register`: Normalize username when determining if user want to change pass
+- `mod_register`: Strip query data when returning errors
+- WebAdmin: New hooks `webadmin_menu_system` to add items to system menu
+
+## Version 25.04
+
+#### Security fixes
+- Fixes issue with handling of user provided occupant-id in messages and presences sent to muc room. Server was replacing
+  just first instance of occupant-id with its own version, leaving other ones untouched. That would mean that depending
+  on order in which clients send occupant-id, they could see value provided by sender, and that could be used to spoof
+  as different sender.
+
+#### Commands API
+- `kick_users`: New command to kick all logged users for a given host
+
+#### Bugfixes
+- Fix issue with sql schema auto upgrade when using `sqlite` database
+- Fix problem with container update, that could ignore previous data stored in `mnesia` database
+- Revert limit of allowed characters in shared roster group names, that will again allow using symbols like `:`
+
+## Version 25.03
+
+#### Commands API
+- `ejabberdctl`: New option `CTL_OVER_HTTP` ([#4340](https://github.com/processone/ejabberd/issues/4340))
+- `ejabberd_web_admin`: Support commands with tuple arguments
+- `mod_adhoc_api`: New module to execute API Commands using Ad-Hoc Commands ([#4357](https://github.com/processone/ejabberd/issues/4357))
+- `mod_http_api`: Sort list elements in a command result
+- Show warning when registering command with an existing name
+- Fix commands unregistration
+- `change_room_option`: Add forgotten support to set `enable_hats` room option
+- `change_room_option`: Verify room option value before setting it ([#4337](https://github.com/processone/ejabberd/issues/4337))
+- `create_room_with_opts`: Recommend using `;` and `=` separators
+- `list_cluster_detailed`: Fix crash when a node is down
+- `mnesia_list_tables`: Allow using this internal command
+- `mnesia_table_change_storage`: Allow using this internal command
+- `status`: Separate command result with newline
+- `update_sql`: Fix updating tables created by ejabberd internally
+- `update_sql`: Fix MySQL support
+
+#### Configuration
+- `acl`: Fix bug matching the acl `shared_group: NAME`
+- `define_keyword`: New option to define keywords ([#4350](https://github.com/processone/ejabberd/issues/4350))
+- `define_macro`: Add option to `globals()` because it's useless inside `host_config`
+- `ejabberd.yml.example`: Enable `mod_muc_occupantid` by default
+- Add support to use keywords in toplevel, listener and modules
+- Show warning also when deprecated listener option is set as disabled ([#4345](https://github.com/processone/ejabberd/issues/4345))
+
+#### Container
+- Bump versions to Erlang/OTP 27.3 and Elixir 1.18.3
+- Add `ERL_FLAGS` to compile elixir on qemu cross-platform
+- Copy files to stable path, add ecs backwards compatibility
+- Fix warning about relative workdir
+- Improve entrypoint script: register account, or set random
+- Link path to Mnesia spool dir for backwards compatibility
+- Place `sockets/` outside `database/`
+- Use again direct METHOD, qemu got fixed ([#4280](https://github.com/processone/ejabberd/issues/4280))
+- `ejabberd.yml.example`: Copy main example configuration file
+- `ejabberd.yml.example`: Define and use macros in the default configuration file
+- `ejabberd.yml.example`: Enable `CTL_OVER_HTTP` by default
+- `ejabberd.yml.example`: Listen for webadmin in a port number lower than any other
+- `ejabberdapi`: Compile during build
+- `CONTAINER.md`: Include documentation for ecs container image
+
+#### Core and Modules
+- `ejabberd_auth`: Add support for `auth_stored_password_types`
+- `ejabberd_router`: Don't rewrite "self-addressed" privileged IQs as results ([#4348](https://github.com/processone/ejabberd/issues/4348))
+- `misc`: Fix json version of `json_encode_with_kv_list` for nested kv lists ([#4338](https://github.com/processone/ejabberd/issues/4338))
+- OAuth: Fix crashes when oauth is feed with invalid jid ([#4355](https://github.com/processone/ejabberd/issues/4355))
+- PubSub: Bubble up db errors in `nodetree_tree_sql:set_node`
+- `mod_configure`: Add option `access` to let configure the access name
+- `mod_mix_pam`: Remove `Channels` roster group of mix channels ([#4297](https://github.com/processone/ejabberd/issues/4297))
+- `mod_muc`: Document MUC room option vcard_xupdate
+- `mod_privilege`: Accept non-privileged IQs from privileged components ([#4341](https://github.com/processone/ejabberd/issues/4341))
+- `mod_private`: Improve exception handling
+- `mod_private`: Don't warn on conversion errors
+- `mod_private`: Handle invalid PEP-native bookmarks
+- `mod_private`: Don't crash on invalid bookmarks
+- `mod_s2s_bidi`: Stop processing other handlers in s2s_in_handle_info ([#4344](https://github.com/processone/ejabberd/issues/4344))
+- `mod_s2s_bidi`: Fix issue with wrong namespace
+
+#### Dependencies
+- `ex_doc`: Bump to 0.37.2
+- `stringprep`: Bump to 1.0.31
+- `provider_asn1`: Bump to 0.4.1
+- `xmpp` Bump to bring fix for ssdp hash calculation
+- `xmpp` Bump to get support for webchat_url ([#3041](https://github.com/processone/ejabberd/issues/3041))
+- `xmpp` Bump to get XEP-0317 Hats namespaces version 0.2.0
+- `xmpp` Bump to bring SSDP to XEP version 0.4
+- `yconf` Bump to support macro inside string
+
+#### Development and Testing
+- `mix.exs`: Keep debug info when building `dev` release
+- `mix.exs`: The `ex_doc` dependency is only relevant for the `edoc` Mix environment
+- `ext_mod`: add `$libdir/include` to include path
+- `ext_mod`: fix greedy include path ([#4359](https://github.com/processone/ejabberd/issues/4359))
+- `gen_mod`: Support registering commands and `hook_subscribe` in `start/2` result
+- `c2s_handle_bind`: New event in `ejabberd_c2s` ([#4356](https://github.com/processone/ejabberd/issues/4356))
+- `muc_disco_info_extras`: New event `mod_muc_room` useful for `mod_muc_webchat_url` ([#3041](https://github.com/processone/ejabberd/issues/3041))
+- VSCode: Fix compiling support
+- Add tests for config features `define_macro` and `define_keyword`
+- Allow test to run using `ct_run`
+- Fixes to handle re-running test after `update_sql`
+- Uninstall `mod_example` when the tests has finished
+
+#### Documentation
+- Add XEPs that are indirectly supported and required by XEP-0479
+- Document that XEP-0474 0.4.0 was recently upgraded
+- Don't use backtick quotes for ejabberd name
+- Fix values allowed in db_type of mod_auth_fast documentation
+- Reword explanation about ACL names and definitions
+- Update moved or broken URLs in documentation
+
+#### Installers
+- Bump Erlang/OTP 27.3 and Elixir 1.18.3
+- Bump OpenSSL 3.4.1
+- Bump crosstool-NG 1.27.0
+- Fix building Termcap and Linux-PAM
+
+#### Matrix Gateway
+- Preserve XMPP message IDs in Matrix rooms
+- Better Matrix room topic and room roles to MUC conversion, support room aliases in invites
+- Add `muc#user` element to presences and an initial empty subject
+- Fix `gen_iq_handler:remove_iq_handler` call
+- Properly handle IQ requests
+- Support Matrix room aliases
+- Fix handling of 3PI events
+
+#### Unix Domain Socket
+- Add support for socket relative path
+- Use `/tmp` for temporary socket, as path is restricted to 107 chars
+- Handle unix socket when logging remote client
+- When stopping listener, delete Unix Domain Socket file
+- `get_auto_url` option: Don't build auto URL if port is unix domain socket ([#4345](https://github.com/processone/ejabberd/issues/4345))
+
+## Version 24.12
+
+#### Miscelanea
+
+- Elixir: support loading Elixir modules for auth ([#4315](https://github.com/processone/ejabberd/issues/4315))
+- Environment variables `EJABBERD_MACRO` to define macros
+- Fix problem starting ejabberd when first host uses SQL, other one mnesia
+- HTTP Websocket: Enable `allow_unencrypted_sasl2` on websockets ([#4323](https://github.com/processone/ejabberd/issues/4323))
+- Relax checks for channels bindings for connections using external encryption
+- Redis: Add support for unix domain socket ([#4318](https://github.com/processone/ejabberd/issues/4318))
+- Redis: Use eredis 1.7.1 from Nordix when using mix/rebar3 and Erlang 21+
+- `mod_auth_fast`: New module with support XEP-0484: Fast Authentication Streamlining Tokens
+- `mod_http_api`: Fix crash when module not enabled (for example, in CT tests)
+- `mod_http_api`: New option `default_version`
+- `mod_muc`: Make rsm handling in disco items, correctly count skipped rooms
+- `mod_offline`: Only delete offline msgs when user has MAM enabled ([#4287](https://github.com/processone/ejabberd/issues/4287))
+- `mod_priviled`: Handle properly roster iq
+- `mod_pubsub`: Send notifications on PEP item retract
+- `mod_s2s_bidi`: Catch extra case in check for s2s bidi element
+- `mod_scram_upgrade`: Don't abort the upgrade
+- `mod_shared_roster`: The name of a new group is lowercased
+- `mod_shared_roster`: Get back support for `groupid@vhost` in `displayed`
+- `mod_stun_disco`: Fix syntax of credentials response
+
+#### Commands API
+
+- Change arguments and result to consistent names (API v3)
+- `create_rooms_file`: Improve to support vhosts with different config
+- `evacuate_kindly`: New command to kick users and prevent login ([#4309](https://github.com/processone/ejabberd/issues/4309))
+- `join_cluster`: Explain that this returns immediately (since 5a34020, 24.06)
+- `mod_muc_admin`: Rename argument `name` to `room` for consistency
+
+#### Documentation
+
+- Fix some documentation syntax, add links to toplevel, modules and API
+- `CONTAINER.md`: Add kubernetes yaml examples to use with podman
+- `SECURITY.md`: Add security policy and reporting guidelines
+- `ejabberd.service`: Disable the systemd watchdog by default
+- `ejabberd.yml.example`: Use non-standard STUN port
+
+#### WebAdmin
+
+- Shared group names are case sensitive, use original case instead of lowercase
+- Use lowercase username and server authentication credentials
+- Fix calculation of node's uptime days
+- Fix link to displayed group when it is from another vhost
+
+## Version 24.10
+
+#### Miscelanea
+
+- `ejabberd_c2s`: Optionally allow unencrypted SASL2
+- `ejabberd_system_monitor`: Handle call by `gen_event:swap_handler` ([#4233](https://github.com/processone/ejabberd/issues/4233))
+- `ejabberd_http_ws`: Remove support for old websocket connection protocol
+- `ejabberd_stun`: Omit `auth_realm` log message
+- `ext_mod`: Handle `info` message when contrib module transfers table ownership
+- `mod_block_strangers`: Add feature announcement to disco-info ([#4039](https://github.com/processone/ejabberd/issues/4039))
+- `mod_mam`: Advertise XEP-0424 feature in server disco-info ([#3340](https://github.com/processone/ejabberd/issues/3340))
+- `mod_muc_admin`: Better handling of malformed jids in `send_direct_invitation` command
+- `mod_muc_rtbl`: Fix call to `gen_server:stop` ([#4260](https://github.com/processone/ejabberd/issues/4260))
+- `mod_privilege`: Support "IQ permission" from XEP-0356 0.4.1 ([#3889](https://github.com/processone/ejabberd/issues/3889))
+- `mod_pubsub`: Don't blindly echo PEP notification
+- `mod_pubsub`: Skip non-delivery errors for local pubsub generated notifications
+- `mod_pubsub`: Fall back to default plugin options
+- `mod_pubsub`: Fix choice of node config defaults
+- `mod_pubsub`: Fix merging of default node options
+- `mod_pubsub`: Fix default node config parsing
+- `mod_register`: Support to block IPs in a vhost using `append_host_config` ([#4038](https://github.com/processone/ejabberd/issues/4038))
+- `mod_s2s_bidi`: Add support for S2S Bidirectional
+- `mod_scram_upgrade`: Add support for SCRAM upgrade tasks
+- `mod_vcard`: Return error stanza when storage doesn't support vcard update ([#4266](https://github.com/processone/ejabberd/issues/4266))
+- `mod_vcard`: Return explicit error stanza when user attempts to modify other's vcard
+- Minor improvements to support `mod_tombstones` (#2456)
+- Update `fast_xml` to use `use_maps` and remove obsolete elixir files
+- Update `fast_tls` and `xmpp` to improve s2s fallback for invalid direct tls connections
+- `make-binaries`: Bump dependency versions: Elixir 1.17.2, OpenSSL 3.3.2, ...
+
+#### Administration
+
+- `ejabberdctl`: If `ERLANG_NODE` lacks host, add hostname ([#4288](https://github.com/processone/ejabberd/issues/4288))
+- `ejabberd_app`: At server start, log Erlang and Elixir versions
+- MySQL: Fix column type in the schema update of `archive` table in schema update
+
+#### Commands API
+
+- `get_mam_count`: New command to get number of archived messages for an account
+- `set_presence`: Return error when session not found
+- `update`: Fix command output
+- Add `mam` and `offline` tags to the related purge commands
+
+#### Code Quality
+
+- Fix warnings about unused macro definitions reported by Erlang LS
+- Fix Elvis report: Fix dollar space syntax
+- Fix Elvis report: Remove spaces in weird places
+- Fix Elvis report: Don't use ignored variables
+- Fix Elvis report: Remove trailing whitespace characters
+- Define the types of options that `opt_type.sh` cannot derive automatically
+- `ejabberd_http_ws`: Fix dialyzer warnings
+- `mod_matrix_gw`: Remove useless option `persist`
+- `mod_privilege`: Replace `try...catch` with a clean alternative
+
+#### Development Help
+
+- `elvis.config`: Fix file syntax, set vim mode, disable many tests
+- `erlang_ls.config`: Let it find paths, update to Erlang 26, enable crossref
+- `hooks_deps`: Hide false-positive warnings about `gen_mod`
+- `Makefile`: Add support for `make elvis` when using rebar3
+- `.vscode/launch.json`: Experimental support for debugging with Neovim
+- CI: Add Elvis tests
+- CI: Add XMPP Interop tests
+- Runtime: Cache hex.pm archive from rebar3 and mix
+
+#### Documentation
+
+- Add links in top-level options documentation to their Docs website sections
+- Document which SQL servers can really use `update_sql_schema`
+- Improve documentation of `ldap_servers` and `ldap_backups` options ([#3977](https://github.com/processone/ejabberd/issues/3977))
+- `mod_register`: Document behavior when `access` is set to `none` ([#4078](https://github.com/processone/ejabberd/issues/4078))
+
+#### Elixir
+
+- Handle case when elixir support is enabled but not available
+- Start ExSync manually to ensure it's started if (and only if) Relive
+- `mix.exs`: Fix `mix release` error: `logger` being regular and included application ([#4265](https://github.com/processone/ejabberd/issues/4265))
+- `mix.exs`: Remove from `extra_applications` the apps already defined in `deps` ([#4265](https://github.com/processone/ejabberd/issues/4265))
+
+#### WebAdmin
+
+- Add links in user page to offline and roster pages
+- Add new "MAM Archive" page to webadmin
+- Improve many pages to handle when modules are disabled
+- `mod_admin_extra`: Move some webadmin pages to their modules
+
 ## Version 24.07
 
 #### Core

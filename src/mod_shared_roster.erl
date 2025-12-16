@@ -5,7 +5,7 @@
 %%% Created :  5 Mar 2005 by Alexey Shchepin <alexey@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -381,6 +381,19 @@ create_group(Host, Group) ->
     create_group(Host, Group, []).
 
 create_group(Host, Group, Opts) ->
+    case jid:nameprep(Group) of
+	error ->
+	    {error, invalid_group_name};
+	LGroup ->
+	    case jid:nameprep(Host) of
+		error ->
+		    {error, invalid_group_host};
+		LHost ->
+		    create_group2(LHost, LGroup, Opts)
+	    end
+    end.
+
+create_group2(Host, Group, Opts) ->
     Mod = gen_mod:db_mod(Host, ?MODULE),
     case proplists:get_value(all_users, Opts, false) orelse
 	 proplists:get_value(online_users, Opts, false) of
@@ -426,8 +439,7 @@ get_group_opts(Host1, Group1) ->
     {Host, Group} = split_grouphost(Host1, Group1),
     get_group_opts_int(Host, Group).
 
-get_group_opts_int(Host1, Group1) ->
-    {Host, Group} = split_grouphost(Host1, Group1),
+get_group_opts_int(Host, Group) ->
     Mod = gen_mod:db_mod(Host, ?MODULE),
     Res = case use_cache(Mod, Host) of
 	true ->
@@ -494,7 +506,8 @@ get_online_users(Host) ->
     lists:usort([{U, S}
 		 || {U, S, _} <- ejabberd_sm:get_vh_session_list(Host)]).
 
-get_group_users_cached(Host, Group, Cache) ->
+get_group_users_cached(Host1, Group1, Cache) ->
+    {Host, Group} = split_grouphost(Host1, Group1),
     {Opts, _} = get_groups_opts_cached(Host, Group, Cache),
     get_group_users(Host, Group, Opts).
 
@@ -1308,7 +1321,7 @@ mod_doc() ->
 	      "contacts are merged to the relevant users at retrieval time. "
 	      "The standard user rosters thus stay unmodified."), "",
 	   ?T("Shared roster groups can be edited via the Web Admin, "
-	      "and some API commands called 'srg_*'. "
+	      "and some API commands called 'srg_', for example _`srg_add`_ API. "
 	      "Each group has a unique name and those parameters:"), "",
 	   ?T("- Label: Used in the rosters where this group is displayed."),"",
 	   ?T("- Description: of the group, which has no effect."), "",

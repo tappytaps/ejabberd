@@ -1,5 +1,5 @@
 --
--- ejabberd, Copyright (C) 2002-2024   ProcessOne
+-- ejabberd, Copyright (C) 2002-2025   ProcessOne
 --
 -- This program is free software; you can redistribute it and/or
 -- modify it under the terms of the GNU General Public License as
@@ -17,12 +17,14 @@
 --
 
 CREATE TABLE users (
-    username text PRIMARY KEY,
+    username text NOT NULL,
+    "type" smallint NOT NULL,
     "password" text NOT NULL,
     serverkey text NOT NULL DEFAULT '',
     salt text NOT NULL DEFAULT '',
     iterationcount integer NOT NULL DEFAULT 0,
-    created_at TIMESTAMP NOT NULL DEFAULT now()
+    created_at TIMESTAMP NOT NULL DEFAULT now(),
+    PRIMARY KEY (username, "type")
 );
 
 -- Add support for SCRAM auth to a database created before ejabberd 16.03:

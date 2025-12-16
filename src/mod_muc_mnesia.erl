@@ -4,7 +4,7 @@
 %%% Created : 13 Apr 2016 by Evgeny Khramtsov <ekhramtsov@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -29,7 +29,7 @@
 
 %% API
 -export([init/2, import/3, store_room/5, restore_room/3, forget_room/3,
-	 can_use_nick/4, get_rooms/2, get_nick/3, set_nick/4]).
+	 can_use_nick/4, get_rooms/2, get_nick/3, get_nicks/2, set_nick/4]).
 -export([register_online_room/4, unregister_online_room/4, find_online_room/3,
 	 get_online_rooms/3, count_online_rooms/2, rsm_supported/0,
 	 register_online_user/4, unregister_online_user/4,
@@ -57,6 +57,10 @@ init(Host, Opts) ->
 	    transient, 5000, worker, [?MODULE]},
     case supervisor:start_child(ejabberd_backend_sup, Spec) of
 	{ok, _Pid} -> ok;
+        %% Maybe started for a vhost which only wanted mnesia for ram
+        %% and this vhost wants mnesia for persitent storage too
+        {error, {already_started, _Pid}} ->
+            init([Host, Opts]);
 	Err -> Err
     end.
 
@@ -72,9 +76,11 @@ store_room(_LServer, Host, Name, Opts, _) ->
     mnesia:transaction(F).
 
 restore_room(_LServer, Host, Name) ->
-    case catch mnesia:dirty_read(muc_room, {Name, Host}) of
+    try mnesia:dirty_read(muc_room, {Name, Host}) of
 	[#muc_room{opts = Opts}] -> Opts;
 	_ -> error
+    catch
+	_:_ -> {error, db_failure}
     end.
 
 forget_room(_LServer, Host, Name) ->
@@ -115,6 +121,14 @@ get_nick(_LServer, Host, From) ->
 	[] -> error;
 	[#muc_registered{nick = Nick}] -> Nick
     end.
+
+get_nicks(_LServer, Host) ->
+    mnesia:dirty_select(muc_registered,
+                        [{#muc_registered{us_host = {{'$1', '$2'}, Host},
+                                          nick = '$3', _ = '_'},
+                          [],
+                          [{{'$1', '$2', '$3'}}]
+                         }]).
 
 set_nick(_LServer, ServiceOrRoom, From, Nick) ->
     {LUser, LServer, _} = jid:tolower(From),
@@ -423,11 +437,15 @@ need_transform({muc_room, {N, H}, _})
     ?INFO_MSG("Mnesia table 'muc_room' will be converted to binary", []),
     true;
 need_transform({muc_room, {_N, _H}, Opts}) ->
-    case lists:keymember(allow_private_messages, 1, Opts) of
-        true ->
+    case {lists:keymember(allow_private_messages, 1, Opts),
+          lists:keymember(hats_defs, 1, Opts)} of
+        {true, _} ->
             ?INFO_MSG("Mnesia table 'muc_room' will be converted to allowpm", []),
             true;
-        false ->
+        {false, false} ->
+            ?INFO_MSG("Mnesia table 'muc_room' will be converted to Hats 0.3.0", []),
+            true;
+        {false, true} ->
             false
     end;
 
@@ -453,7 +471,33 @@ transform(#muc_room{opts = Opts} = R) ->
         _ ->
             Opts
     end,
-    R#muc_room{opts = Opts2};
+    Opts4 =
+        case lists:keyfind(hats_defs, 1, Opts2) of
+            false ->
+                {hats_users, HatsUsers} = lists:keyfind(hats_users, 1, Opts2),
+                {HatsDefs, HatsUsers2} =
+                    lists:foldl(fun({Jid, UriTitleList}, {Defs, Assigns}) ->
+                                   Defs2 =
+                                       lists:foldl(fun({Uri, Title}, AccDef) ->
+                                                      maps:put(Uri, {Title, <<"">>}, AccDef)
+                                                   end,
+                                                   Defs,
+                                                   UriTitleList),
+                                   Assigns2 =
+                                       maps:put(Jid,
+                                                [Uri || {Uri, _Title} <- UriTitleList],
+                                                Assigns),
+                                   {Defs2, Assigns2}
+                                end,
+                                {maps:new(), maps:new()},
+                                HatsUsers),
+                Opts3 =
+                    lists:keyreplace(hats_users, 1, Opts2, {hats_users, maps:to_list(HatsUsers2)}),
+                [{hats_defs, maps:to_list(HatsDefs)} | Opts3];
+            {_, _} ->
+                Opts2
+        end,
+    R#muc_room{opts = Opts4};
 transform(#muc_registered{us_host = {{U, S}, H}, nick = Nick} = R) ->
     R#muc_registered{us_host = {{iolist_to_binary(U), iolist_to_binary(S)},
 				iolist_to_binary(H)},

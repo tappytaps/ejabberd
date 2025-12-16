@@ -5,7 +5,7 @@
 %%% Created : 12 May 2013 by Evgeniy Khramtsov <ekhramtsov@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2013-2024   ProcessOne
+%%% ejabberd, Copyright (C) 2013-2025   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -46,6 +46,8 @@
 	 or (L == notice) or (L == info) or (L == debug))).
 
 -export_type([loglevel/0]).
+
+-include("logger.hrl").
 
 %%%===================================================================
 %%% API
@@ -283,7 +285,7 @@ start(Level) ->
 	       burst_limit_window_time => LogBurstLimitWindowTime,
 	       burst_limit_max_count => LogBurstLimitCount},
     FmtConfig = #{legacy_header => false,
-		  time_designator => $ ,
+		  time_designator => $\s,
 		  max_size => 100*1024,
 		  single_line => false},
     FileFmtConfig = FmtConfig#{template => file_template()},
@@ -383,18 +385,20 @@ console_template() ->
         false ->
             [time, " [", level, "] " | msg()]
     end.
+msg() ->
+    [{logger_formatter, [[logger_formatter, title], ":", io_lib:nl()], []},
+     msg, io_lib:nl()].
 -else.
 console_template() ->
-    [time, " [", level, "] " | msg()].
+    [time, " ", ?CLEAD, ?CDEFAULT, clevel, "[", level, "] ", ?CMID, ?CDEFAULT, ctext | msg()].
+msg() ->
+    [{logger_formatter, [[logger_formatter, title], ":", io_lib:nl()], []},
+     msg, ?CCLEAN, io_lib:nl()].
 -endif.
 
 file_template() ->
     [time, " [", level, "] ", pid,
      {mfa, ["@", mfa, {line, [":", line], []}], []}, " " | msg()].
-
-msg() ->
-    [{logger_formatter, [[logger_formatter, title], ":", io_lib:nl()], []},
-     msg, io_lib:nl()].
 
 -spec reopen_log() -> ok.
 reopen_log() ->

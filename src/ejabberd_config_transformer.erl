@@ -1,5 +1,5 @@
 %%%----------------------------------------------------------------------
-%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -128,6 +128,11 @@ transform(Host, s2s_use_starttls, required_trusted, Acc) ->
     Hosts = maps:get(remove_s2s_dialback, Acc, []),
     Acc1 = maps:put(remove_s2s_dialback, [Host|Hosts], Acc),
     {{true, {s2s_use_starttls, required}}, Acc1};
+transform(Host, define_macro, Macro, Acc) when is_binary(Host) ->
+    ?WARNING_MSG("The option 'define_macro' is not supported inside 'host_config'. "
+		 "Consequently those macro definitions for host '~ts' are unused: ~ts",
+		 [Host, io_lib:format("~p", [Macro])]),
+    {true, Acc};
 transform(_Host, _Opt, _Val, Acc) ->
     {true, Acc}.
 
@@ -225,6 +230,11 @@ filter(_Host, captcha_host, _, _) ->
 filter(_Host, route_subdomains, _, _) ->
     warn_removed_option(route_subdomains, s2s_access),
     false;
+filter(_Host, auth_password_types_hidden_in_scram1, Val, _) ->
+    {true, {auth_password_types_hidden_in_sasl1, Val}};
+filter(_Host, new_sql_schema, Val, _) ->
+    warn_replaced_option(new_sql_schema, sql_schema_multihost),
+    {true, {sql_schema_multihost, Val}};
 filter(Host, modules, ModOpts, State) ->
     NoDialbackHosts = maps:get(remove_s2s_dialback, State, []),
     ModOpts1 = lists:filter(
@@ -271,25 +281,25 @@ replace_request_handlers(Opts) ->
     Handlers = proplists:get_value(request_handlers, Opts, []),
     Handlers1 =
 	lists:foldl(
-	  fun({captcha, true}, Acc) ->
+	  fun({captcha, IsEnabled}, Acc) ->
 		  Handler = {<<"/captcha">>, ejabberd_captcha},
-		  warn_replaced_handler(captcha, Handler),
+		  warn_replaced_handler(captcha, Handler, IsEnabled),
 		  [Handler|Acc];
-	     ({register, true}, Acc) ->
+	     ({register, IsEnabled}, Acc) ->
 		  Handler = {<<"/register">>, mod_register_web},
-		  warn_replaced_handler(register, Handler),
+		  warn_replaced_handler(register, Handler, IsEnabled),
 		  [Handler|Acc];
-	     ({web_admin, true}, Acc) ->
+	     ({web_admin, IsEnabled}, Acc) ->
 		  Handler = {<<"/admin">>, ejabberd_web_admin},
-		  warn_replaced_handler(web_admin, Handler),
+		  warn_replaced_handler(web_admin, Handler, IsEnabled),
 		  [Handler|Acc];
-	     ({http_bind, true}, Acc) ->
+	     ({http_bind, IsEnabled}, Acc) ->
 		  Handler = {<<"/bosh">>, mod_bosh},
-		  warn_replaced_handler(http_bind, Handler),
+		  warn_replaced_handler(http_bind, Handler, IsEnabled),
 		  [Handler|Acc];
-	     ({xmlrpc, true}, Acc) ->
+	     ({xmlrpc, IsEnabled}, Acc) ->
 		  Handler = {<<"/">>, ejabberd_xmlrpc},
-		  warn_replaced_handler(xmlrpc, Handler),
+		  warn_replaced_handler(xmlrpc, Handler, IsEnabled),
 		  Acc ++ [Handler];
 	     (_, Acc) ->
 		  Acc
@@ -538,7 +548,12 @@ warn_removed_module(Mod) ->
     ?WARNING_MSG("Module ~ts is deprecated and was automatically "
 		 "removed from the configuration. ~ts", [Mod, adjust_hint()]).
 
-warn_replaced_handler(Opt, {Path, Module}) ->
+warn_replaced_handler(Opt, {Path, Module}, false) ->
+    ?WARNING_MSG("Listening option '~ts' is deprecated, "
+		 "please use instead the "
+		 "HTTP request handler: \"~ts\" -> ~ts. ~ts",
+		 [Opt, Path, Module, adjust_hint()]);
+warn_replaced_handler(Opt, {Path, Module}, true) ->
     ?WARNING_MSG("Listening option '~ts' is deprecated "
 		 "and was automatically replaced by "
 		 "HTTP request handler: \"~ts\" -> ~ts. ~ts",

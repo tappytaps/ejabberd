@@ -5,7 +5,7 @@
 %%% Created : 6 Mar 2010 by Karim Gemayel <karim.gemayel@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -25,7 +25,7 @@
 
 -module(mod_sic).
 
--protocol({xep, 279, '0.2'}).
+-protocol({xep, 279, '0.2', '2.1.3', "complete", ""}).
 
 -author('karim.gemayel@process-one.net').
 

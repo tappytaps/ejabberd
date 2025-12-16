@@ -2,7 +2,7 @@
 %%% File    : ejabberd_doc.erl
 %%% Purpose : Options documentation generator
 %%%
-%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -24,6 +24,7 @@
 %% API
 -export([man/0, man/1, have_a2x/0]).
 
+-include("ejabberd_commands.hrl").
 -include("translate.hrl").
 
 %%%===================================================================
@@ -46,7 +47,8 @@ man(Lang) ->
                                   DocOpts = maps:get(opts, Map, []),
                                   Example = maps:get(example, Map, []),
                                   Note = maps:get(note, Map, []),
-                                  {[{M, Descr, DocOpts, #{example => Example, note => Note}}|Mods], SubMods};
+                                  Apitags = get_module_apitags(M),
+                                  {[{M, Descr, DocOpts, #{example => Example, note => Note, apitags => Apitags}}|Mods], SubMods};
                               #{opts := DocOpts} ->
                                   {ParentMod, Backend} = strip_backend_suffix(M),
                                   {Mods, dict:append(ParentMod, {M, Backend, DocOpts}, SubMods)};
@@ -113,7 +115,8 @@ man(Lang) ->
                       format_versions(Lang, Example) ++ [io_lib:nl()] ++
                       tr_multi(Lang, Descr) ++ [io_lib:nl()] ++
                       opts_to_man(Lang, [{M, '', DocOpts}|Backends]) ++
-                      format_example(0, Lang, Example)
+                      format_example(0, Lang, Example) ++ [io_lib:nl()] ++
+                      format_apitags(Lang, Example)
           end, lists:keysort(1, ModDoc1)),
     ListenOptions =
         [io_lib:nl(),
@@ -189,6 +192,34 @@ format_versions(_Lang, #{note := Note}) when Note /= [] ->
     ["_Note_ about this option: " ++ Note ++ ". "];
 format_versions(_, _) ->
     [].
+
+%% @format-begin
+get_module_apitags(M) ->
+    AllCommands = ejabberd_commands:get_commands_definition(),
+    Tags = [C#ejabberd_commands.tags || C <- AllCommands, C#ejabberd_commands.module == M],
+    TagsClean =
+        lists:sort(
+            misc:lists_uniq(
+                lists:flatten(Tags))),
+    TagsStrings = [atom_to_list(C) || C <- TagsClean],
+    TagFiltering =
+        fun ("internal") ->
+                false;
+            ([$v | Rest]) ->
+                {error, no_integer} == string:to_integer(Rest);
+            (_) ->
+                true
+        end,
+    TagsFiltered = lists:filter(TagFiltering, TagsStrings),
+    TagsUrls =
+        [["_`../../developer/ejabberd-api/admin-tags.md#", C, "|", C, "`_"] || C <- TagsFiltered],
+    lists:join(", ", TagsUrls).
+
+format_apitags(_Lang, #{apitags := TagsString}) when TagsString /= "" ->
+    ["**API Tags:** ", TagsString];
+format_apitags(_, _) ->
+    [].
+%% @format-end
 
 format_desc(Lang, #{desc := Desc}) ->
     tr_multi(Lang, Desc).
@@ -406,7 +437,7 @@ run_a2x(Cwd, AsciiDocFile) ->
             {error, "a2x was not found: do you have 'asciidoc' installed?"};
         {true, Path} ->
             Cmd = lists:flatten(
-                    io_lib:format("~ts -f manpage ~ts -D ~ts",
+                    io_lib:format("~ts --no-xmllint -f manpage ~ts -D ~ts",
                                   [Path, AsciiDocFile, Cwd])),
             case os:cmd(Cmd) of
                 "" -> ok;

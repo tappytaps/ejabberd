@@ -5,7 +5,7 @@
 %%% Created : 17 Nov 2016 by Christophe Romain <christophe.romain@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -39,11 +39,10 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
 	 terminate/2, code_change/3]).
 
--define(STORAGE_TYPES, [disc_copies, disc_only_copies, ram_copies]).
 -define(NEED_RESET, [local_content, type]).
 
 -include("logger.hrl").
--include("ejabberd_stacktrace.hrl").
+
 
 -record(state, {tables = #{} :: tables(),
 		schema = [] :: [{atom(), custom_schema()}]}).
@@ -81,10 +80,11 @@ init([]) ->
 	    Schema = read_schema_file(),
 	    {ok, #state{schema = Schema}};
 	false ->
-	    ?CRITICAL_MSG("Node name mismatch: I'm [~ts], "
-			  "the database is owned by ~p", [MyNode, DbNodes]),
+	    ?CRITICAL_MSG("Erlang node name mismatch: I'm running in node [~ts], "
+			  "but the mnesia database is owned by ~p", [MyNode, DbNodes]),
 	    ?CRITICAL_MSG("Either set ERLANG_NODE in ejabberdctl.cfg "
-			  "or change node name in Mnesia", []),
+			  "or change node name in Mnesia by running: "
+			  "ejabberdctl mnesia_change ~ts", [hd(DbNodes)]),
 	    {stop, node_name_mismatch}
     end.
 
@@ -377,14 +377,15 @@ do_transform(OldAttrs, Attrs, Old) ->
 transform_fun(Module, Name) ->
     fun(Obj) ->
 	    try Module:transform(Obj)
-	    catch ?EX_RULE(Class, Reason, St) ->
-		    StackTrace = ?EX_STACK(St),
-		    ?ERROR_MSG("Failed to transform Mnesia table ~ts:~n"
-			       "** Record: ~p~n"
-			       "** ~ts",
-			       [Name, Obj,
-				misc:format_exception(2, Class, Reason, StackTrace)]),
-		    erlang:raise(Class, Reason, StackTrace)
+            catch
+                Class:Reason:StackTrace ->
+                    ?ERROR_MSG("Failed to transform Mnesia table ~ts:~n"
+                               "** Record: ~p~n"
+                               "** ~ts",
+                               [Name,
+                                Obj,
+                                misc:format_exception(2, Class, Reason, StackTrace)]),
+                    erlang:raise(Class, Reason, StackTrace)
 	    end
     end.
 

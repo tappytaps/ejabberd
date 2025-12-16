@@ -5,7 +5,7 @@
 %%% Created :  7 Sep 2016 by Paweł Chmielowski <pawel@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -344,10 +344,20 @@ validator(from) ->
     fun(L) when is_list(L) ->
 	    lists:map(
 	      fun({K, V}) -> {(econf:enum([tag]))(K), (econf:binary())(V)};
-		 (A) -> (econf:enum([ejabberd_xmlrpc, mod_cron, mod_http_api, ejabberd_ctl, ejabberd_web_admin]))(A)
+		 (A) -> (econf:enum([ejabberd_ctl,
+                                     ejabberd_web_admin,
+                                     ejabberd_xmlrpc,
+                                     mod_adhoc_api,
+                                     mod_cron,
+                                     mod_http_api]))(A)
 	      end, lists:flatten(L));
        (A) ->
-	    [(econf:enum([ejabberd_xmlrpc, mod_cron, mod_http_api, ejabberd_ctl, ejabberd_web_admin]))(A)]
+	    [(econf:enum([ejabberd_ctl,
+                          ejabberd_web_admin,
+                          ejabberd_xmlrpc,
+                          mod_adhoc_api,
+                          mod_cron,
+                          mod_http_api]))(A)]
     end;
 validator(what) ->
     econf:and_then(

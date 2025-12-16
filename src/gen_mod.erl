@@ -5,7 +5,7 @@
 %%% Created : 24 Jan 2003 by Alexey Shchepin <alexey@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -27,7 +27,7 @@
 -author('alexey@process-one.net').
 
 -export([init/1, start_link/0, start_child/3, start_child/4,
-	 stop_child/1, stop_child/2, stop/0, config_reloaded/0]).
+	 stop_child/1, stop_child/2, prep_stop/0, stop/0, config_reloaded/0]).
 -export([start_module/2, stop_module/2, stop_module_keep_config/2,
 	 get_opt/2, set_opt/3, get_opt_hosts/1, is_equal_opt/3,
 	 get_module_opt/3, get_module_opts/2, get_module_opt_hosts/2,
@@ -44,7 +44,8 @@
 
 -include("logger.hrl").
 -include_lib("stdlib/include/ms_transform.hrl").
--include("ejabberd_stacktrace.hrl").
+
+-include("ejabberd_commands.hrl").
 
 -record(ejabberd_module,
         {module_host = {undefined, <<"">>} :: {atom(), binary()},
@@ -63,6 +64,11 @@
         {hook, atom(), atom(), integer()} |
         {hook, atom(), atom(), integer(), binary() | global} |
         {hook, atom(), module(), atom(), integer()} |
+        {hook_subscribe, atom(), atom(), [any()]} |
+        {hook_subscribe, atom(), atom(), [any()], binary() | global} |
+        {hook_subscribe, atom(), module(), atom(), [any()]} |
+        {hook_subscribe, atom(), module(), atom(), [any()], binary() | global} |
+        {commands, [ejabberd_commands()]} |
         {iq_handler, component(), binary(), atom()} |
         {iq_handler, component(), binary(), module(), atom()}.
 -export_type([registration/0]).
@@ -70,6 +76,7 @@
 -callback start(binary(), opts()) ->
     ok | {ok, pid()} |
     {ok, [registration()]} | {error, term()}.
+-callback prep_stop(binary()) -> any().
 -callback stop(binary()) -> any().
 -callback reload(binary(), opts(), opts()) -> ok | {ok, pid()} | {error, term()}.
 -callback mod_opt_type(atom()) -> econf:validator().
@@ -80,7 +87,7 @@
                          example => [string()] | [{binary(), [string()]}]}.
 -callback depends(binary(), opts()) -> [{module(), hard | soft}].
 
--optional_callbacks([mod_opt_type/1, reload/3]).
+-optional_callbacks([mod_opt_type/1, reload/3, prep_stop/1]).
 
 -export_type([opts/0]).
 -export_type([db_type/0]).
@@ -107,6 +114,10 @@ init([]) ->
 	     {keypos, #ejabberd_module.module_host},
 	     {read_concurrency, true}]),
     {ok, {{one_for_one, 10, 1}, []}}.
+
+-spec prep_stop() -> ok.
+prep_stop() ->
+    prep_stop_modules().
 
 -spec stop() -> ok.
 stop() ->
@@ -176,16 +187,20 @@ start_module(Host, Module, Opts, Order) ->
 		ets:delete(ejabberd_modules, {Module, Host}),
 		erlang:error({bad_return, Module, Err})
 	end
-    catch ?EX_RULE(Class, Reason, Stack) ->
-	    StackTrace = ?EX_STACK(Stack),
-	    ets:delete(ejabberd_modules, {Module, Host}),
-	    ErrorText = format_module_error(
-			  Module, start, 2,
-			  Opts, Class, Reason,
-			  StackTrace),
-	    ?CRITICAL_MSG(ErrorText, []),
-	    maybe_halt_ejabberd(),
-	    erlang:raise(Class, Reason, StackTrace)
+    catch
+        Class:Reason:StackTrace ->
+            ets:delete(ejabberd_modules, {Module, Host}),
+            ErrorText = format_module_error(
+                          Module,
+                          start,
+                          2,
+                          Opts,
+                          Class,
+                          Reason,
+                          StackTrace),
+            ?CRITICAL_MSG(ErrorText, []),
+            maybe_halt_ejabberd(),
+            erlang:raise(Class, Reason, StackTrace)
     end.
 
 -spec reload_modules(binary()) -> ok.
@@ -235,14 +250,18 @@ reload_module(Host, Module, NewOpts, OldOpts, Order) ->
 		    {ok, Pid} when is_pid(Pid) -> {ok, Pid};
 		    Err -> erlang:error({bad_return, Module, Err})
 		end
-	    catch ?EX_RULE(Class, Reason, Stack) ->
-		    StackTrace = ?EX_STACK(Stack),
-		    ErrorText = format_module_error(
-                                  Module, reload, 3,
-                                  NewOpts, Class, Reason,
-				  StackTrace),
+            catch
+                Class:Reason:StackTrace ->
+                    ErrorText = format_module_error(
+                                  Module,
+                                  reload,
+                                  3,
+                                  NewOpts,
+                                  Class,
+                                  Reason,
+                                  StackTrace),
                     ?CRITICAL_MSG(ErrorText, []),
-		    erlang:raise(Class, Reason, StackTrace)
+                    erlang:raise(Class, Reason, StackTrace)
 	    end;
 	false ->
 	    ?WARNING_MSG("Module ~ts doesn't support reloading "
@@ -295,6 +314,21 @@ is_app_running(AppName) ->
     lists:keymember(AppName, 1,
 		    application:which_applications(Timeout)).
 
+-spec prep_stop_modules() -> ok.
+prep_stop_modules() ->
+    lists:foreach(
+      fun(Host) ->
+	      prep_stop_modules(Host)
+      end, ejabberd_option:hosts()).
+
+-spec prep_stop_modules(binary()) -> ok.
+prep_stop_modules(Host) ->
+    Modules = lists:reverse(loaded_modules_with_opts(Host)),
+    lists:foreach(
+	fun({Module, _Args}) ->
+		prep_stop_module_keep_config(Host, Module)
+	end, Modules).
+
 -spec stop_modules() -> ok.
 stop_modules() ->
     lists:foreach(
@@ -314,6 +348,23 @@ stop_modules(Host) ->
 stop_module(Host, Module) ->
     stop_module_keep_config(Host, Module).
 
+-spec prep_stop_module_keep_config(binary(), atom()) -> error | ok.
+prep_stop_module_keep_config(Host, Module) ->
+    ?DEBUG("Preparing to stop ~ts at ~ts", [Module, Host]),
+    try Module:prep_stop(Host) of
+	_ ->
+	    ok
+    catch
+        error:undef:_St ->
+            ok;
+        Class:Reason:StackTrace ->
+            ?ERROR_MSG("Failed to prepare stop module ~ts at ~ts:~n** ~ts",
+                       [Module,
+                        Host,
+                        misc:format_exception(2, Class, Reason, StackTrace)]),
+            error
+    end.
+
 -spec stop_module_keep_config(binary(), atom()) -> error | ok.
 stop_module_keep_config(Host, Module) ->
     ?DEBUG("Stopping ~ts at ~ts", [Module, Host]),
@@ -329,12 +380,13 @@ stop_module_keep_config(Host, Module) ->
 	_ ->
 	    ets:delete(ejabberd_modules, {Module, Host}),
 	    ok
-    catch ?EX_RULE(Class, Reason, St) ->
-            StackTrace = ?EX_STACK(St),
+    catch
+        Class:Reason:StackTrace ->
             ?ERROR_MSG("Failed to stop module ~ts at ~ts:~n** ~ts",
-                       [Module, Host,
+                       [Module,
+                        Host,
                         misc:format_exception(2, Class, Reason, StackTrace)]),
-	    error
+            error
     end.
 
 -spec add_registrations(binary(), module(), [registration()]) -> ok.
@@ -346,6 +398,16 @@ add_registrations(Host, Module, Registrations) ->
               ejabberd_hooks:add(Hook, Host1, Module, Function, Seq);
          ({hook, Hook, Module1, Function, Seq}) when is_integer(Seq) ->
               ejabberd_hooks:add(Hook, Host, Module1, Function, Seq);
+         ({hook_subscribe, Hook, Function, InitArg}) ->
+              ejabberd_hooks:subscribe(Hook, Host, Module, Function, InitArg);
+         ({hook_subscribe, Hook, Function, InitArg, Host1}) when is_binary(Host1) or (Host1 == global) ->
+              ejabberd_hooks:subscribe(Hook, Host1, Module, Function, InitArg);
+         ({hook_subscribe, Hook, Module1, Function, InitArg}) ->
+              ejabberd_hooks:subscribe(Hook, Host, Module1, Function, InitArg);
+         ({hook_subscribe, Hook, Module1, Function, InitArg, Host1}) ->
+              ejabberd_hooks:subscribe(Hook, Host1, Module1, Function, InitArg);
+         ({commands, Commands}) ->
+              ejabberd_commands:register_commands(Host, Module, Commands);
          ({iq_handler, Component, NS, Function}) ->
               gen_iq_handler:add_iq_handler(
                 Component, Host, NS, Module, Function);
@@ -363,6 +425,16 @@ del_registrations(Host, Module, Registrations) ->
               ejabberd_hooks:delete(Hook, Host1, Module, Function, Seq);
          ({hook, Hook, Module1, Function, Seq}) when is_integer(Seq) ->
               ejabberd_hooks:delete(Hook, Host, Module1, Function, Seq);
+         ({hook_subscribe, Hook, Function, InitArg}) ->
+              ejabberd_hooks:unsubscribe(Hook, Host, Module, Function, InitArg);
+         ({hook_subscribe, Hook, Function, InitArg, Host1}) when is_binary(Host1) or (Host1 == global) ->
+              ejabberd_hooks:unsubscribe(Hook, Host1, Module, Function, InitArg);
+         ({hook_subscribe, Hook, Module1, Function, InitArg}) ->
+              ejabberd_hooks:unsubscribe(Hook, Host, Module1, Function, InitArg);
+         ({hook_subscribe, Hook, Module1, Function, InitArg, Host1}) ->
+              ejabberd_hooks:unsubscribe(Hook, Host1, Module1, Function, InitArg);
+         ({commands, Commands}) ->
+              ejabberd_commands:unregister_commands(Host, Module, Commands);
          ({iq_handler, Component, NS, _Function}) ->
               gen_iq_handler:remove_iq_handler(Component, Host, NS);
          ({iq_handler, Component, NS, _Module, _Function}) ->
@@ -551,10 +623,10 @@ validator(Host, Module, Opts) ->
 		  lists:mapfoldl(
 		    fun({Opt, Def}, {DAcc1, VAcc1}) ->
 			    {[], {DAcc1#{Opt => Def},
-				  VAcc1#{Opt => get_opt_type(Module, M, Opt)}}};
+				  VAcc1#{Opt => get_opt_type(Host, Module, M, Opt)}}};
 		       (Opt, {DAcc1, VAcc1}) ->
 			    {[Opt], {DAcc1,
-				     VAcc1#{Opt => get_opt_type(Module, M, Opt)}}}
+				     VAcc1#{Opt => get_opt_type(Host, Module, M, Opt)}}}
 		    end, {DAcc, VAcc}, DefOpts)
 	  end, {#{}, #{}}, get_defaults(Host, Module, Opts)),
     econf:and_then(
@@ -604,11 +676,16 @@ get_defaults(Host, Module, Opts) ->
 	       false
        end, DefaultOpts)].
 
--spec get_opt_type(module(), module(), atom()) -> econf:validator().
-get_opt_type(Mod, SubMod, Opt) ->
-    try SubMod:mod_opt_type(Opt)
+-spec get_opt_type(binary(), module(), module(), atom()) -> econf:validator().
+get_opt_type(Host, Mod, SubMod, Opt) ->
+    Type = try SubMod:mod_opt_type(Opt)
     catch _:_ -> Mod:mod_opt_type(Opt)
-    end.
+    end,
+    econf:and_then(
+      fun(B) ->
+              ejabberd_config:replace_keywords(Host, B)
+      end,
+      Type).
 
 -spec sort_modules(binary(), [{module(), opts()}]) -> {ok, [{module(), opts(), integer()}]}.
 sort_modules(Host, ModOpts) ->

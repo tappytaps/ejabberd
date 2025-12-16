@@ -5,7 +5,7 @@
 %%% Created : 11 Jan 2004 by Alexey Shchepin <alexey@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -28,7 +28,7 @@
 -behaviour(gen_server).
 -author('alexey@process-one.net').
 
--export([start/0, start_link/0, process/1, process2/2]).
+-export([start/0, start_link/0, process/1, process/2, process2/2]).
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
 	 terminate/2, code_change/3]).
@@ -37,8 +37,9 @@
 
 -include("ejabberd_ctl.hrl").
 -include("ejabberd_commands.hrl").
+-include("ejabberd_http.hrl").
 -include("logger.hrl").
--include("ejabberd_stacktrace.hrl").
+
 
 -define(DEFAULT_VERSION, 1000000).
 
@@ -115,15 +116,44 @@ code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 %%-----------------------------
-%% Process
+%% Process http
+%%-----------------------------
+
+-spec process_http([binary()], tuple()) -> {non_neg_integer(), [{binary(), binary()}], string()}.
+
+process_http([_Call], #request{data = Data, path = [<<"ctl">> | _]}) ->
+    Args = [binary_to_list(E) || E <- misc:json_decode(Data)],
+    process_http2(Args, ?DEFAULT_VERSION).
+
+process_http2(["--version", Arg | Args], _) ->
+    Version =
+	try
+	    list_to_integer(Arg)
+	catch _:_ ->
+		throw({invalid_version, Arg})
+	end,
+    process_http2(Args, Version);
+
+process_http2(Args, Version) ->
+    {String, Code} = process2(Args, [], Version),
+    String2 = case String of
+                  [] -> String;
+                  _ -> [String, "\n"]
+              end,
+    {200, [{<<"status-code">>, integer_to_binary(Code)}], String2}.
+
+%%-----------------------------
+%% Process command line
 %%-----------------------------
 
 -spec process([string()]) -> non_neg_integer().
 process(Args) ->
     process(Args, ?DEFAULT_VERSION).
 
+-spec process([string() | binary()], non_neg_integer() | tuple()) -> non_neg_integer().
 
--spec process([string()], non_neg_integer()) -> non_neg_integer().
+process([Call], Request) when is_binary(Call) and is_record(Request, request) ->
+    process_http([Call], Request);
 
 %% The commands status, stop and restart are defined here to ensure
 %% they are usable even if ejabberd is completely stopped.
@@ -232,7 +262,7 @@ process2(Args, AccessCommands, Auth, Version) ->
 	    io:format(lists:flatten(["\n" | String]++["\n"])),
 	    [CommandString | _] = Args,
             process(["help" | [CommandString]], Version),
-	    {lists:flatten(String), ?STATUS_ERROR};
+	    {lists:flatten(String), ?STATUS_USAGE};
 	{String, Code}
           when is_list(String) and is_integer(Code) ->
 	    {lists:flatten(String), Code};
@@ -271,7 +301,7 @@ try_run_ctp(Args, Auth, AccessCommands, Version) ->
 	    try_call_command(Args, Auth, AccessCommands, Version);
 	false ->
 	    print_usage(Version),
-	    {"", ?STATUS_USAGE};
+	    {"", ?STATUS_BADRPC};
 	Status ->
 	    {"", Status}
     catch
@@ -288,7 +318,7 @@ try_run_ctp(Args, Auth, AccessCommands, Version) ->
 try_call_command(Args, Auth, AccessCommands, Version) ->
     try call_command(Args, Auth, AccessCommands, Version) of
 	{Reason, wrong_command_arguments} ->
-	    {Reason, ?STATUS_ERROR};
+	    {Reason, ?STATUS_USAGE};
 	Res ->
 	    Res
     catch
@@ -301,11 +331,10 @@ try_call_command(Args, Auth, AccessCommands, Version) ->
 	     ?STATUS_ERROR};
 	throw:Error ->
 	    {io_lib:format("~p", [Error]), ?STATUS_ERROR};
-	?EX_RULE(A, Why, Stack) ->
-	    StackTrace = ?EX_STACK(Stack),
-	    {io_lib:format("Unhandled exception occurred executing the command:~n** ~ts",
-			   [misc:format_exception(2, A, Why, StackTrace)]),
-	     ?STATUS_ERROR}
+        A:Why:StackTrace ->
+            {io_lib:format("Unhandled exception occurred executing the command:~n** ~ts",
+                           [misc:format_exception(2, A, Why, StackTrace)]),
+             ?STATUS_ERROR}
     end.
 
 -spec call_command(Args::[string()],
@@ -360,6 +389,8 @@ format_arg(Arg, integer) ->
     format_arg2(Arg, "~d");
 format_arg(Arg, binary) ->
     unicode:characters_to_binary(Arg, utf8);
+format_arg(Arg, binary_or_list) ->
+    [unicode:characters_to_binary(Arg, utf8)];
 format_arg("", string) ->
     "";
 format_arg(Arg, string) ->
@@ -550,7 +581,8 @@ print_usage(HelpMode, MaxC, ShCode, Version) ->
     AllCommands = get_list_commands(Version),
 
     print(
-       ["Usage: ", "ejabberdctl", " [--no-timeout] [--node ", ?A("nodename"), "] [--version ", ?A("api_version"), "] ",
+       ["Usage: ", "ejabberdctl", " [--no-timeout] [--node ", ?A("name"), "] [--version ", ?A("apiv"), "] ",
+        "[--auth ", ?A("user host pass"), "] ",
 	?C("command"), " [", ?A("arguments"), "]\n"
 	"\n"
 	"Available commands in this ejabberd node:\n"], []),
@@ -969,12 +1001,12 @@ format_usage_ctype1({Name, Type, Description}, Indentation, ShCode) ->
 
 format_usage_ctype(Type, _Indentation)
   when (Type==atom) or (Type==integer) or (Type==string) or (Type==binary)
-       or (Type==rescode) or (Type==restuple) ->
+       or (Type==rescode) or (Type==restuple) or (Type==binary_or_list) ->
     io_lib:format("~p", [Type]);
 
 format_usage_ctype({Name, Type}, _Indentation)
   when (Type==atom) or (Type==integer) or (Type==string) or (Type==binary)
-       or (Type==rescode) or (Type==restuple)
+       or (Type==rescode) or (Type==restuple) or (Type==binary_or_list)
        or (Type==any) ->
     io_lib:format("~p::~p", [Name, Type]);
 
@@ -1117,6 +1149,17 @@ get_commands_spec() ->
 			desc = "Get list of commands, or help of a command (only ejabberdctl)",
 			longdesc = "This command is exclusive for the ejabberdctl command-line script, "
 			"don't attempt to execute it using any other API frontend."},
+     #ejabberd_commands{name = mnesia_change, tags = [ejabberdctl, mnesia],
+			desc = "Change the erlang node name in the mnesia database (only ejabberdctl)",
+			longdesc = "This command internally calls the _`mnesia_change_nodename`_ API. "
+			"This is a special command that starts and stops ejabberd several times: "
+			"do not attempt to run this command when ejabberd is running. "
+			"This command is exclusive for the ejabberdctl command-line script, "
+			"don't attempt to execute it using any other API frontend.",
+			note = "added in 25.08",
+			args = [{old_node_name, string}],
+			args_desc = ["Old erlang node name"],
+			args_example = ["ejabberd@oldmachine"]},
      #ejabberd_commands{name = mnesia_info_ctl, tags = [ejabberdctl, mnesia],
 			desc = "Show information of Mnesia system (only ejabberdctl)",
 			note = "renamed in 24.02",
@@ -1127,9 +1170,9 @@ get_commands_spec() ->
 			longdesc = "This command is exclusive for the ejabberdctl command-line script, "
 			"don't attempt to execute it using any other API frontend.",
 			note = "added in 24.02",
-			args = [{db_type, string}, {db_version, string}, {new_schema, string}],
+			args = [{db_type, string}, {db_version, string}, {multihost_schema, string}],
                         args_desc = ["Database type: pgsql | mysql | sqlite",
                                      "Your database version: 16.1, 8.2.0...",
-                                     "Use new schema: 0, false, 1 or true"],
+                                     "Use multihost schema: 0, false, 1 or true"],
                         args_example = ["pgsql", "16.1", "true"]}
     ].

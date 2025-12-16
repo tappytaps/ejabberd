@@ -5,7 +5,7 @@
 %%% Created : 16 Jan 2003 by Alexey Shchepin <alexey@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -27,9 +27,9 @@
 
 -author('alexey@process-one.net').
 
--protocol({xep, 49, '1.2'}).
--protocol({xep, 411, '0.2.0', '18.12', "", ""}).
--protocol({xep, 402, '1.1.3', '23.10', "", ""}).
+-protocol({xep, 49, '1.2', '0.1.0', "complete", ""}).
+-protocol({xep, 411, '0.2.0', '18.12', "complete", ""}).
+-protocol({xep, 402, '1.1.3', '23.10', "complete", ""}).
 
 -behaviour(gen_mod).
 
@@ -37,14 +37,21 @@
 	 remove_user/2, get_data/2, get_data/3, export/1, mod_doc/0,
 	 import/5, import_start/2, mod_opt_type/1, set_data/2,
 	 mod_options/1, depends/2, get_sm_features/5, pubsub_publish_item/6,
-	 pubsub_delete_item/5, pubsub_tree_call/4]).
+	 pubsub_delete_item/5, pubsub_tree_call/4,
+	 del_data/3, get_users_with_data/2, count_users_with_data/2]).
 
 -export([get_commands_spec/0, bookmarks_to_pep/2]).
+
+-export([webadmin_menu_hostuser/4, webadmin_page_hostuser/4]).
+
+-import(ejabberd_web_admin, [make_command/4, make_command/2]).
 
 -include("logger.hrl").
 -include_lib("xmpp/include/xmpp.hrl").
 -include("mod_private.hrl").
 -include("ejabberd_commands.hrl").
+-include("ejabberd_http.hrl").
+-include("ejabberd_web_admin.hrl").
 -include("translate.hrl").
 -include("pubsub.hrl").
 
@@ -58,6 +65,9 @@
 -callback del_data(binary(), binary()) -> ok | {error, any()}.
 -callback use_cache(binary()) -> boolean().
 -callback cache_nodes(binary()) -> [node()].
+-callback del_data(binary(), binary(), binary()) -> ok | {error, any()}.
+-callback get_users_with_data(binary(), binary()) -> {ok, [binary()]} | {error, any()}.
+-callback count_users_with_data(binary(), binary()) -> {ok, integer()} | {error, any()}.
 
 -optional_callbacks([use_cache/1, cache_nodes/1]).
 
@@ -65,21 +75,18 @@ start(Host, Opts) ->
     Mod = gen_mod:db_mod(Opts, ?MODULE),
     Mod:init(Host, Opts),
     init_cache(Mod, Host, Opts),
-    ejabberd_commands:register_commands(?MODULE, get_commands_spec()),
-    {ok, [{hook, remove_user, remove_user, 50},
+    {ok, [{commands, get_commands_spec()},
+          {hook, remove_user, remove_user, 50},
           {hook, disco_sm_features, get_sm_features, 50},
           {hook, pubsub_publish_item, pubsub_publish_item, 50},
           {hook, pubsub_delete_item, pubsub_delete_item, 50},
 	  {hook, pubsub_tree_call, pubsub_tree_call, 50},
+          {hook, webadmin_menu_hostuser, webadmin_menu_hostuser, 50},
+          {hook, webadmin_page_hostuser, webadmin_page_hostuser, 50},
           {iq_handler, ejabberd_sm, ?NS_PRIVATE, process_sm_iq}]}.
 
-stop(Host) ->
-    case gen_mod:is_loaded_elsewhere(Host, ?MODULE) of
-	false ->
-	    ejabberd_commands:unregister_commands(get_commands_spec());
-	true ->
-	    ok
-    end.
+stop(_Host) ->
+    ok.
 
 reload(Host, NewOpts, OldOpts) ->
     NewMod = gen_mod:db_mod(NewOpts, ?MODULE),
@@ -127,7 +134,7 @@ mod_doc() ->
               "[XEP-0048: Bookmarks])."), "",
            ?T("It also implements the bookmark conversion described in "
               "https://xmpp.org/extensions/xep-0402.html[XEP-0402: PEP Native Bookmarks]"
-              ", see the command _`bookmarks_to_pep`_ API.")],
+              ", see _`bookmarks_to_pep`_ API.")],
       opts =>
           [{db_type,
             #{value => "mnesia | sql",
@@ -270,6 +277,37 @@ get_data(LUser, LServer) ->
 	{error, _} = Err -> Err
     end.
 
+-spec del_data(binary(), binary(), binary()) -> ok | {error, _}.
+del_data(LUser, LServer, NS) ->
+    Mod = gen_mod:db_mod(LServer, ?MODULE),
+	case Mod:del_data(LUser, LServer, NS) of
+		ok ->
+			case use_cache(Mod, LServer) of
+				true ->
+					delete_cache(Mod, LUser, LServer, [{NS, #xmlel{}}]);
+				_ ->
+					ok
+			end;
+		Err -> Err
+	end.
+
+-spec get_users_with_data(binary(), binary()) -> [jid()] | {error, any()}.
+get_users_with_data(LServer, NS) ->
+    Mod = gen_mod:db_mod(LServer, ?MODULE),
+	case Mod:get_users_with_data(LServer, NS) of
+		{ok, Users} ->
+			[jid:make(User, LServer) || User <- Users];
+		Err -> Err
+	end.
+
+-spec count_users_with_data(binary(), binary()) -> integer() | {error, any()}.
+count_users_with_data(LServer, NS) ->
+    Mod = gen_mod:db_mod(LServer, ?MODULE),
+	case Mod:count_users_with_data(LServer, NS) of
+		{ok, Num} -> Num;
+		Err -> Err
+	end.
+
 -spec remove_user(binary(), binary()) -> ok.
 remove_user(User, Server) ->
     LUser = jid:nodeprep(User),
@@ -332,8 +370,8 @@ publish_pep_native_bookmarks(JID, Data) ->
 				    #bookmark_storage{conference = C} -> C;
 				    _ -> []
 				catch _:{xmpp_codec, Why} ->
-					  ?WARNING_MSG("Failed to decode bookmarks of ~ts: ~ts",
-						       [jid:encode(JID), xmpp:format_error(Why)]),
+					  ?DEBUG("Failed to decode bookmarks of ~ts: ~ts",
+						 [jid:encode(JID), xmpp:format_error(Why)]),
 					  []
 				end,
 		    PubOpts = [{persist_items, true}, {access_model, whitelist}, {max_items, max}, {notify_retract,true}, {notify_delete,true}, {send_last_published_item, never}],
@@ -439,17 +477,22 @@ pubsub_delete_item(_, _, _, _, _) ->
 
 -spec pubsub_item_to_storage_bookmark(#pubsub_item{}) -> {true, bookmark_conference()} | false.
 pubsub_item_to_storage_bookmark(#pubsub_item{itemid = {Id, _}, payload = [#xmlel{} = B | _]}) ->
-    case xmpp:decode(B) of
-	#pep_bookmarks_conference{name = Name, autojoin = AutoJoin, nick = Nick,
-				  password = Password} ->
-	    try jid:decode(Id) of
-		#jid{} = Jid ->
-		    {true, #bookmark_conference{jid = Jid, name = Name, autojoin = AutoJoin, nick = Nick,
-						password = Password}}
-	    catch _:_ ->
-		false
-	    end;
-	_ ->
+    try {xmpp:decode(B), jid:decode(Id)} of
+	{#pep_bookmarks_conference{name = Name, autojoin = AutoJoin,
+				   nick = Nick, password = Password},
+	 #jid{} = Jid} ->
+	    {true, #bookmark_conference{jid = Jid, name = Name,
+					autojoin = AutoJoin, nick = Nick,
+					password = Password}};
+	{_, _} ->
+	    false
+    catch
+	_:{xmpp_codec, Why} ->
+	    ?DEBUG("Failed to decode bookmark element (~ts): ~ts",
+		   [Id, xmpp:format_error(Why)]),
+	    false;
+	_:{bad_jid, _} ->
+	    ?DEBUG("Failed to decode bookmark ID (~ts)", [Id]),
 	    false
     end;
 pubsub_item_to_storage_bookmark(_) ->
@@ -479,15 +522,19 @@ storage_bookmark_to_xmpp_bookmark(#bookmark_conference{name = Name, autojoin = A
 
 -spec pubsub_item_to_map(#pubsub_item{}, map()) -> map().
 pubsub_item_to_map(#pubsub_item{itemid = {Id, _}, payload = [#xmlel{} = B | _]}, Map) ->
-    case xmpp:decode(B) of
-	#pep_bookmarks_conference{} = B2 ->
-	    try jid:decode(Id) of
-		#jid{} = Jid ->
-		    maps:put(jid:tolower(Jid), B2#pep_bookmarks_conference{extensions = undefined}, Map)
-	    catch _:_ ->
-		Map
-	    end;
-	_ ->
+    try {xmpp:decode(B), jid:decode(Id)} of
+	{#pep_bookmarks_conference{} = B1, #jid{} = Jid} ->
+	    B2 = B1#pep_bookmarks_conference{extensions = undefined},
+	    maps:put(jid:tolower(Jid), B2, Map);
+	{_, _} ->
+	    Map
+    catch
+	_:{xmpp_codec, Why} ->
+	    ?DEBUG("Failed to decode bookmark element (~ts): ~ts",
+		   [Id, xmpp:format_error(Why)]),
+	    Map;
+	_:{bad_jid, _} ->
+	    ?DEBUG("Failed to decode bookmark ID (~ts)", [Id]),
 	    Map
     end;
 pubsub_item_to_map(_, Map) ->
@@ -543,6 +590,21 @@ bookmarks_to_pep(User, Server) ->
 	_ ->
 	    {error, <<"Cannot retrieve bookmarks from private XML storage">>}
     end.
+
+%%%===================================================================
+%%% WebAdmin
+%%%===================================================================
+
+webadmin_menu_hostuser(Acc, _Host, _Username, _Lang) ->
+    Acc ++ [{<<"private">>, <<"Private XML Storage">>}].
+
+webadmin_page_hostuser(_, Host, User,
+	      #request{path = [<<"private">>]} = R) ->
+    Res = ?H1GL(<<"Private XML Storage">>, <<"modules/#mod_private">>, <<"mod_private">>)
+          ++ [make_command(private_set, R, [{<<"user">>, User}, {<<"host">>, Host}], []),
+              make_command(private_get, R, [{<<"user">>, User}, {<<"host">>, Host}], [])],
+    {stop, Res};
+webadmin_page_hostuser(Acc, _, _, _) -> Acc.
 
 %%%===================================================================
 %%% Cache

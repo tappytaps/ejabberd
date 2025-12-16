@@ -5,7 +5,7 @@
 %%% Created : 19 Mar 2003 by Alexey Shchepin <alexey@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -24,8 +24,9 @@
 %%%----------------------------------------------------------------------
 -module(mod_muc).
 -author('alexey@process-one.net').
--protocol({xep, 45, '1.25'}).
--protocol({xep, 249, '1.2'}).
+-protocol({xep, 45, '1.25', '0.5.0', "complete", ""}).
+-protocol({xep, 249, '1.2', '0.5.0', "complete", ""}).
+-protocol({xep, 486, '0.1.0', '24.07', "complete", ""}).
 -ifndef(GEN_SERVER).
 -define(GEN_SERVER, gen_server).
 -endif.
@@ -66,6 +67,8 @@
 	 count_online_rooms/1,
 	 register_online_user/4,
 	 unregister_online_user/4,
+	 get_register_nick/3,
+	 get_register_nicks/2,
 	 iq_set_register_info/5,
 	 count_online_rooms_by_user/3,
 	 get_online_rooms_by_user/3,
@@ -84,7 +87,7 @@
 -include("mod_muc.hrl").
 -include("mod_muc_room.hrl").
 -include("translate.hrl").
--include("ejabberd_stacktrace.hrl").
+
 
 -type state() :: #{hosts := [binary()],
 		   server_host := binary(),
@@ -96,11 +99,12 @@
 -callback import(binary(), binary(), [binary()]) -> ok.
 -callback store_room(binary(), binary(), binary(), list(), list()|undefined) -> {atomic, any()}.
 -callback store_changes(binary(), binary(), binary(), list()) -> {atomic, any()}.
--callback restore_room(binary(), binary(), binary()) -> muc_room_opts() | error.
+-callback restore_room(binary(), binary(), binary()) -> muc_room_opts() | error | {error, atom()}.
 -callback forget_room(binary(), binary(), binary()) -> {atomic, any()}.
 -callback can_use_nick(binary(), binary(), jid(), binary()) -> boolean().
 -callback get_rooms(binary(), binary()) -> [#muc_room{}].
 -callback get_nick(binary(), binary(), jid()) -> binary() | error.
+-callback get_nicks(binary(), binary()) -> [{binary(), binary(), binary()}] | error.
 -callback set_nick(binary(), binary(), jid(), binary()) -> {atomic, ok | false}.
 -callback register_online_room(binary(), binary(), binary(), pid()) -> any().
 -callback unregister_online_room(binary(), binary(), binary(), pid()) -> any().
@@ -413,10 +417,10 @@ init([Host, Worker]) ->
 			 {stop, normal, ok, state()}.
 handle_call(stop, _From, State) ->
     {stop, normal, ok, State};
-handle_call({unhibernate, Room, Host, ResetHibernationTime}, _From,
+handle_call({unhibernate, Room, Host, ResetHibernationTime, Opts}, _From,
     #{server_host := ServerHost} = State) ->
     RMod = gen_mod:ram_db_mod(ServerHost, ?MODULE),
-    {reply, load_room(RMod, Host, ServerHost, Room, ResetHibernationTime), State};
+    {reply, do_restore_room(RMod, Host, ServerHost, Room, ResetHibernationTime, Opts), State};
 handle_call({create, Room, Host, Opts}, _From,
 	    #{server_host := ServerHost} = State) ->
     ?DEBUG("MUC: create new room '~ts'~n", [Room]),
@@ -453,11 +457,11 @@ handle_call({create, Room, Host, From, Nick, Opts}, _From,
 -spec handle_cast(term(), state()) -> {noreply, state()}.
 handle_cast({route_to_room, Packet}, #{server_host := ServerHost} = State) ->
     try route_to_room(Packet, ServerHost)
-    catch ?EX_RULE(Class, Reason, St) ->
-            StackTrace = ?EX_STACK(St),
+    catch
+        Class:Reason:StackTrace ->
             ?ERROR_MSG("Failed to route packet:~n~ts~n** ~ts",
-		       [xmpp:pp(Packet),
-			misc:format_exception(2, Class, Reason, StackTrace)])
+                       [xmpp:pp(Packet),
+                        misc:format_exception(2, Class, Reason, StackTrace)])
     end,
     {noreply, State};
 handle_cast({room_destroyed, {Room, Host}, Pid},
@@ -482,11 +486,11 @@ handle_info({route, Packet}, #{server_host := ServerHost} = State) ->
     %% where mod_muc is not loaded. Such configuration
     %% is *highly* discouraged
     try route(Packet, ServerHost)
-    catch ?EX_RULE(Class, Reason, St) ->
-            StackTrace = ?EX_STACK(St),
+    catch
+        Class:Reason:StackTrace ->
             ?ERROR_MSG("Failed to route packet:~n~ts~n** ~ts",
-		       [xmpp:pp(Packet),
-			misc:format_exception(2, Class, Reason, StackTrace)])
+                       [xmpp:pp(Packet),
+                        misc:format_exception(2, Class, Reason, StackTrace)])
     end,
     {noreply, State};
 handle_info({room_destroyed, {Room, Host}, Pid}, State) ->
@@ -590,21 +594,25 @@ extract_password(#iq{} = IQ) ->
             false
     end.
 
--spec unhibernate_room(binary(), binary(), binary()) -> {ok, pid()} | error.
+-spec unhibernate_room(binary(), binary(), binary()) -> {ok, pid()} | {error, notfound | db_failure | term()}.
 unhibernate_room(ServerHost, Host, Room) ->
     unhibernate_room(ServerHost, Host, Room, true).
 
--spec unhibernate_room(binary(), binary(), binary(), boolean()) -> {ok, pid()} | error.
+-spec unhibernate_room(binary(), binary(), binary(), boolean()) -> {ok, pid()} | {error, notfound | db_failure | term()}.
 unhibernate_room(ServerHost, Host, Room, ResetHibernationTime) ->
     RMod = gen_mod:ram_db_mod(ServerHost, ?MODULE),
     case RMod:find_online_room(ServerHost, Room, Host) of
-	error ->
-	    Proc = procname(ServerHost, {Room, Host}),
-	    case ?GEN_SERVER:call(Proc, {unhibernate, Room, Host, ResetHibernationTime}, 20000) of
-		{ok, _} = R -> R;
-		_ -> error
-	    end;
-	{ok, _} = R2 -> R2
+        error ->
+            case RMod:restore_room(ServerHost, Host, Room) of
+            	error ->
+            	    {error, notfound};
+                {error, _} = Err ->
+                    Err;
+                Opts ->
+            	    Proc = procname(ServerHost, {Room, Host}),
+            	    ?GEN_SERVER:call(Proc, {unhibernate, Room, Host, ResetHibernationTime, Opts}, 20000)
+            end;
+        {ok, _} = R2 -> R2
     end.
 
 -spec route_to_room(stanza(), binary()) -> ok.
@@ -885,33 +893,38 @@ load_permanent_rooms(Hosts, ServerHost, Opts) ->
     {ok, pid()} | {error, notfound | term()}.
 load_room(RMod, Host, ServerHost, Room, ResetHibernationTime) ->
     case restore_room(ServerHost, Host, Room) of
-	error ->
-	    {error, notfound};
-	Opts0 ->
-	    Mod = gen_mod:db_mod(ServerHost, mod_muc),
-	    case proplists:get_bool(persistent, Opts0) of
-		true ->
-		    ?DEBUG("Restore room: ~ts", [Room]),
-		    Res2 = start_room(RMod, Host, ServerHost, Room, Opts0),
-		    case {Res2, ResetHibernationTime} of
-			{{ok, _}, true} ->
-			    NewOpts = lists:keyreplace(hibernation_time, 1, Opts0, {hibernation_time, undefined}),
-			    store_room(ServerHost, Host, Room, NewOpts, []);
-			_ ->
-			    ok
-		    end,
-		    Res2;
+    	error ->
+    	    {error, notfound};
+        {error, _} = Err ->
+            Err;
+        Opts ->
+            do_restore_room(RMod, Host, ServerHost, Room, ResetHibernationTime, Opts)
+    end.
+
+do_restore_room(RMod, Host, ServerHost, Room, ResetHibernationTime, Opts) ->
+    Mod = gen_mod:db_mod(ServerHost, mod_muc),
+    case proplists:get_bool(persistent, Opts) of
+	true ->
+	    ?DEBUG("Restore room: ~ts", [Room]),
+	    Res2 = start_room(RMod, Host, ServerHost, Room, Opts),
+	    case {Res2, ResetHibernationTime} of
+		{{ok, _}, true} ->
+		    NewOpts = lists:keyreplace(hibernation_time, 1, Opts, {hibernation_time, undefined}),
+		    store_room(ServerHost, Host, Room, NewOpts, []);
 		_ ->
-		    ?DEBUG("Restore hibernated non-persistent room: ~ts", [Room]),
-		    Res = start_room(RMod, Host, ServerHost, Room, Opts0),
-		    case erlang:function_exported(Mod, get_subscribed_rooms, 3) of
-			true ->
-			    ok;
-			_ ->
-			    forget_room(ServerHost, Host, Room)
-		    end,
-		    Res
-	    end
+		    ok
+	    end,
+	    Res2;
+	_ ->
+	    ?DEBUG("Restore hibernated non-persistent room: ~ts", [Room]),
+	    Res = start_room(RMod, Host, ServerHost, Room, Opts),
+	    case erlang:function_exported(Mod, get_subscribed_rooms, 3) of
+		true ->
+		    ok;
+		_ ->
+		    forget_room(ServerHost, Host, Room)
+	    end,
+	    Res
     end.
 
 start_new_room(RMod, Host, ServerHost, Room, Pass, From, Nick) ->
@@ -995,15 +1008,38 @@ iq_disco_items(ServerHost, Host, From, Lang, MaxRoomsDiscoItems, Node, RSM)
 		   #rsm_set{max = Max} ->
 		       Max
 	       end,
-    {Items, HitMax} = lists:foldr(
-	fun(_, {Acc, _}) when length(Acc) >= MaxItems ->
-	    {Acc, true};
-	   (R, {Acc, _}) ->
-	    case get_room_disco_item(R, Query) of
-		{ok, Item} -> {[Item | Acc], false};
-		{error, _} -> {Acc, false}
+    RMod = gen_mod:ram_db_mod(ServerHost, ?MODULE),
+    RsmSupported = RMod:rsm_supported(),
+    GetRooms =
+	fun GetRooms(AccInit, Rooms) ->
+	    {Items, HitMax, DidSkip, Last, First} = lists:foldr(
+		fun(_, {Acc, _, Skip, F, L}) when length(Acc) >= MaxItems ->
+		    {Acc, true, Skip, F, L};
+		   ({RN, _, _} = R, {Acc, _, Skip, F, _}) ->
+		       F2 = if F == undefined -> RN; true -> F end,
+		       case get_room_disco_item(R, Query) of
+			   {ok, Item} -> {[Item | Acc], false, Skip, F2, RN};
+			   {error, _} -> {Acc, false, true, F2, RN}
+		       end
+		end, AccInit, Rooms),
+	    if RsmSupported andalso not HitMax andalso DidSkip ->
+		RSM2 = case RSM of
+			   #rsm_set{'after' = undefined, before = undefined} ->
+			       #rsm_set{max = MaxItems - length(Items), 'after' = Last};
+			   #rsm_set{'after' = undefined} ->
+			       #rsm_set{max = MaxItems - length(Items), 'before' = First};
+			   _ ->
+			       #rsm_set{max = MaxItems - length(Items), 'after' = Last}
+		       end,
+		GetRooms({Items, false, false, undefined, undefined},
+			 get_online_rooms(ServerHost, Host, RSM2));
+		true -> {Items, HitMax}
 	    end
-	end, {[], false}, get_online_rooms(ServerHost, Host, RSM)),
+	end,
+
+    {Items, HitMax} =
+	GetRooms({[], false, false, undefined, undefined},
+		 get_online_rooms(ServerHost, Host, RSM)),
     ResRSM = case Items of
 		 [_|_] when RSM /= undefined; HitMax ->
 		     #disco_item{jid = #jid{luser = First}} = hd(Items),
@@ -1073,6 +1109,16 @@ get_nick(ServerHost, Host, From) ->
     LServer = jid:nameprep(ServerHost),
     Mod = gen_mod:db_mod(LServer, ?MODULE),
     Mod:get_nick(LServer, Host, From).
+
+-spec get_register_nick(binary(), binary(), jid()) -> binary() | error.
+get_register_nick(ServerHost, Host, From) ->
+    get_nick(ServerHost, Host, From).
+
+-spec get_register_nicks(binary(), binary()) -> [{binary(), binary(), binary()}].
+get_register_nicks(ServerHost, Host) ->
+    LServer = jid:nameprep(ServerHost),
+    Mod = gen_mod:db_mod(LServer, ?MODULE),
+    Mod:get_nicks(LServer, Host).
 
 iq_get_register_info(ServerHost, Host, From, Lang) ->
     {Nick, Registered} = case get_nick(ServerHost, Host, From) of
@@ -1187,28 +1233,28 @@ remove_user(User, Server) ->
     ok.
 
 opts_to_binary(Opts) ->
-    lists:map(
+    lists:flatmap(
       fun({title, Title}) ->
-              {title, iolist_to_binary(Title)};
+              [{title, iolist_to_binary(Title)}];
          ({description, Desc}) ->
-              {description, iolist_to_binary(Desc)};
+              [{description, iolist_to_binary(Desc)}];
          ({password, Pass}) ->
-              {password, iolist_to_binary(Pass)};
+              [{password, iolist_to_binary(Pass)}];
          ({subject, [C|_] = Subj}) when is_integer(C), C >= 0, C =< 255 ->
-              {subject, iolist_to_binary(Subj)};
+              [{subject, iolist_to_binary(Subj)}];
          ({subject_author, {AuthorNick, AuthorJID}}) ->
-              {subject_author, {iolist_to_binary(AuthorNick), AuthorJID}};
+              [{subject_author, {iolist_to_binary(AuthorNick), AuthorJID}}];
          ({subject_author, AuthorNick}) -> % ejabberd 23.04 or older
-              {subject_author, {iolist_to_binary(AuthorNick), #jid{}}};
+              [{subject_author, {iolist_to_binary(AuthorNick), #jid{}}}];
          ({allow_private_messages, Value}) -> % ejabberd 23.04 or older
               Value2 = case Value of
                            true -> anyone;
                            false -> none;
                            _ -> Value
                        end,
-              {allowpm, Value2};
+              [{allowpm, Value2}];
          ({AffOrRole, Affs}) when (AffOrRole == affiliation) or (AffOrRole == role) ->
-              {affiliations, lists:map(
+              [{affiliations, lists:map(
                                fun({{U, S, R}, Aff}) ->
                                        NewAff =
                                            case Aff of
@@ -1221,16 +1267,38 @@ opts_to_binary(Opts) ->
                                          iolist_to_binary(S),
                                          iolist_to_binary(R)},
                                         NewAff}
-                               end, Affs)};
+                               end, Affs)}];
          ({captcha_whitelist, CWList}) ->
-              {captcha_whitelist, lists:map(
+              [{captcha_whitelist, lists:map(
                                     fun({U, S, R}) ->
                                             {iolist_to_binary(U),
                                              iolist_to_binary(S),
                                              iolist_to_binary(R)}
-                                    end, CWList)};
+                                    end, CWList)}];
+         ({hats_users, HatsUsers}) ->  % Update hats definitions
+              case lists:keymember(hats_defs, 1, Opts) of
+                  true ->
+                      [{hats_users, HatsUsers}];
+                  _ ->
+                      {HatsDefs, HatsUsers2} =
+                          lists:foldl(fun({Jid, UriTitleList}, {Defs, Assigns}) ->
+                                              Defs2 =
+                                                  lists:foldl(fun({Uri, Title}, AccDef) ->
+                                                                      AccDef#{Uri => {Title, <<"">>}}
+                                                              end,
+                                                              Defs,
+                                                              UriTitleList),
+                                              Assigns2 =
+                                                  Assigns#{Jid => [ Uri || {Uri, _Title} <- UriTitleList ]},
+                                              {Defs2, Assigns2}
+                                      end,
+                                      {maps:new(), maps:new()},
+                                      HatsUsers),
+                      [{hats_users, maps:to_list(HatsUsers2)},
+                       {hats_defs, maps:to_list(HatsDefs)}]
+              end;
          (Opt) ->
-              Opt
+              [Opt]
       end, Opts).
 
 export(LServer) ->
@@ -1498,12 +1566,12 @@ mod_doc() ->
                   ?T("A small history of the current discussion is sent to users "
                      "when they enter the room. With this option you can define the "
                      "number of history messages to keep and send to users joining the room. "
-                     "The value is a non-negative integer. Setting the value to 0 disables "
+                     "The value is a non-negative integer. Setting the value to '0' disables "
                      "the history feature and, as a result, nothing is kept in memory. "
-                     "The default value is 20. This value affects all rooms on the service. "
+                     "The default value is '20'. This value affects all rooms on the service. "
                      "NOTE: modern XMPP clients rely on Message Archives (XEP-0313), so feel "
                      "free to disable the history feature if you're only using modern clients "
-                     "and have 'mod_mam' module loaded.")}},
+                     "and have _`mod_mam`_ module loaded.")}},
            {host, #{desc => ?T("Deprecated. Use 'hosts' instead.")}},
            {hosts,
             #{value => ?T("[Host, ...]"),
@@ -1594,7 +1662,7 @@ mod_doc() ->
                      "When this option is not defined, message rate is not limited. "
                      "This feature can be used to protect a MUC service from occupant "
                      "abuses and limit number of messages that will be broadcasted by "
-                     "the service. A good value for this minimum message interval is 0.4 second. "
+                     "the service. A good value for this minimum message interval is '0.4' second. "
                      "If an occupant tries to send messages faster, an error is send back "
                      "explaining that the message has been discarded and describing the "
                      "reason why the message is not acceptable.")}},
@@ -1611,7 +1679,7 @@ mod_doc() ->
                      "the presence is cached by ejabberd and only the last presence "
                      "is broadcasted to all occupants in the room after expiration "
                      "of the interval delay. Intermediate presence packets are "
-                     "silently discarded. A good value for this option is 4 seconds.")}},
+                     "silently discarded. A good value for this option is '4' seconds.")}},
            {queue_type,
             #{value => "ram | file",
               desc =>
@@ -1743,8 +1811,10 @@ mod_doc() ->
                        "The default value is an empty string.")}},
              {enable_hats,
               #{value => "true | false",
+                note => "improved in 25.10",
                 desc =>
                     ?T("Allow extended roles as defined in XEP-0317 Hats. "
+                       "Check the _`../../tutorials/muc-hats.md|MUC Hats`_ tutorial. "
                        "The default value is 'false'.")}},
              {lang,
               #{value => ?T("Language"),
@@ -1811,6 +1881,11 @@ mod_doc() ->
                 desc =>
                     ?T("A custom vCard for the room. See the equivalent mod_muc option."
                        "The default value is an empty string.")}},
+             {vcard_xupdate,
+              #{value => "undefined | external | AvatarHash",
+                desc =>
+                    ?T("Set the hash of the avatar image. "
+                       "The default value is 'undefined'.")}},
              {voice_request_min_interval,
               #{value => ?T("Number"),
                 desc =>
@@ -1844,7 +1919,7 @@ mod_doc() ->
                     ?T("Maximum number of occupants in the room. "
                        "The default value is '200'.")}},
              {presence_broadcast,
-              #{value => "[moderator | participant | visitor, ...]",
+              #{value => "[Role]",
                 desc =>
                     ?T("List of roles for which presence is broadcasted. "
                        "The list can contain one or several of: 'moderator', "

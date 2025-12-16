@@ -1,5 +1,5 @@
 --
--- ejabberd, Copyright (C) 2002-2024   ProcessOne
+-- ejabberd, Copyright (C) 2002-2025   ProcessOne
 --
 -- This program is free software; you can redistribute it and/or
 -- modify it under the terms of the GNU General Public License as
@@ -20,7 +20,7 @@
 
 -- ALTER TABLE users ADD COLUMN server_host text NOT NULL DEFAULT '<HOST>';
 -- ALTER TABLE users DROP CONSTRAINT users_pkey;
--- ALTER TABLE users ADD PRIMARY KEY (server_host, username);
+-- ALTER TABLE users ADD PRIMARY KEY (server_host, username, "type");
 -- ALTER TABLE users ALTER COLUMN server_host DROP DEFAULT;
 
 -- ALTER TABLE last ADD COLUMN server_host text NOT NULL DEFAULT '<HOST>';
@@ -172,12 +172,13 @@
 CREATE TABLE users (
     username text NOT NULL,
     server_host text NOT NULL,
+    "type" smallint NOT NULL,
     "password" text NOT NULL,
     serverkey text NOT NULL DEFAULT '',
     salt text NOT NULL DEFAULT '',
     iterationcount integer NOT NULL DEFAULT 0,
     created_at TIMESTAMP NOT NULL DEFAULT now(),
-    PRIMARY KEY (server_host, username)
+    PRIMARY KEY (server_host, username, "type")
 );
 
 -- Add support for SCRAM auth to a database created before ejabberd 16.03:

@@ -1,6 +1,6 @@
 %%%----------------------------------------------------------------------
 %%%
-%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -22,7 +22,7 @@
 {roster_gateway_workaround, @roster_gateway_workaround@}.
 {full_xml, @full_xml@}.
 {debug, @debug@}.
-{new_sql_schema, @new_sql_schema@}.
+{multihost_sql_schema, @multihost_sql_schema@}.
 
 {tools, @tools@}.
 

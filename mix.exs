@@ -43,11 +43,10 @@ defmodule Ejabberd.MixProject do
 
   def application do
     [mod: {:ejabberd_app, []},
-     applications: [:idna, :inets, :kernel, :sasl, :ssl, :stdlib, :mix,
-                    :fast_tls, :fast_xml, :fast_yaml, :jose,
-                    :p1_utils, :stringprep, :syntax_tools, :yconf, :xmpp]
+     extra_applications: [:inets, :kernel, :sasl, :ssl, :stdlib, :syntax_tools,
+                          :logger, :mix]
      ++ cond_apps(),
-     included_applications: [:mnesia, :os_mon, :logger,
+     included_applications: [:mnesia, :os_mon,
                              :cache_tab, :eimp, :mqtree, :p1_acme,
                              :p1_oauth2, :pkix]
      ++ cond_included_apps()]
@@ -80,27 +79,12 @@ defmodule Ejabberd.MixProject do
     end
   end
 
-  defp if_type_exported(module, typeDef, okResult) do
-    try do
-      {:ok, concrete} = :dialyzer_utils.get_core_from_beam(:code.which(module))
-      {:ok, types} = :dialyzer_utils.get_record_and_type_info(concrete)
-      if Map.has_key?(types, typeDef) do
-        okResult
-      else
-        []
-      end
-    rescue
-       _ -> []
-    end
-  end
-
   defp erlc_options do
     # Use our own includes + includes from all dependencies
     includes = ["include", deps_include()]
     result = [{:d, :ELIXIR_ENABLED}] ++
              cond_options() ++
              Enum.map(includes, fn (path) -> {:i, path} end) ++
-             if_version_above(~c"20", [{:d, :DEPRECATED_GET_STACKTRACE}]) ++
              if_version_above(~c"20", [{:d, :HAVE_URI_STRING}]) ++
              if_version_above(~c"20", [{:d, :HAVE_ERL_ERROR}]) ++
              if_version_below(~c"21", [{:d, :USE_OLD_HTTP_URI}]) ++
@@ -114,7 +98,8 @@ defmodule Ejabberd.MixProject do
              if_version_below(~c"25", [{:d, :OTP_BELOW_25}]) ++
              if_version_below(~c"26", [{:d, :OTP_BELOW_26}]) ++
              if_version_below(~c"27", [{:d, :OTP_BELOW_27}]) ++
-             if_type_exported(:odbc, {:opaque, :connection_reference, 0}, [{:d, :ODBC_HAS_TYPES}])
+             if_version_below(~c"27", [{:feature, :maybe_expr, :enable}]) ++
+             if_version_below(~c"28", [{:d, :OTP_BELOW_28}])
     defines = for {:d, value} <- result, do: {:d, value}
     result ++ [{:d, :ALL_DEFS, defines}]
   end
@@ -125,7 +110,7 @@ defmodule Ejabberd.MixProject do
                             {config(:debug), :debug_info},
                             {not config(:debug), {:debug_info, false}},
                             {config(:roster_gateway_workaround), {:d, :ROSTER_GATEWAY_WORKAROUND}},
-                            {config(:new_sql_schema), {:d, :NEW_SQL_SCHEMA}}
+                            {config(:multihost_sql_schema), {:d, :MULTIHOST_SQL_SCHEMA}}
                            ], do:
     option
   end
@@ -134,19 +119,19 @@ defmodule Ejabberd.MixProject do
     [{:cache_tab, "~> 1.0"},
      {:dialyxir, "~> 1.2", only: [:test], runtime: false},
      {:eimp, "~> 1.0"},
-     {:ex_doc, "~> 0.31", only: [:dev, :edoc], runtime: false},
-     {:fast_tls, ">= 1.1.18"},
-     {:fast_xml, ">= 1.1.51"},
+     {:ex_doc, "~> 0.31", only: [:edoc], runtime: false},
+     {:fast_tls, "~> 1.1.24"},
+     {:fast_xml, "~> 1.1.56"},
      {:fast_yaml, "~> 1.0"},
      {:idna, "~> 6.0"},
      {:mqtree, "~> 1.0"},
-     {:p1_acme, "~> 1.0"},
+     {:p1_acme, ">= 1.0.28"},
      {:p1_oauth2, "~> 0.6"},
      {:p1_utils, "~> 1.0"},
      {:pkix, "~> 1.0"},
      {:stringprep, ">= 1.0.26"},
-     {:xmpp, ">= 1.8.3"},
-     {:yconf, "~> 1.0"}]
+     {:xmpp, ">= 1.11.2"},
+     {:yconf, ">= 1.0.22"}]
     ++ cond_deps()
   end
 
@@ -166,8 +151,8 @@ defmodule Ejabberd.MixProject do
                          {Mix.env() == :translations,
                           {:ejabberd_po, git: "https://github.com/processone/ejabberd-po.git"}},
                          {Mix.env() == :dev,
-                          {:exsync, "~> 0.2"}},
-                         {config(:redis), {:eredis, "~> 1.2.0"}},
+                          {:exsync, "~> 0.2", optional: true, runtime: false}},
+                         {config(:redis), {:eredis, "~> 1.7.1"}},
                          {config(:sip), {:esip, "~> 1.0"}},
                          {config(:zlib), {:ezlib, "~> 1.0"}},
                          {if_version_above(~c"23", true), {:jose, "~> 1.11.10"}},
@@ -176,7 +161,7 @@ defmodule Ejabberd.MixProject do
                          {if_version_below(~c"22", true), {:lager, "~> 3.9.1"}},
                          {config(:lua), {:luerl, "~> 1.2.0"}},
                          {config(:mysql), {:p1_mysql, ">= 1.0.24"}},
-                         {config(:pgsql), {:p1_pgsql, ">= 1.1.26"}},
+                         {config(:pgsql), {:p1_pgsql, ">= 1.1.32"}},
                          {config(:sqlite), {:sqlite3, "~> 1.1"}},
                          {config(:stun), {:stun, "~> 1.0"}}], do:
       dep
@@ -184,9 +169,10 @@ defmodule Ejabberd.MixProject do
 
   defp cond_apps do
     for {:true, app} <- [{config(:stun), :stun},
-                         {Map.has_key?(System.get_env(), "RELIVE"), :exsync},
                          {if_version_below(~c"27", true), :jiffy},
-                         {config(:tools), :observer}], do:
+                         {config(:tools), :debugger},
+                         {config(:tools), :observer},
+                         {config(:tools), :wx}], do:
       app
   end
 
@@ -214,9 +200,9 @@ defmodule Ejabberd.MixProject do
       maintainers: ["ProcessOne"],
       licenses: ["GPL-2.0-or-later"],
       links: %{"ejabberd.im" => "https://www.ejabberd.im",
-               "ejabberd Docs" => "http://docs.ejabberd.im",
+               "ejabberd Docs" => "https://docs.ejabberd.im",
                "GitHub" => "https://github.com/processone/ejabberd",
-               "ProcessOne" => "http://www.process-one.net/"}]
+               "ProcessOne" => "https://www.process-one.net/"}]
   end
 
   defp vars do
@@ -281,6 +267,7 @@ defmodule Ejabberd.MixProject do
       ejabberd: [
         include_executables_for: [:unix],
         # applications: [runtime_tools: :permanent]
+        strip_beams: Mix.env() != :dev,
         steps: [&copy_extra_files/1, :assemble | maybe_tar]
       ]
     ]

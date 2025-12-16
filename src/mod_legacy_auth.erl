@@ -2,7 +2,7 @@
 %%% Created : 11 Dec 2016 by Evgeny Khramtsov <ekhramtsov@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -22,7 +22,7 @@
 -module(mod_legacy_auth).
 -behaviour(gen_mod).
 
--protocol({xep, 78, '2.5'}).
+-protocol({xep, 78, '2.5', '17.03', "complete", ""}).
 
 %% gen_mod API
 -export([start/2, stop/1, reload/3, depends/2, mod_options/1, mod_doc/0]).

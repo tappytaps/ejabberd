@@ -7,7 +7,7 @@
 %%%              {mod_carboncopy, []}
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -27,7 +27,7 @@
 -module (mod_carboncopy).
 
 -author ('ecestari@process-one.net').
--protocol({xep, 280, '0.13.2'}).
+-protocol({xep, 280, '1.0.1', '13.06', "complete", ""}).
 
 -behaviour(gen_mod).
 
@@ -38,7 +38,7 @@
 	 iq_handler/1, disco_features/5,
 	 depends/2, mod_options/1, mod_doc/0]).
 -export([c2s_copy_session/2, c2s_session_opened/1, c2s_session_resumed/1,
-	 c2s_inline_features/2, c2s_handle_bind2_inline/1]).
+	 c2s_inline_features/3, c2s_handle_bind2_inline/1]).
 %% For debugging purposes
 -export([list/2]).
 
@@ -145,10 +145,10 @@ c2s_session_resumed(State) ->
 c2s_session_opened(State) ->
     maps:remove(carboncopy, State).
 
-c2s_inline_features({Sasl, Bind} = Acc, Host) ->
+c2s_inline_features({Sasl, Bind, Extra} = Acc, Host, _State) ->
     case gen_mod:is_loaded(Host, ?MODULE) of
 	true ->
-	    {Sasl, [#bind2_feature{var = ?NS_CARBONS_2} | Bind]};
+	    {Sasl, [#bind2_feature{var = ?NS_CARBONS_2} | Bind], Extra};
 	false ->
 	    Acc
     end.

@@ -1,6 +1,6 @@
 %%%----------------------------------------------------------------------
 %%%
-%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -27,9 +27,13 @@
                  rescode | restuple.
 
 %% The 'any' and 'atom' argument types and 'any' result type
-%% should only be used %% by commands with tag 'internal',
+%% should only be used by commands with tag 'internal',
 %% which are meant to be used only internally in ejabberd,
 %% and not called using external frontends.
+
+%% When a command with tag 'async' is called by mod_adhoc_api,
+%% it is spawned in a new process for the command execution,
+%% and the command immediately returns success.
 
 %% The purpose of a command can either be:
 %% - informative: its purpose is to obtain information

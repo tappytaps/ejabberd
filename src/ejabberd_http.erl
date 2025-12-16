@@ -5,7 +5,7 @@
 %%% Created : 27 Feb 2004 by Alexey Shchepin <alexey@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -39,7 +39,7 @@
 -include("logger.hrl").
 -include_lib("xmpp/include/xmpp.hrl").
 -include("ejabberd_http.hrl").
--include("ejabberd_stacktrace.hrl").
+
 -include_lib("kernel/include/file.hrl").
 
 -record(state, {sockmod,
@@ -66,9 +66,9 @@
 		request_headers = [],
 		end_of_request = false,
 		options = [],
-		default_host,
 		custom_headers,
 		trail = <<>>,
+		allow_unencrypted_sasl2,
 		addr_re,
 		sock_peer_name = none
 	       }).
@@ -133,10 +133,12 @@ init(SockMod, Socket, Opts) ->
 
     CustomHeaders = proplists:get_value(custom_headers, Opts, []),
 
+    AllowUnencryptedSasl2 = proplists:get_bool(allow_unencrypted_sasl2, Opts),
     State = #state{sockmod = SockMod1,
                    socket = Socket1,
 		   custom_headers = CustomHeaders,
 		   options = Opts,
+		   allow_unencrypted_sasl2 = AllowUnencryptedSasl2,
 		   request_handlers = RequestHandlers,
 		   sock_peer_name = SockPeer,
 		   addr_re = RE},
@@ -167,9 +169,8 @@ send_file(State, Fd, Size, FileName) ->
     try
 	case State#state.sockmod of
 	    gen_tcp ->
-		case file:sendfile(Fd, State#state.socket, 0, Size, []) of
-		    {ok, _} -> ok
-		end;
+		{ok, _} = file:sendfile(Fd, State#state.socket, 0, Size, []),
+		ok;
 	    _ ->
 		case file:read(Fd, ?SEND_BUF) of
 		    {ok, Data} ->
@@ -272,7 +273,7 @@ process_header(State, Data) ->
 		      request_headers = add_header(Name, Langs, State)};
       {ok, {http_header, _, 'Host' = Name, _, Value}} ->
 	  {Host, Port, TP} = get_transfer_protocol(State#state.addr_re, SockMod, Value),
-	  State#state{request_host = Host,
+	  State#state{request_host = ejabberd_config:resolve_host_alias(Host),
 		      request_port = Port,
 		      request_tp = TP,
 		      request_headers = add_header(Name, Value, State)};
@@ -298,7 +299,6 @@ process_header(State, Data) ->
 		    #state{sockmod = SockMod, socket = Socket,
 			   trail = State3#state.trail,
 			   options = State#state.options,
-			   default_host = State#state.default_host,
 			   custom_headers = State#state.custom_headers,
 			   request_handlers = State#state.request_handlers,
 			   addr_re = State#state.addr_re};
@@ -306,7 +306,6 @@ process_header(State, Data) ->
 		    #state{end_of_request = true,
 			   trail = State3#state.trail,
 			   options = State#state.options,
-			   default_host = State#state.default_host,
 			   custom_headers = State#state.custom_headers,
 			   request_handlers = State#state.request_handlers,
 			   addr_re = State#state.addr_re}
@@ -314,7 +313,6 @@ process_header(State, Data) ->
       _ ->
 	  #state{end_of_request = true,
 		 options = State#state.options,
-		 default_host = State#state.default_host,
 		 custom_headers = State#state.custom_headers,
 		 request_handlers = State#state.request_handlers,
 		 addr_re = State#state.addr_re}
@@ -374,11 +372,11 @@ process(Handlers, Request) ->
                         try
                             HandlerModule:process(LocalPath, Request)
                         catch
-                            ?EX_RULE(Class, Reason, Stack) ->
+                            Class:Reason:Stack ->
                                 ?ERROR_MSG(
-                                   "HTTP handler crashed: ~s",
-                                   [misc:format_exception(2, Class, Reason, ?EX_STACK(Stack))]),
-                                erlang:raise(Class, Reason, ?EX_STACK(Stack))
+                                  "HTTP handler crashed: ~s",
+                                  [misc:format_exception(2, Class, Reason, Stack)]),
+                                erlang:raise(Class, Reason, Stack)
                         end
 		end,
             ejabberd_hooks:run(http_request_debug, [{LocalPath, Request}]),
@@ -720,7 +718,7 @@ file_format_error(Reason) ->
 url_decode_q_split_normalize(Path) ->
     {NPath, Query} = url_decode_q_split(Path),
     LPath = normalize_path([NPE
-		    || NPE <- str:tokens(path_decode(NPath), <<"/">>)]),
+		    || NPE <- str:tokens(misc:uri_decode(NPath), <<"/">>)]),
     {LPath, Query}.
 
 % Code below is taken (with some modifications) from the yaws webserver, which
@@ -747,19 +745,6 @@ url_decode_q_split(<<H, T/binary>>, Acc) when H /= 0 ->
     url_decode_q_split(T, <<H, Acc/binary>>);
 url_decode_q_split(<<>>, Ack) ->
     {path_norm_reverse(Ack), <<>>}.
-
-%% @doc Decode a part of the URL and return string()
-path_decode(Path) -> path_decode(Path, <<>>).
-
-path_decode(<<$%, Hi, Lo, Tail/binary>>, Acc) ->
-    Hex = list_to_integer([Hi, Lo], 16),
-    if Hex == 0 -> exit(badurl);
-       true -> ok
-    end,
-    path_decode(Tail, <<Acc/binary, Hex>>);
-path_decode(<<H, T/binary>>, Acc) when H /= 0 ->
-    path_decode(T, <<Acc/binary, H>>);
-path_decode(<<>>, Acc) -> Acc.
 
 path_norm_reverse(<<"/", T/binary>>) -> start_dir(0, <<"/">>, T);
 path_norm_reverse(T) -> start_dir(0, <<"">>, T).
@@ -916,23 +901,18 @@ normalize_path([Part | Path], Norm) ->
 
 listen_opt_type(tag) ->
     econf:binary();
+listen_opt_type(allow_unencrypted_sasl2) ->
+    econf:bool();
 listen_opt_type(request_handlers) ->
     econf:map(
       econf:and_then(
 	econf:binary(),
 	fun(Path) -> str:tokens(Path, <<"/">>) end),
       econf:beam([[{socket_handoff, 3}, {process, 2}]]));
-listen_opt_type(default_host) ->
-    econf:domain();
 listen_opt_type(custom_headers) ->
     econf:map(
       econf:binary(),
-      econf:and_then(
-	econf:binary(),
-	fun(V) ->
-		misc:expand_keyword(<<"@VERSION@">>, V,
-				    ejabberd_option:version())
-	end)).
+      econf:binary()).
 
 listen_options() ->
     [{ciphers, undefined},
@@ -941,7 +921,7 @@ listen_options() ->
      {protocol_options, undefined},
      {tls, false},
      {tls_compression, false},
+     {allow_unencrypted_sasl2, false},
      {request_handlers, []},
      {tag, <<>>},
-     {default_host, undefined},
      {custom_headers, []}].

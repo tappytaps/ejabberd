@@ -5,7 +5,7 @@
 %%% Created :  8 Dec 2004 by Alexey Shchepin <alexey@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -41,6 +41,7 @@
 	 abort/1,
 	 restart/1,
 	 use_new_schema/0,
+	 use_multihost_schema/0,
 	 sql_query_to_iolist/1,
 	 sql_query_to_iolist/2,
 	 escape/1,
@@ -70,18 +71,31 @@
 -export([connecting/2, connecting/3,
 	 session_established/2, session_established/3]).
 
--ifdef(ODBC_HAS_TYPES).
-    -type(odbc_connection_reference() ::  odbc:connection_reference()).
+-deprecated({use_new_schema, 0}).
+
+-ifdef(OTP_BELOW_28).
+-ifdef(OTP_BELOW_26).
+%% OTP 25 or lower
+-type(odbc_connection_reference() ::  pid()).
+-type(db_ref_pid() :: pid()).
 -else.
-    -type(odbc_connection_reference() ::  pid()).
+%% OTP 26 or 27
+-type(odbc_connection_reference() ::  odbc:connection_reference()).
+-type(db_ref_pid() :: pid()).
+-endif.
+-else.
+%% OTP 28 or higher
+-nominal(odbc_connection_reference() :: odbc:connection_reference()).
+-nominal(db_ref_pid() :: pid()).
+-dialyzer([no_opaque_union]).
 -endif.
 
 -include("logger.hrl").
 -include("ejabberd_sql_pt.hrl").
--include("ejabberd_stacktrace.hrl").
+
 
 -record(state,
-	{db_ref               :: undefined | pid() | odbc_connection_reference(),
+	{db_ref               :: undefined | db_ref_pid() | odbc_connection_reference(),
 	 db_type = odbc       :: pgsql | mysql | sqlite | odbc | mssql,
 	 db_version           :: undefined | non_neg_integer() | {non_neg_integer(), atom(), non_neg_integer()},
 	 reconnect_count = 0  :: non_neg_integer(),
@@ -183,8 +197,8 @@ keep_alive(Host, Proc) ->
 	   Timeout) of
 	{selected,_,[[<<"1">>]]} ->
 	    ok;
-	_Err ->
-	    ?ERROR_MSG("Keep alive query failed, closing connection: ~p", [_Err]),
+	Err ->
+	    ?ERROR_MSG("Keep alive query failed, closing connection: ~p", [Err]),
 	    sync_send_event(Proc, force_timeout, Timeout)
     end.
 
@@ -342,8 +356,11 @@ sqlite_file(Host) ->
 	    binary_to_list(File)
     end.
 
+use_multihost_schema() ->
+    ejabberd_option:sql_schema_multihost().
+
 use_new_schema() ->
-    ejabberd_option:new_sql_schema().
+    use_multihost_schema().
 
 -spec get_worker(binary()) -> atom().
 get_worker(Host) ->
@@ -605,19 +622,20 @@ outer_transaction(F, NRestarts, _Reason) ->
 			    {atomic, Res}
 		    end
 	    catch
-		?EX_RULE(throw, {aborted, Reason}, _) when NRestarts > 0 ->
-		    maybe_restart_transaction(F, NRestarts, Reason, true);
-		?EX_RULE(throw, {aborted, Reason}, Stack) when NRestarts =:= 0 ->
-		    StackTrace = ?EX_STACK(Stack),
-		    ?ERROR_MSG("SQL transaction restarts exceeded~n** "
-			       "Restarts: ~p~n** Last abort reason: "
-			       "~p~n** Stacktrace: ~p~n** When State "
-			       "== ~p",
-			       [?MAX_TRANSACTION_RESTARTS, Reason,
-				StackTrace, get(?STATE_KEY)]),
-		    maybe_restart_transaction(F, NRestarts, Reason, true);
-		?EX_RULE(_, Reason, _) ->
-		    maybe_restart_transaction(F, 0, Reason, true)
+                throw:{aborted, Reason}:_ when NRestarts > 0 ->
+                    maybe_restart_transaction(F, NRestarts, Reason, true);
+                throw:{aborted, Reason}:StackTrace when NRestarts =:= 0 ->
+                    ?ERROR_MSG("SQL transaction restarts exceeded~n** "
+                               "Restarts: ~p~n** Last abort reason: "
+                               "~p~n** Stacktrace: ~p~n** When State "
+                               "== ~p",
+                               [?MAX_TRANSACTION_RESTARTS,
+                                Reason,
+                                StackTrace,
+                                get(?STATE_KEY)]),
+                    maybe_restart_transaction(F, NRestarts, Reason, true);
+                _:Reason:_ ->
+                    maybe_restart_transaction(F, 0, Reason, true)
 	    end
     end.
 
@@ -731,10 +749,9 @@ sql_query_internal(#sql_query{} = Query) ->
 		{error, <<"terminated unexpectedly">>};
 	      exit:{shutdown, _} ->
 		{error, <<"shutdown">>};
-	      ?EX_RULE(Class, Reason, Stack) ->
-		StackTrace = ?EX_STACK(Stack),
+            Class:Reason:StackTrace ->
                 ?ERROR_MSG("Internal error while processing SQL query:~n** ~ts",
-			   [misc:format_exception(2, Class, Reason, StackTrace)]),
+                           [misc:format_exception(2, Class, Reason, StackTrace)]),
                 {error, <<"internal error">>}
         end,
     check_error(Res, Query);
@@ -924,12 +941,11 @@ sql_query_format_res({selected, _, Rows}, SQLQuery) ->
                   try
                       [(SQLQuery#sql_query.format_res)(Row)]
                   catch
-		      ?EX_RULE(Class, Reason, Stack) ->
-			  StackTrace = ?EX_STACK(Stack),
+                      Class:Reason:StackTrace ->
                           ?ERROR_MSG("Error while processing SQL query result:~n"
                                      "** Row: ~p~n** ~ts",
                                      [Row,
-				      misc:format_exception(2, Class, Reason, StackTrace)]),
+                                      misc:format_exception(2, Class, Reason, StackTrace)]),
                           []
                   end
           end, Rows),
@@ -1365,7 +1381,7 @@ write_file_if_new(File, Payload) ->
 
 tmp_dir() ->
     case os:type() of
-	{win32, _} -> filename:join([os:getenv("HOME"), "conf"]);
+	{win32, _} -> filename:join([misc:get_home(), "conf"]);
 	_ -> filename:join(["/tmp", "ejabberd"])
     end.
 

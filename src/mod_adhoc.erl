@@ -5,7 +5,7 @@
 %%% Created : 15 Nov 2005 by Magnus Henoch <henoch@dtek.chalmers.se>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -27,7 +27,7 @@
 
 -author('henoch@dtek.chalmers.se').
 
--protocol({xep, 50, '1.2'}).
+-protocol({xep, 50, '1.2', '1.1.0', "complete", ""}).
 
 -behaviour(gen_mod).
 
@@ -252,9 +252,11 @@ mod_options(_Host) ->
 
 mod_doc() ->
     #{desc =>
-          ?T("This module implements https://xmpp.org/extensions/xep-0050.html"
+          [?T("def:ad-hoc command"), "",
+           ?T(": Command that can be executed by an XMPP client using XEP-0050."), "",
+           ?T("This module implements https://xmpp.org/extensions/xep-0050.html"
              "[XEP-0050: Ad-Hoc Commands]. It's an auxiliary module and is "
-             "only needed by some of the other modules."),
+             "only needed by some of the other modules.")],
       opts =>
           [{report_commands_node,
             #{value => "true | false",

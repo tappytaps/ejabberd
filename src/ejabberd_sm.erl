@@ -5,7 +5,7 @@
 %%% Created : 24 Nov 2002 by Alexey Shchepin <alexey@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -63,6 +63,7 @@
 	 kick_user/2,
 	 kick_user/3,
 	 kick_user_restuple/2,
+	 kick_users/1,
 	 get_session_pid/3,
 	 get_session_sid/3,
 	 get_session_sids/2,
@@ -91,7 +92,7 @@
 -include_lib("xmpp/include/xmpp.hrl").
 -include("ejabberd_commands.hrl").
 -include("ejabberd_sm.hrl").
--include("ejabberd_stacktrace.hrl").
+
 -include("translate.hrl").
 
 -callback init() -> ok | {error, any()}.
@@ -130,13 +131,14 @@ stop() ->
 %% @doc route arbitrary term to c2s process(es)
 route(To, Term) ->
     try do_route(To, Term), ok
-    catch ?EX_RULE(E, R, St) ->
-	    StackTrace = ?EX_STACK(St),
-	    ?ERROR_MSG("Failed to route term to ~ts:~n"
-		       "** Term = ~p~n"
-		       "** ~ts",
-		       [jid:encode(To), Term,
-			misc:format_exception(2, E, R, StackTrace)])
+    catch
+        E:R:StackTrace ->
+            ?ERROR_MSG("Failed to route term to ~ts:~n"
+                       "** Term = ~p~n"
+                       "** ~ts",
+                       [jid:encode(To),
+                        Term,
+                        misc:format_exception(2, E, R, StackTrace)])
     end.
 
 -spec route(stanza()) -> ok.
@@ -206,6 +208,18 @@ bounce_offline_message(Acc) ->
     Acc.
 
 -spec bounce_sm_packet({bounce | term(), stanza()}) -> any().
+bounce_sm_packet({bounce, #message{meta = #{ignore_sm_bounce := true}} = Packet} = Acc) ->
+    ?DEBUG("Dropping packet to unavailable resource:~n~ts",
+	   [xmpp:pp(Packet)]),
+    Acc;
+bounce_sm_packet({bounce, #iq{meta = #{ignore_sm_bounce := true}} = Packet} = Acc) ->
+    ?DEBUG("Dropping packet to unavailable resource:~n~ts",
+	   [xmpp:pp(Packet)]),
+    Acc;
+bounce_sm_packet({bounce, #presence{meta = #{ignore_sm_bounce := true}} = Packet} = Acc) ->
+    ?DEBUG("Dropping packet to unavailable resource:~n~ts",
+	   [xmpp:pp(Packet)]),
+    Acc;
 bounce_sm_packet({bounce, Packet} = Acc) ->
     Lang = xmpp:get_lang(Packet),
     Txt = ?T("User session not found"),
@@ -468,8 +482,10 @@ c2s_handle_info(#{lang := Lang, bind2_session_id := {Tag, _}} = State,
     {stop, ejabberd_c2s:send(State1, Err)};
 c2s_handle_info(State, {replaced_with_bind_tag, _}) ->
     State;
-c2s_handle_info(#{lang := Lang} = State, kick) ->
+c2s_handle_info(#{lang := Lang, jid := JID} = State, kick) ->
     Err = xmpp:serr_policy_violation(?T("has been kicked"), Lang),
+    ejabberd_hooks:run(sm_kick_user, JID#jid.lserver,
+                       [JID#jid.luser, JID#jid.lserver]),
     {stop, ejabberd_c2s:send(State, Err)};
 c2s_handle_info(#{lang := Lang} = State, {exit, Reason}) ->
     Err = xmpp:serr_conflict(Reason, Lang),
@@ -1022,8 +1038,8 @@ get_commands_spec() ->
 			desc = "List all established sessions",
                         policy = admin,
 			module = ?MODULE, function = connected_users, args = [],
-			result_desc = "List of users sessions",
-			result_example = [<<"user1@example.com">>, <<"user2@example.com">>],
+			result_desc = "List of users sessions full JID",
+			result_example = [<<"user1@example.com/Home">>, <<"user2@example.com/54134">>],
 			result = {connected_users, {list, {sessions, string}}}},
      #ejabberd_commands{name = connected_users_number, tags = [session, statistics],
 			desc = "Get the number of established sessions",
@@ -1060,7 +1076,18 @@ get_commands_spec() ->
 			args_example = [<<"user1">>, <<"example.com">>],
 			result_desc = "The result text indicates the number of sessions that were kicked",
 			result_example = {ok, <<"Kicked sessions: 2">>},
-			result = {res, restuple}}].
+			result = {res, restuple}},
+
+    #ejabberd_commands{name = kick_users, tags = [session],
+			desc = "Disconnect all given host users' active sessions",
+			module = ?MODULE, function = kick_users,
+			note = "added in 25.04",
+			args = [{host, binary}],
+			args_desc = ["Server name"],
+			args_example = [<<"example.com">>],
+			result_desc = "Number of sessions that were kicked",
+			result_example = 3,
+			result = {num_sessions, integer}}].
 
 -spec connected_users() -> [binary()].
 
@@ -1098,6 +1125,11 @@ kick_user(User, Server, Resource) ->
 kick_user_restuple(User, Server) ->
     NumberBin = integer_to_binary(kick_user(User, Server)),
     {ok, <<"Kicked sessions: ", NumberBin/binary>>}.
+
+-spec kick_users(binary()) -> non_neg_integer().
+kick_users(Server) ->
+    length([kick_user(U, S, R) || {U, S, R} <-get_vh_session_list(Server)]).
+
 
 make_sid() ->
     {misc:unique_timestamp(), self()}.

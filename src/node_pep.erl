@@ -5,7 +5,7 @@
 %%% Created :  1 Dec 2007 by Christophe Romain <christophe.romain@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -29,6 +29,8 @@
 -module(node_pep).
 -behaviour(gen_pubsub_node).
 -author('christophe.romain@process-one.net').
+
+-protocol({xep, 384, '0.8.3', '21.12', "complete", ""}).
 
 -include("pubsub.hrl").
 

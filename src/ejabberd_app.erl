@@ -5,7 +5,7 @@
 %%% Created : 31 Jan 2003 by Alexey Shchepin <alexey@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -32,7 +32,7 @@
 -export([start/2, prep_stop/1, stop/1]).
 
 -include("logger.hrl").
--include("ejabberd_stacktrace.hrl").
+
 
 %%%
 %%% Application API
@@ -44,6 +44,7 @@ start(normal, _Args) ->
 	ejabberd_logger:start(),
 	write_pid_file(),
 	start_included_apps(),
+	misc:warn_unset_home(),
 	start_elixir_application(),
 	setup_if_elixir_conf_used(),
 	case ejabberd_config:load() of
@@ -59,10 +60,14 @@ start(normal, _Args) ->
 			ejabberd_hooks:run(ejabberd_started, []),
 			ejabberd:check_apps(),
 			ejabberd_systemd:ready(),
+			maybe_start_exsync(),
 			{T2, _} = statistics(wall_clock),
 			?INFO_MSG("ejabberd ~ts is started in the node ~p in ~.2fs",
 				  [ejabberd_option:version(),
 				   node(), (T2-T1)/1000]),
+			maybe_print_elixir_version(),
+			?INFO_MSG("~ts",
+				  [erlang:system_info(system_version)]),
 			{ok, SupPid};
 		    Err ->
 			?CRITICAL_MSG("Failed to start ejabberd application: ~p", [Err]),
@@ -104,6 +109,7 @@ prep_stop(State) ->
     ejabberd_service:stop(),
     ejabberd_s2s:stop(),
     ejabberd_system_monitor:stop(),
+    gen_mod:prep_stop(),
     gen_mod:stop(),
     State.
 
@@ -172,10 +178,18 @@ file_queue_init() ->
 	Err -> throw({?MODULE, Err})
     end.
 
+%%%
+%%% Elixir
+%%%
+
 -ifdef(ELIXIR_ENABLED).
 is_using_elixir_config() ->
     Config = ejabberd_config:path(),
-    'Elixir.Ejabberd.ConfigUtil':is_elixir_config(Config).
+    try 'Elixir.Ejabberd.ConfigUtil':is_elixir_config(Config) of
+        B when is_boolean(B) -> B
+    catch
+        _:_ -> false
+    end.
 
 setup_if_elixir_conf_used() ->
   case is_using_elixir_config() of
@@ -194,8 +208,19 @@ start_elixir_application() ->
 	ok -> ok;
 	{error, _Msg} -> ?ERROR_MSG("Elixir application not started.", [])
     end.
+
+maybe_start_exsync() ->
+    case os:getenv("RELIVE") of
+        "true" -> rpc:call(node(), 'Elixir.ExSync.Application', start, []);
+        _ -> ok
+    end.
+
+maybe_print_elixir_version() ->
+    ?INFO_MSG("Elixir ~ts", [maps:get(build, 'Elixir.System':build_info())]).
 -else.
 setup_if_elixir_conf_used() -> ok.
 register_elixir_config_hooks() -> ok.
 start_elixir_application() -> ok.
+maybe_start_exsync() -> ok.
+maybe_print_elixir_version() -> ok.
 -endif.

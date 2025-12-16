@@ -3,7 +3,7 @@
 %%% Created : 28 Mar 2017 by Evgeny Khramtsov <ekhramtsov@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -32,7 +32,8 @@
 -include("logger.hrl").
 -include("ejabberd_sql_pt.hrl").
 -include("ejabberd_router.hrl").
--include("ejabberd_stacktrace.hrl").
+
+
 
 %%%===================================================================
 %%% API
@@ -141,13 +142,13 @@ row_to_route(Domain, {ServerHost, NodeS, PidS, LocalHintS} = Row) ->
 		local_hint = dec_local_hint(LocalHintS)}]
     catch _:{bad_node, _} ->
 	    [];
-	  ?EX_RULE(Class, Reason, St) ->
-	    StackTrace = ?EX_STACK(St),
-	    ?ERROR_MSG("Failed to decode row from 'route' table:~n"
-		       "** Row = ~p~n"
-		       "** Domain = ~ts~n"
-		       "** ~ts",
-		       [Row, Domain,
-			misc:format_exception(2, Class, Reason, StackTrace)]),
-	    []
+        Class:Reason:StackTrace ->
+            ?ERROR_MSG("Failed to decode row from 'route' table:~n"
+                       "** Row = ~p~n"
+                       "** Domain = ~ts~n"
+                       "** ~ts",
+                       [Row,
+                        Domain,
+                        misc:format_exception(2, Class, Reason, StackTrace)]),
+            []
     end.

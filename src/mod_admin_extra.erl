@@ -5,7 +5,7 @@
 %%% Created : 10 Aug 2008 by Badlop <badlop@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -43,13 +43,15 @@
 	 % Sessions
 	 num_resources/2, resource_num/3,
 	 kick_session/4, status_num/2, status_num/1,
-	 status_list/2, status_list/1, connected_users_info/0,
+	 status_list/2, status_list_v3/2,
+	 status_list/1, status_list_v3/1, connected_users_info/0,
 	 connected_users_vhost/1, set_presence/7,
 	 get_presence/2, user_sessions_info/2, get_last/2, set_last/4,
 
 	 % Accounts
 	 set_password/3, check_password_hash/4, delete_old_users/1,
 	 delete_old_users_vhost/2, check_password/3,
+         list_banned/1, count_banned/1,
 	 ban_account/3, ban_account_v2/3, get_ban_details/2, unban_account/2,
 
 	 % vCard
@@ -104,8 +106,8 @@
 %%%
 
 start(_Host, _Opts) ->
-    ejabberd_commands:register_commands(?MODULE, get_commands_spec()),
-    {ok, [{hook, webadmin_menu_main, web_menu_main, 50, global},
+    {ok, [{commands, get_commands_spec()},
+          {hook, webadmin_menu_main, web_menu_main, 50, global},
 	  {hook, webadmin_page_main, web_page_main, 50, global},
 	  {hook, webadmin_menu_host, web_menu_host, 50},
 	  {hook, webadmin_page_host, web_page_host, 50},
@@ -116,13 +118,8 @@ start(_Host, _Opts) ->
 	  {hook, webadmin_menu_node, web_menu_node, 50, global},
 	  {hook, webadmin_page_node, web_page_node, 50, global}]}.
 
-stop(Host) ->
-    case gen_mod:is_loaded_elsewhere(Host, ?MODULE) of
-	false ->
-	    ejabberd_commands:unregister_commands(get_commands_spec());
-	true ->
-	    ok
-    end.
+stop(_Host) ->
+    ok.
 
 reload(_Host, _NewOpts, _OldOpts) ->
     ok.
@@ -239,7 +236,7 @@ get_commands_spec() ->
      #ejabberd_commands{name = check_password_hash, tags = [accounts],
 			desc = "Check if the password hash is correct",
 			longdesc = "Allows hash methods from the Erlang/OTP "
-                        "[crypto](https://www.erlang.org/doc/man/crypto) application.",
+                        "[crypto](https://www.erlang.org/doc/apps/crypto/crypto.html) application.",
 			module = ?MODULE, function = check_password_hash,
 			args = [{user, binary}, {host, binary}, {passwordhash, binary},
 				{hashmethod, binary}],
@@ -259,6 +256,28 @@ get_commands_spec() ->
 			result = {res, rescode},
 			result_example = ok},
 
+     #ejabberd_commands{name = list_banned, tags = [accounts],
+			desc = "List banned accounts",
+			longdesc = "The HOST argument can be `all` to query all vhosts.",
+			note = "added in 25.10",
+			module = ?MODULE, function = list_banned,
+			args = [{host, binary}],
+			args_example = [<<"myserver.com">>],
+			args_desc = ["Server name"],
+			result = {banned, {list, {jid, string}}},
+     	                result_desc = "The list of accounts that are banned",
+		        result_example = ["attacker@example.com", "user3@example.com"]},
+     #ejabberd_commands{name = count_banned, tags = [accounts],
+			desc = "Count number of banned accounts",
+			longdesc = "The HOST argument can be `all` to query all vhosts.",
+			note = "added in 25.10",
+			module = ?MODULE, function = count_banned,
+			args = [{host, binary}],
+			args_example = [<<"myserver.com">>],
+			args_desc = ["Server name"],
+                        result_example = 6,
+                        result_desc = "Number of banned accounts",
+                        result = {banned, integer}},
      #ejabberd_commands{name = ban_account, tags = [accounts],
 			desc = "Ban an account: kick sessions and set random password",
 			longdesc = "This simply sets a random password.",
@@ -272,14 +291,14 @@ get_commands_spec() ->
      #ejabberd_commands{name = ban_account, tags = [accounts],
 			desc = "Ban an account",
 			longdesc = "This command kicks the account sessions, "
-                        "sets a random password, and stores ban details in the "
-                        "account private storage. "
-                        "This command requires mod_private to be enabled. "
+                        "stores ban details in the account private storage, "
+                        "which blocks login to the account. "
+                        "This command requires _`mod_private`_ to be enabled. "
                         "Check also _`get_ban_details`_ API "
-                        "and `_unban_account`_ API.",
+                        "and _`unban_account`_ API.",
 			module = ?MODULE, function = ban_account_v2,
 			version = 2,
-			note = "improved in 24.06",
+			note = "improved in 25.08",
 			args = [{user, binary}, {host, binary}, {reason, binary}],
 			args_example = [<<"attacker">>, <<"myserver.com">>, <<"Spaming other users">>],
 			args_desc = ["User name to ban", "Server name",
@@ -294,7 +313,7 @@ get_commands_spec() ->
 			note = "added in 24.06",
 			args = [{user, binary}, {host, binary}],
 			args_example = [<<"attacker">>, <<"myserver.com">>],
-			args_desc = ["User name to unban", "Server name"],
+			args_desc = ["Name of a user to check ban information", "Server name"],
 			result = {ban_details, {list,
 					  {detail, {tuple, [{name, string},
                                                             {value, string}
@@ -305,7 +324,7 @@ get_commands_spec() ->
                                           {"lastdate", "2024-04-22T08:39:12Z"},
                                           {"lastreason", "Connection reset by peer"}]},
      #ejabberd_commands{name = unban_account, tags = [accounts],
-			desc = "Revert the ban from an account: set back the old password",
+			desc = "Remove the ban from an account",
 			longdesc = "Check _`ban_account`_ API.",
 			module = ?MODULE, function = unban_account,
 			version = 2,
@@ -380,6 +399,21 @@ get_commands_spec() ->
 								{status, string}
 							       ]}}
 					 }}},
+     #ejabberd_commands{name = status_list_host, tags = [session],
+			desc = "List of users logged in host with their statuses",
+			module = ?MODULE, function = status_list_v3,
+			version = 3,
+			note = "updated in 24.12",
+			args = [{host, binary}, {status, binary}],
+			args_example = [<<"myserver.com">>, <<"dnd">>],
+			args_desc = ["Server name", "Status type to check"],
+			result_example = [{<<"peter@myserver.com/tka">>,6,<<"Busy">>}],
+			result = {users, {list,
+					  {userstatus, {tuple, [{jid, string},
+								{priority, integer},
+								{status, string}
+							       ]}}
+					 }}},
      #ejabberd_commands{name = status_list, tags = [session],
 			desc = "List of logged users with this status",
 			module = ?MODULE, function = status_list,
@@ -392,6 +426,21 @@ get_commands_spec() ->
 								{user, string},
 								{host, string},
 								{resource, string},
+								{priority, integer},
+								{status, string}
+							       ]}}
+					 }}},
+     #ejabberd_commands{name = status_list, tags = [session],
+			desc = "List of logged users with this status",
+			module = ?MODULE, function = status_list_v3,
+			version = 3,
+			note = "updated in 24.12",
+			args = [{status, binary}],
+			args_example = [<<"dnd">>],
+			args_desc = ["Status type to check"],
+			result_example = [{<<"peter@myserver.com/tka">>,6,<<"Busy">>}],
+			result = {users, {list,
+					  {userstatus, {tuple, [{jid, string},
 								{priority, integer},
 								{status, string}
 							       ]}}
@@ -426,8 +475,9 @@ get_commands_spec() ->
 			module = ?MODULE, function = connected_users_vhost,
 			args_example = [<<"myexample.com">>],
 			args_desc = ["Server name"],
-			result_example = [<<"user1@myserver.com/tka">>, <<"user2@localhost/tka">>],
 			args = [{host, binary}],
+			result_example = [<<"user1@myserver.com/tka">>, <<"user2@localhost/tka">>],
+			result_desc = "List of sessions full JIDs",
 			result = {connected_users_vhost, {list, {sessions, string}}}},
      #ejabberd_commands{name = user_sessions_info,
 			tags = [session],
@@ -585,6 +635,7 @@ get_commands_spec() ->
 			result = {res, rescode}},
      #ejabberd_commands{name = add_rosteritem, tags = [roster],
 			desc = "Add an item to a user's roster (supports ODBC)",
+			longdesc = "The client will receive a `jabber:iq:roster` IQ notifying them of the added entry.",
 			module = ?MODULE, function = add_rosteritem,
 			version = 1,
 			note = "updated in 24.02",
@@ -603,6 +654,7 @@ get_commands_spec() ->
      %%{"", "will add mike@server.com to peter@localhost roster"},
      #ejabberd_commands{name = delete_rosteritem, tags = [roster],
 			desc = "Delete an item from a user's roster (supports ODBC)",
+			longdesc = "The client will receive a `jabber:iq:roster` IQ notifying them of the removed entry.",
 			module = ?MODULE, function = delete_rosteritem,
 			args = [{localuser, binary}, {localhost, binary},
 				{user, binary}, {host, binary}],
@@ -683,6 +735,7 @@ get_commands_spec() ->
 			module = ?MODULE, function = get_roster,
 			args = [],
 			args_rename = [{server, host}],
+			result_example = [{<<"user2@localhost">>, <<"User 2">>, <<"none">>, <<"subscribe">>, [<<"Group1">>]}],
 			result = {contacts, {list, {contact, {tuple, [
 								      {jid, string},
 								      {nick, string},
@@ -1123,6 +1176,18 @@ delete_or_not(LUser, LServer, TimeStamp_oldest) ->
 %%
 %% Ban account v0
 
+-define(NS_BANNED, <<"jabber:ejabberd:banned">>).
+
+list_banned(<<"all">>) ->
+    lists:flatten([list_banned(Host) || Host <- ejabberd_option:hosts()]);
+list_banned(Host) ->
+    [jid:encode(Jid) || Jid <- mod_private:get_users_with_data(Host, ?NS_BANNED)].
+
+count_banned(<<"all">>) ->
+    lists:sum([count_banned(Host) || Host <- ejabberd_option:hosts()]);
+count_banned(Host) ->
+    mod_private:count_users_with_data(Host, ?NS_BANNED).
+
 ban_account(User, Host, ReasonText) ->
     Reason = prepare_reason(ReasonText),
     kick_sessions(User, Host, Reason),
@@ -1130,6 +1195,7 @@ ban_account(User, Host, ReasonText) ->
     ok.
 
 kick_sessions(User, Server, Reason) ->
+    ejabberd_hooks:run(sm_kick_user, Server, [User, Server]),
     lists:map(
       fun(Resource) ->
 	      kick_this_session(User, Server, Resource, Reason)
@@ -1161,27 +1227,29 @@ prepare_reason(Reason) when is_binary(Reason) ->
 %% Ban account v2
 
 ban_account_v2(User, Host, ReasonText) ->
-    case gen_mod:is_loaded(Host, mod_private) of
-        false ->
+    IsPrivateEnabled = gen_mod:is_loaded(Host, mod_private),
+    Exists = ejabberd_auth:user_exists(User, Host),
+    IsBanned = is_banned(User, Host),
+    case {IsPrivateEnabled, Exists, IsBanned} of
+        {true, true, false} ->
+            ban_account_v2_b(User, Host, ReasonText);
+        {false, _, _} ->
             mod_private_is_required_but_disabled;
-        true ->
-            case is_banned(User, Host) of
-                true ->
-                    account_was_already_banned;
-                false ->
-                    ban_account_v2_b(User, Host, ReasonText)
-            end
+        {_, false, _} ->
+            account_does_not_exist;
+        {_, _, true} ->
+            account_was_already_banned;
+        {_, _, _} ->
+            other_error
     end.
 
 ban_account_v2_b(User, Host, ReasonText) ->
     Reason = prepare_reason(ReasonText),
-    Pass = ejabberd_auth:get_password_s(User, Host),
     Last = get_last(User, Host),
     BanDate = xmpp_util:encode_timestamp(erlang:timestamp()),
     Hash = get_hash_value(User, Host),
-    BanPrivateXml = build_ban_xmlel(Reason, Pass, Last, BanDate, Hash),
+    BanPrivateXml = build_ban_xmlel(Reason, Last, BanDate, Hash),
     ok = private_set2(User, Host, BanPrivateXml),
-    ok = set_random_password_v2(User, Host),
     kick_sessions(User, Host, Reason),
     ok.
 
@@ -1189,41 +1257,21 @@ get_hash_value(User, Host) ->
     Cookie = misc:atom_to_binary(erlang:get_cookie()),
     misc:term_to_base64(crypto:hash(sha256, <<User/binary, Host/binary, Cookie/binary>>)).
 
-set_random_password_v2(User, Server) ->
-    NewPass = p1_rand:get_string(),
-    ok = ejabberd_auth:set_password(User, Server, NewPass).
-
-build_ban_xmlel(Reason, Pass, {LastDate, LastReason}, BanDate, Hash) ->
-    PassEls = build_pass_els(Pass),
+build_ban_xmlel(Reason, {LastDate, LastReason}, BanDate, Hash) ->
     #xmlel{name = <<"banned">>,
-           attrs = [{<<"xmlns">>, <<"jabber:ejabberd:banned">>}],
+           attrs = [{<<"xmlns">>, ?NS_BANNED}],
            children = [#xmlel{name = <<"reason">>, attrs = [], children = [{xmlcdata, Reason}]},
-                       #xmlel{name = <<"password">>, attrs = [], children = PassEls},
                        #xmlel{name = <<"lastdate">>, attrs = [], children = [{xmlcdata, LastDate}]},
                        #xmlel{name = <<"lastreason">>, attrs = [], children = [{xmlcdata, LastReason}]},
                        #xmlel{name = <<"bandate">>, attrs = [], children = [{xmlcdata, BanDate}]},
                        #xmlel{name = <<"hash">>, attrs = [], children = [{xmlcdata, Hash}]}
                        ]}.
 
-build_pass_els(Pass) when is_binary(Pass) ->
-    [{xmlcdata, Pass}];
-build_pass_els(#scram{storedkey = StoredKey,
-                      serverkey = ServerKey,
-                      salt = Salt,
-                      hash = Hash,
-                      iterationcount = IterationCount}) ->
-    [#xmlel{name = <<"storedkey">>, attrs = [], children = [{xmlcdata, StoredKey}]},
-     #xmlel{name = <<"serverkey">>, attrs = [], children = [{xmlcdata, ServerKey}]},
-     #xmlel{name = <<"salt">>, attrs = [], children = [{xmlcdata, Salt}]},
-     #xmlel{name = <<"hash">>, attrs = [], children = [{xmlcdata, misc:atom_to_binary(Hash)}]},
-     #xmlel{name = <<"iterationcount">>, attrs = [], children = [{xmlcdata, integer_to_binary(IterationCount)}]}
-    ].
-
 %%
 %% Get ban details
 
 get_ban_details(User, Host) ->
-    case private_get2(User, Host, <<"banned">>, <<"jabber:ejabberd:banned">>) of
+    case private_get2(User, Host, <<"banned">>, ?NS_BANNED) of
         [El] ->
             get_ban_details(User, Host, El);
         [] ->
@@ -1258,45 +1306,25 @@ is_banned(User, Host) ->
 %% Unban account
 
 unban_account(User, Host) ->
-    case gen_mod:is_loaded(Host, mod_private) of
-        false ->
+    IsPrivateEnabled = gen_mod:is_loaded(Host, mod_private),
+    Exists = ejabberd_auth:user_exists(User, Host),
+    IsBanned = is_banned(User, Host),
+    case {IsPrivateEnabled, Exists, IsBanned} of
+        {true, true, true} ->
+            unban_account2(User, Host);
+        {false, _, _} ->
             mod_private_is_required_but_disabled;
-        true ->
-            case is_banned(User, Host) of
-                false ->
-                    account_was_not_banned;
-                true ->
-                    unban_account2(User, Host)
-            end
+        {_, false, _} ->
+            account_does_not_exist;
+        {_, _, false} ->
+            account_was_not_banned;
+        {_, _, _} ->
+            other_error
     end.
 
 unban_account2(User, Host) ->
-    OldPass = get_oldpass(User, Host),
-    ok = ejabberd_auth:set_password(User, Host, OldPass),
-    UnBanPrivateXml = build_unban_xmlel(),
-    private_set2(User, Host, UnBanPrivateXml).
-
-get_oldpass(User, Host) ->
-    [El] = private_get2(User, Host, <<"banned">>, <<"jabber:ejabberd:banned">>),
-    Pass = fxml:get_subtag(El, <<"password">>),
-    get_pass(Pass).
-
-get_pass(#xmlel{children = [{xmlcdata, Pass}]}) ->
-    Pass;
-get_pass(#xmlel{children = ScramEls} = Pass) when is_list(ScramEls) ->
-    StoredKey = fxml:get_subtag_cdata(Pass, <<"storedkey">>),
-    ServerKey = fxml:get_subtag_cdata(Pass, <<"serverkey">>),
-    Salt = fxml:get_subtag_cdata(Pass, <<"salt">>),
-    Hash = fxml:get_subtag_cdata(Pass, <<"hash">>),
-    IterationCount = fxml:get_subtag_cdata(Pass, <<"iterationcount">>),
-    #scram{storedkey = StoredKey,
-           serverkey = ServerKey,
-           salt = Salt,
-           hash = binary_to_existing_atom(Hash, latin1),
-           iterationcount = binary_to_integer(IterationCount)}.
-
-build_unban_xmlel() ->
-    #xmlel{name = <<"banned">>, attrs = [{<<"xmlns">>, <<"jabber:ejabberd:banned">>}]}.
+    mod_private:del_data(jid:nodeprep(User), jid:nameprep(Host), ?NS_BANNED),
+	ok.
 
 %%%
 %%% Sessions
@@ -1333,6 +1361,14 @@ status_list(Host, Status) ->
 status_list(Status) ->
     status_list(<<"all">>, Status).
 
+status_list_v3(ArgHost, Status) ->
+    List = status_list(ArgHost, Status),
+    [{jid:encode(jid:make(User, Host, Resource)), Priority, StatusText}
+     || {User, Host, Resource, Priority, StatusText} <- List].
+
+status_list_v3(Status) ->
+    status_list_v3(<<"all">>, Status).
+
 
 get_status_list(Host, Status_required) ->
     %% Get list of all logged users
@@ -1354,6 +1390,8 @@ get_status_list(Host, Status_required) ->
     Fstatus = case Status_required of
 		  <<"all">> ->
 		      fun(_, _) -> true end;
+		  StatusList when is_list(StatusList) ->
+		      fun(A, B) -> lists:member(A, B) end;
 		  _ ->
 		      fun(A, B) -> A == B end
 	      end,
@@ -1425,8 +1463,10 @@ set_presence(User, Host, Resource, Type, Show, Status, Priority) ->
         show = misc:binary_to_atom(Show),
         priority = Priority,
         sub_els = []},
-    Ref = ejabberd_sm:get_session_pid(User, Host, Resource),
-    ejabberd_c2s:set_presence(Ref, Pres).
+    case ejabberd_sm:get_session_pid(User, Host, Resource) of
+	none -> throw({error, "User session not found"});
+	Ref -> ejabberd_c2s:set_presence(Ref, Pres)
+    end.
 
 user_sessions_info(User, Host) ->
     lists:filtermap(fun(Resource) ->
@@ -1861,16 +1901,20 @@ srg_create2(Group, Host, Label, Description, DisplayList) ->
     Opts = [{label, Label},
 	    {displayed_groups, DisplayList},
 	    {description, Description}],
-    {atomic, _} = mod_shared_roster:create_group(Host, Group, Opts),
-    ok.
+    case mod_shared_roster:create_group(Host, Group, Opts) of
+	{atomic, _} -> ok;
+	{error, Err} -> Err
+    end.
 
 srg_add(Group, Host) ->
     Opts = [{label, <<"">>},
             {description, <<"">>},
             {displayed_groups, []}
            ],
-    {atomic, _} = mod_shared_roster:create_group(Host, Group, Opts),
-    ok.
+    case mod_shared_roster:create_group(Host, Group, Opts) of
+	{atomic, _} -> ok;
+	{error, Err} -> Err
+    end.
 
 srg_delete(Group, Host) ->
     {atomic, _} = mod_shared_roster:delete_group(Host, Group),
@@ -2204,13 +2248,7 @@ web_page_host(Acc, _, _) ->
 %%% HostUser
 
 web_menu_hostuser(Acc, _Host, _Username, _Lang) ->
-    Acc
-    ++ [{<<"auth">>, <<"Authentication">>},
-        {<<"mam">>, <<"MAM">>},
-        {<<"privacy">>, <<"Privacy Lists">>},
-        {<<"private">>, <<"Private XML Storage">>},
-        {<<"session">>, <<"Sessions">>},
-        {<<"vcard">>, <<"vCard">>}].
+    Acc ++ [{<<"auth">>, <<"Authentication">>}, {<<"session">>, <<"Sessions">>}].
 
 web_page_hostuser(_, Host, User, #request{path = [<<"auth">>]} = R) ->
     Ban = make_command(ban_account,
@@ -2240,26 +2278,6 @@ web_page_hostuser(_, Host, User, #request{path = [<<"auth">>]} = R) ->
                            [{<<"user">>, User}, {<<"host">>, Host}],
                            [{style, danger}])],
     {stop, Res};
-web_page_hostuser(_, Host, User, #request{path = [<<"mam">>]} = R) ->
-    Res = ?H1GL(<<"MAM">>, <<"modules/#mod_mam">>, <<"mod_mam">>)
-          ++ [make_command(remove_mam_for_user,
-                           R,
-                           [{<<"user">>, User}, {<<"host">>, Host}],
-                           [{style, danger}]),
-              make_command(remove_mam_for_user_with_peer,
-                           R,
-                           [{<<"user">>, User}, {<<"host">>, Host}],
-                           [{style, danger}])],
-    {stop, Res};
-web_page_hostuser(_, Host, User, #request{path = [<<"privacy">>]} = R) ->
-    Res = ?H1GL(<<"Privacy Lists">>, <<"modules/#mod_privacy">>, <<"mod_privacy">>)
-          ++ [make_command(privacy_set, R, [{<<"user">>, User}, {<<"host">>, Host}], [])],
-    {stop, Res};
-web_page_hostuser(_, Host, User, #request{path = [<<"private">>]} = R) ->
-    Res = ?H1GL(<<"Private XML Storage">>, <<"modules/#mod_private">>, <<"mod_private">>)
-          ++ [make_command(private_set, R, [{<<"user">>, User}, {<<"host">>, Host}], []),
-              make_command(private_get, R, [{<<"user">>, User}, {<<"host">>, Host}], [])],
-    {stop, Res};
 web_page_hostuser(_, Host, User, #request{path = [<<"session">>]} = R) ->
     Head = [?XC(<<"h1">>, <<"Sessions">>), ?BR],
     Set = [make_command(resource_num, R, [{<<"user">>, User}, {<<"host">>, Host}], []),
@@ -2277,47 +2295,6 @@ web_page_hostuser(_, Host, User, #request{path = [<<"session">>]} = R) ->
            make_command(user_resources, R, [{<<"user">>, User}, {<<"host">>, Host}], []),
            make_command(get_presence, R, [{<<"user">>, User}, {<<"host">>, Host}], []),
            make_command(num_resources, R, [{<<"user">>, User}, {<<"host">>, Host}], [])],
-    {stop, Head ++ Get ++ Set};
-web_page_hostuser(_, Host, User, #request{path = [<<"vcard">>]} = R) ->
-    Head = ?H1GL(<<"vCard">>, <<"modules/#mod_vcard">>, <<"mod_vcard">>),
-    Set = [make_command(set_nickname, R, [{<<"user">>, User}, {<<"host">>, Host}], []),
-           make_command(set_vcard, R, [{<<"user">>, User}, {<<"host">>, Host}], []),
-           make_command(set_vcard2, R, [{<<"user">>, User}, {<<"host">>, Host}], []),
-           make_command(set_vcard2_multi, R, [{<<"user">>, User}, {<<"host">>, Host}], [])],
-    timer:sleep(100), % setting vcard takes a while, let's delay the get commands
-    FieldNames = [<<"VERSION">>, <<"FN">>, <<"NICKNAME">>, <<"BDAY">>],
-    FieldNames2 =
-        [{<<"N">>, <<"FAMILY">>},
-         {<<"N">>, <<"GIVEN">>},
-         {<<"N">>, <<"MIDDLE">>},
-         {<<"ADR">>, <<"CTRY">>},
-         {<<"ADR">>, <<"LOCALITY">>},
-         {<<"EMAIL">>, <<"USERID">>}],
-    Get = [make_command(get_vcard, R, [{<<"user">>, User}, {<<"host">>, Host}], []),
-           ?XE(<<"blockquote">>,
-               [make_table([<<"name">>, <<"value">>],
-                           [{?C(FieldName),
-                             make_command(get_vcard,
-                                          R,
-                                          [{<<"user">>, User},
-                                           {<<"host">>, Host},
-                                           {<<"name">>, FieldName}],
-                                          [{only, value}])}
-                            || FieldName <- FieldNames])]),
-           make_command(get_vcard2, R, [{<<"user">>, User}, {<<"host">>, Host}], []),
-           ?XE(<<"blockquote">>,
-               [make_table([<<"name">>, <<"subname">>, <<"value">>],
-                           [{?C(FieldName),
-                             ?C(FieldSubName),
-                             make_command(get_vcard2,
-                                          R,
-                                          [{<<"user">>, User},
-                                           {<<"host">>, Host},
-                                           {<<"name">>, FieldName},
-                                           {<<"subname">>, FieldSubName}],
-                                          [{only, value}])}
-                            || {FieldName, FieldSubName} <- FieldNames2])]),
-           make_command(get_vcard2_multi, R, [{<<"user">>, User}, {<<"host">>, Host}], [])],
     {stop, Head ++ Get ++ Set};
 web_page_hostuser(Acc, _, _, _) ->
     Acc.
@@ -2348,7 +2325,9 @@ web_page_node(_, Node, #request{path = [<<"stats">>]} = R) ->
                               ejabberd_web_admin,
                               make_command,
                               [stats, R, [{<<"name">>, <<"uptimeseconds">>}], [{only, value}]]),
-    UpDaysBin = integer_to_binary(binary_to_integer(fxml:get_tag_cdata(UpSecs)) div 24000),
+    UpDaysBin =
+        integer_to_binary(binary_to_integer(fxml:get_tag_cdata(UpSecs))
+                          div 86400), % 24*60*60
     UpDays =
         #xmlel{name = <<"code">>,
                attrs = [],
@@ -2389,22 +2368,22 @@ mod_doc() ->
     #{desc =>
           [?T("This module provides additional administrative commands."), "",
            ?T("Details for some commands:"), "",
-           ?T("- 'ban_account':"),
+           ?T("_`ban_account`_ API:"),
            ?T("This command kicks all the connected sessions of the account "
 	      "from the server. It also changes their password to a randomly "
 	      "generated one, so they can't login anymore unless a server "
 	      "administrator changes their password again. It is possible to "
 	      "define the reason of the ban. The new password also includes "
-	      "the reason and the date and time of the ban. See an example below."),
-           ?T("- 'pushroster': (and 'pushroster-all')"),
+	      "the reason and the date and time of the ban. See an example below."), "",
+           ?T("_`push_roster`_ API (and _`push_roster_all`_ API):"),
            ?T("The roster file must be placed, if using Windows, on the "
 	      "directory where you installed ejabberd: "
 	      "`C:/Program Files/ejabberd` or similar. If you use other "
 	      "Operating System, place the file on the same directory where "
-	      "the .beam files are installed. See below an example roster file."),
-           ?T("- 'srg_create':"),
+	      "the .beam files are installed. See below an example roster file."), "",
+           ?T("_`srg_create`_ API:"),
            ?T("If you want to put a group Name with blank spaces, use the "
-	      "characters \"\' and \'\" to define when the Name starts and "
+	      "characters '\"\'' and '\'\"' to define when the Name starts and "
 	      "ends. See an example below.")],
       example =>
 	  [{?T("With this configuration, vCards can only be modified with "
@@ -2419,14 +2398,14 @@ mod_doc() ->
 	     "  mod_admin_extra: {}",
 	     "  mod_vcard:",
 	     "    access_set: vcard_set"]},
-	   {?T("Content of roster file for 'pushroster' command:"),
+	   {?T("Content of roster file for _`push_roster`_ API:"),
 	    ["[{<<\"bob\">>, <<\"example.org\">>, <<\"workers\">>, <<\"Bob\">>},",
 	     "{<<\"mart\">>, <<\"example.org\">>, <<\"workers\">>, <<\"Mart\">>},",
 	     "{<<\"Rich\">>, <<\"example.org\">>, <<\"bosses\">>, <<\"Rich\">>}]."]},
 	   {?T("With this call, the sessions of the local account which JID is "
-	      "boby@example.org will be kicked, and its password will be set "
+	      "'boby@example.org' will be kicked, and its password will be set "
 	      "to something like "
 	      "'BANNED_ACCOUNT--20080425T21:45:07--2176635--Spammed_rooms'"),
 	    ["ejabberdctl vhost example.org ban_account boby \"Spammed rooms\""]},
-	   {?T("Call to srg_create using double-quotes and single-quotes:"),
+	   {?T("Call to _`srg_create`_ API using double-quotes and single-quotes:"),
 	    ["ejabberdctl srg_create g1 example.org \"\'Group number 1\'\" this_is_g1 g1"]}]}.

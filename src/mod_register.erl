@@ -5,7 +5,7 @@
 %%% Created :  8 Dec 2002 by Alexey Shchepin <alexey@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -27,7 +27,7 @@
 
 -author('alexey@process-one.net').
 
--protocol({xep, 77, '2.4'}).
+-protocol({xep, 77, '2.4', '0.1.0', "complete", ""}).
 
 -behaviour(gen_mod).
 
@@ -87,7 +87,7 @@ c2s_unauthenticated_packet(#{ip := IP, server := Server} = State,
     catch _:{xmpp_codec, Why} ->
 	    Txt = xmpp:io_format_error(Why),
 	    Lang = maps:get(lang, State),
-	    Err = xmpp:make_error(IQ, xmpp:err_bad_request(Txt, Lang)),
+	    Err = make_stripped_error(IQ, xmpp:err_bad_request(Txt, Lang)),
 	    {stop, ejabberd_c2s:send(State, Err)}
     end;
 c2s_unauthenticated_packet(State, _) ->
@@ -116,7 +116,7 @@ process_iq(#iq{type = set, lang = Lang,
 	       sub_els = [#register{remove = true}]} = IQ,
 	   _Source, _IsCaptchaEnabled, _AllowRemove = false) ->
     Txt = ?T("Access denied by service policy"),
-    xmpp:make_error(IQ, xmpp:err_forbidden(Txt, Lang));
+    make_stripped_error(IQ, xmpp:err_forbidden(Txt, Lang));
 process_iq(#iq{type = set, lang = Lang, to = To, from = From,
 	       sub_els = [#register{remove = true,
 				    username = User,
@@ -141,12 +141,12 @@ process_iq(#iq{type = set, lang = Lang, to = To, from = From,
                                     ignore;
                                 false ->
                                     Txt = ?T("Incorrect password"),
-                                    xmpp:make_error(
+                                    make_stripped_error(
                                       IQ, xmpp:err_forbidden(Txt, Lang))
                             end;
 		       true ->
 			    Txt = ?T("No 'password' found in this query"),
-			    xmpp:make_error(IQ, xmpp:err_bad_request(Txt, Lang))
+			    make_stripped_error(IQ, xmpp:err_bad_request(Txt, Lang))
 		    end
 	    end;
        true ->
@@ -158,7 +158,7 @@ process_iq(#iq{type = set, lang = Lang, to = To, from = From,
 		    ignore;
 		_ ->
 		    Txt = ?T("The query is only allowed from local users"),
-		    xmpp:make_error(IQ, xmpp:err_not_allowed(Txt, Lang))
+		    make_stripped_error(IQ, xmpp:err_not_allowed(Txt, Lang))
 	    end
     end;
 process_iq(#iq{type = set, to = To,
@@ -186,17 +186,17 @@ process_iq(#iq{type = set, to = To,
 		      User, Server, Password, IQ, Source, true);
 		_ ->
 		    Txt = ?T("Incorrect data form"),
-		    xmpp:make_error(IQ, xmpp:err_bad_request(Txt, Lang))
+		    make_stripped_error(IQ, xmpp:err_bad_request(Txt, Lang))
 	    end;
 	{error, malformed} ->
 	    Txt = ?T("Incorrect CAPTCHA submit"),
-	    xmpp:make_error(IQ, xmpp:err_bad_request(Txt, Lang));
+	    make_stripped_error(IQ, xmpp:err_bad_request(Txt, Lang));
 	_ ->
 	    ErrText = ?T("The CAPTCHA verification has failed"),
-	    xmpp:make_error(IQ, xmpp:err_not_allowed(ErrText, Lang))
+	    make_stripped_error(IQ, xmpp:err_not_allowed(ErrText, Lang))
     end;
 process_iq(#iq{type = set} = IQ, _Source, _IsCaptchaEnabled, _AllowRemove) ->
-    xmpp:make_error(IQ, xmpp:err_bad_request());
+    make_stripped_error(IQ, xmpp:err_bad_request());
 process_iq(#iq{type = get, from = From, to = To, id = ID, lang = Lang} = IQ,
 	   Source, IsCaptchaEnabled, _AllowRemove) ->
     Server = To#jid.lserver,
@@ -248,11 +248,11 @@ process_iq(#iq{type = get, from = From, to = To, id = ID, lang = Lang} = IQ,
 				    sub_els = [Xdata | CaptchaEls2]});
 		{error, limit} ->
 		    ErrText = ?T("Too many CAPTCHA requests"),
-		    xmpp:make_error(
+		    make_stripped_error(
 		      IQ, xmpp:err_resource_constraint(ErrText, Lang));
 		_Err ->
 		    ErrText = ?T("Unable to generate a CAPTCHA"),
-		    xmpp:make_error(
+		    make_stripped_error(
 		      IQ, xmpp:err_internal_server_error(ErrText, Lang))
 	    end;
        true ->
@@ -267,8 +267,11 @@ process_iq(#iq{type = get, from = From, to = To, id = ID, lang = Lang} = IQ,
 try_register_or_set_password(User, Server, Password,
 			     #iq{from = From, lang = Lang} = IQ,
 			     Source, CaptchaSucceed) ->
-    case From of
-	#jid{user = User, lserver = Server} ->
+    case {jid:nodeprep(User), From} of
+	{error, _} ->
+	    Err = xmpp:err_jid_malformed(format_error(invalid_jid), Lang),
+	    make_stripped_error(IQ, Err);
+	{UserP, #jid{user = User2, lserver = Server}} when UserP == User2 ->
 	    try_set_password(User, Server, Password, IQ);
 	_ when CaptchaSucceed ->
 	    case check_from(From, Server) of
@@ -277,14 +280,14 @@ try_register_or_set_password(User, Server, Password,
 			ok ->
 			    xmpp:make_iq_result(IQ);
 			{error, Error} ->
-			    xmpp:make_error(IQ, Error)
+			    make_stripped_error(IQ, Error)
 		    end;
 		deny ->
 		    Txt = ?T("Access denied by service policy"),
-		    xmpp:make_error(IQ, xmpp:err_forbidden(Txt, Lang))
+		    make_stripped_error(IQ, xmpp:err_forbidden(Txt, Lang))
 	    end;
 	_ ->
-	    xmpp:make_error(IQ, xmpp:err_not_allowed())
+	    make_stripped_error(IQ, xmpp:err_not_allowed())
     end.
 
 try_set_password(User, Server, Password) ->
@@ -307,15 +310,15 @@ try_set_password(User, Server, Password, #iq{lang = Lang, meta = M} = IQ) ->
 	    xmpp:make_iq_result(IQ);
 	{error, not_allowed} ->
 	    Txt = ?T("Changing password is not allowed"),
-	    xmpp:make_error(IQ, xmpp:err_not_allowed(Txt, Lang));
+	    make_stripped_error(IQ, xmpp:err_not_allowed(Txt, Lang));
 	{error, invalid_jid = Why} ->
-	    xmpp:make_error(IQ, xmpp:err_jid_malformed(format_error(Why), Lang));
+	    make_stripped_error(IQ, xmpp:err_jid_malformed(format_error(Why), Lang));
 	{error, invalid_password = Why} ->
-	    xmpp:make_error(IQ, xmpp:err_not_allowed(format_error(Why), Lang));
+	    make_stripped_error(IQ, xmpp:err_not_allowed(format_error(Why), Lang));
 	{error, weak_password = Why} ->
-	    xmpp:make_error(IQ, xmpp:err_not_acceptable(format_error(Why), Lang));
+	    make_stripped_error(IQ, xmpp:err_not_acceptable(format_error(Why), Lang));
 	{error, db_failure = Why} ->
-	    xmpp:make_error(IQ, xmpp:err_internal_server_error(format_error(Why), Lang))
+	    make_stripped_error(IQ, xmpp:err_internal_server_error(format_error(Why), Lang))
     end.
 
 try_register(User, Server, Password, SourceRaw, Module) ->
@@ -416,11 +419,6 @@ send_welcome_message(JID) ->
 	    #message{from = jid:make(Host),
 		     to = JID,
 		     type = chat,
-		     subject = xmpp:mk_text(Subj),
-		     body = xmpp:mk_text(<<Subj/binary, "\n\n", Body/binary>>)}),
-	  ejabberd_router:route(
-	    #message{from = jid:make(Host),
-		     to = JID,
 		     subject = xmpp:mk_text(Subj),
 		     body = xmpp:mk_text(Body)})
     end.
@@ -562,6 +560,9 @@ is_strong_password2(Server, Password) ->
             ejabberd_auth:entropy(Password) >= Entropy
     end.
 
+make_stripped_error(IQ, Err) ->
+    xmpp:make_error(xmpp:remove_subtag(IQ, #register{}), Err).
+
 %%%
 %%% ip_access management
 %%%
@@ -573,24 +574,24 @@ may_remove_resource(From) -> From.
 get_ip_access(Host) ->
     mod_register_opt:ip_access(Host).
 
-check_ip_access({User, Server, Resource}, IPAccess) ->
+check_ip_access(Server, {User, Server, Resource}, IPAccess) ->
     case ejabberd_sm:get_user_ip(User, Server, Resource) of
         {IPAddress, _PortNumber} ->
-            check_ip_access(IPAddress, IPAccess);
+            check_ip_access(Server, IPAddress, IPAccess);
         _ ->
             deny
     end;
-check_ip_access(undefined, _IPAccess) ->
+check_ip_access(_Server, undefined, _IPAccess) ->
     deny;
-check_ip_access(IPAddress, IPAccess) ->
-    acl:match_rule(global, IPAccess, IPAddress).
+check_ip_access(Server, IPAddress, IPAccess) ->
+    acl:match_rule(Server, IPAccess, IPAddress).
 
 check_access(User, Server, Source) ->
     JID = jid:make(User, Server),
     Access = mod_register_opt:access(Server),
     IPAccess = get_ip_access(Server),
     case acl:match_rule(Server, Access, JID) of
-	allow -> check_ip_access(Source, IPAccess);
+	allow -> check_ip_access(Server, Source, IPAccess);
 	deny -> deny
     end.
 
@@ -654,11 +655,14 @@ mod_doc() ->
                   ?T("Specify rules to restrict what usernames can be registered. "
                      "If a rule returns 'deny' on the requested username, "
                      "registration of that user name is denied. There are no "
-                     "restrictions by default.")}},
+                     "restrictions by default. "
+                     "If 'AccessName' is 'none', then registering new accounts using "
+                     "In-Band Registration is disabled and the corresponding "
+                     "stream feature is not announced to clients.")}},
            {access_from,
             #{value => ?T("AccessName"),
               desc =>
-                  ?T("By default, 'ejabberd' doesn't allow the client to register new accounts "
+                  ?T("By default, ejabberd doesn't allow the client to register new accounts "
                      "from s2s or existing c2s sessions. You can change it by defining "
                      "access rule in this option. Use with care: allowing registration "
                      "from s2s leads to uncontrolled massive accounts creation by rogue users.")}},

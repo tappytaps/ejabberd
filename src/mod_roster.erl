@@ -5,7 +5,7 @@
 %%% Created : 11 Dec 2002 by Alexey Shchepin <alexey@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -34,7 +34,7 @@
 
 -module(mod_roster).
 
--protocol({xep, 237, '1.3'}).
+-protocol({xep, 237, '1.3', '2.1.0', "complete", ""}).
 
 -author('alexey@process-one.net').
 
@@ -61,7 +61,7 @@
 -include("mod_roster.hrl").
 -include("ejabberd_http.hrl").
 -include("ejabberd_web_admin.hrl").
--include("ejabberd_stacktrace.hrl").
+
 -include("translate.hrl").
 
 -define(ROSTER_CACHE, roster_cache).
@@ -1096,7 +1096,11 @@ make_webadmin_roster_table(Host, Username, R, RPath) ->
 
 webadmin_user(Acc, User, Server, R) ->
     Acc
-    ++ [make_command(get_roster_count, R, [{<<"user">>, User}, {<<"host">>, Server}], [])].
+    ++ [make_command(get_roster_count,
+                     R,
+                     [{<<"user">>, User}, {<<"host">>, Server}],
+                     [{result_links,
+                       [{value, arg_host, 4, <<"user/", User/binary, "/roster/">>}]}])].
 %%% @format-end
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -1188,7 +1192,7 @@ import_stop(_LServer, _DBType) ->
     ok.
 
 row_length() ->
-    case ejabberd_sql:use_new_schema() of
+    case ejabberd_sql:use_multihost_schema() of
         true -> 10;
         false -> 9
     end.

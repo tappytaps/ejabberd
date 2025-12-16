@@ -4,7 +4,7 @@
 %%% Created : 13 Apr 2016 by Evgeny Khramtsov <ekhramtsov@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -27,7 +27,8 @@
 
 %% API
 -export([init/2, set_data/3, get_data/3, get_all_data/2, del_data/2,
-	 import/3, export/1]).
+    del_data/3, get_users_with_data/2, count_users_with_data/2,
+    import/3, export/1]).
 -export([sql_schemas/0]).
 
 -include_lib("xmpp/include/xmpp.hrl").
@@ -122,6 +123,42 @@ del_data(LUser, LServer) ->
 	    ok;
 	_ ->
 	    {error, db_failure}
+    end.
+
+-spec del_data(binary(), binary(), binary()) -> ok | {error, any()}.
+del_data(LUser, LServer, NS) ->
+    case ejabberd_sql:sql_query(
+	   LServer,
+	   ?SQL("delete from private_storage"
+                " where username=%(LUser)s and namespace=%(NS)s and %(LServer)H")) of
+	{updated, _} ->
+	    ok;
+	_ ->
+	    {error, db_failure}
+    end.
+
+-spec get_users_with_data(binary(), binary()) -> {ok, [binary()]} | {error, any()}.
+get_users_with_data(LServer, NS) ->
+    case ejabberd_sql:sql_query(
+	   LServer,
+	   ?SQL("select @(username)s from private_storage"
+		" where namespace=%(NS)s and %(LServer)H")) of
+    	{selected, Value} ->
+            {ok, Value};
+        _ ->
+            {error, db_failure}
+    end.
+
+-spec count_users_with_data(binary(), binary()) -> {ok, integer()} | {error, any()}.
+count_users_with_data(LServer, NS) ->
+    case ejabberd_sql:sql_query(
+	   LServer,
+	   ?SQL("select @(count(*))d from private_storage"
+		" where namespace=%(NS)s and %(LServer)H")) of
+    	{selected, Value} ->
+            {ok, Value};
+        _ ->
+            {error, db_failure}
     end.
 
 export(_Server) ->

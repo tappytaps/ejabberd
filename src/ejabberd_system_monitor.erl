@@ -5,7 +5,7 @@
 %%% Created : 21 Mar 2007 by Alexey Shchepin <alexey@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -82,7 +82,9 @@ config_reloaded() ->
 %%%===================================================================
 %%% gen_event callbacks
 %%%===================================================================
-init([]) ->
+init({[], _}) -> % Called by gen_event:swap_handler
+    {ok, #state{}};
+init([]) -> % Called by gen_event:add_handler
     ejabberd_hooks:add(config_reloaded, ?MODULE, config_reloaded, 50),
     {ok, #state{}}.
 

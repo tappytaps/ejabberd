@@ -5,7 +5,7 @@
 %%% Created : 22 Dec 2004 by Alexey Shchepin <alexey@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -196,7 +196,7 @@ check_sqlite_db(Host) ->
 
 create_sqlite_tables(DB) ->
     SqlDir = misc:sql_dir(),
-    Filename = case ejabberd_sql:use_new_schema() of
+    Filename = case ejabberd_sql:use_multihost_schema() of
         true -> "lite.new.sql";
         false -> "lite.sql"
     end,

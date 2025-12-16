@@ -5,7 +5,7 @@
 %%% Created : 17 kwi 2023 by Paweł Chmielowski <pawel@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -46,7 +46,7 @@ start(Host, _Opts) ->
     gen_server:start({local, gen_mod:get_module_proc(Host, ?MODULE)}, ?MODULE, [Host], []).
 
 stop(Host) ->
-    gen_server:stop({local, gen_mod:get_module_proc(Host, ?MODULE)}).
+    gen_server:stop(gen_mod:get_module_proc(Host, ?MODULE)).
 
 init([Host]) ->
     ejabberd_mnesia:create(?MODULE, muc_rtbl,
@@ -151,9 +151,9 @@ pubsub_event_handler(#message{from = #jid{luser = <<>>, lserver = SServer},
     SNode = mod_muc_rtbl_opt:rtbl_node(Server),
     if SServer == SServer2 ->
 	case xmpp:get_subtag(Msg, #ps_event{}) of
-	    #ps_event{items = #ps_items{node = Node, retract = Retract}} when Node == SNode,
+	    #ps_event{items = #ps_items{node = Node, retract = [Retract | _] = RetractList}} when Node == SNode,
 									      is_binary(Retract) ->
-		mnesia:dirty_delete(muc_rtbl, {Server, Retract});
+		[mnesia:dirty_delete(muc_rtbl, {Server, R1}) || R1 <- RetractList];
 	    #ps_event{items = #ps_items{node = Node, items = Items}} when Node == SNode ->
 		Added = lists:foldl(
 		    fun(#ps_item{id = ID}, Acc) ->

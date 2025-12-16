@@ -4,7 +4,7 @@
 %%% Created : 15 Apr 2016 by Evgeny Khramtsov <ekhramtsov@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -28,7 +28,7 @@
 
 %% API
 -export([init/2, remove_user/2, remove_room/3, delete_old_messages/3,
-	 extended_fields/0, store/10, write_prefs/4, get_prefs/2, select/6,
+	 extended_fields/1, store/10, write_prefs/4, get_prefs/2, select/6,
          remove_from_archive/3,
 	 is_empty_for_user/2, is_empty_for_room/3, delete_old_messages_batch/5,
          transform/1]).
@@ -185,7 +185,7 @@ delete_old_messages_batch(LServer, TimeStamp, Type, Batch, LastUS) ->
 	    {error, Err}
     end.
 
-extended_fields() ->
+extended_fields(_) ->
     [].
 
 store(Pkt, _, {LUser, LServer}, Type, Peer, Nick, _Dir, TS,
@@ -365,4 +365,6 @@ transform({archive_msg, US, ID, Timestamp, Peer, BarePeer,
        packet = Packet,
        nick = Nick,
        type = Type,
-       origin_id = <<"">>}.
+       origin_id = <<"">>};
+transform(Other) ->
+    Other.

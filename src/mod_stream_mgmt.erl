@@ -3,7 +3,7 @@
 %%% Created : 25 Dec 2016 by Evgeny Khramtsov <ekhramtsov@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -23,7 +23,7 @@
 -module(mod_stream_mgmt).
 -behaviour(gen_mod).
 -author('holger@zedat.fu-berlin.de').
--protocol({xep, 198, '1.5.2', '14.05', "", ""}).
+-protocol({xep, 198, '1.5.2', '14.05', "complete", ""}).
 
 %% gen_mod API
 -export([start/2, stop/1, reload/3, depends/2, mod_opt_type/1, mod_options/1]).
@@ -33,7 +33,7 @@
 	 c2s_authenticated_packet/2, c2s_unauthenticated_packet/2,
 	 c2s_unbinded_packet/2, c2s_closed/2, c2s_terminated/2,
 	 c2s_handle_send/3, c2s_handle_info/2, c2s_handle_cast/2,
-	 c2s_handle_call/3, c2s_handle_recv/3, c2s_inline_features/2,
+	 c2s_handle_call/3, c2s_handle_recv/3, c2s_inline_features/3,
 	 c2s_handle_sasl2_inline/1, c2s_handle_sasl2_inline_post/3,
 	 c2s_handle_bind2_inline/1]).
 %% adjust pending session timeout / access queue
@@ -122,11 +122,12 @@ c2s_stream_features(Acc, Host) ->
 	    Acc
     end.
 
-c2s_inline_features({Sasl, Bind} = Acc, Host) ->
+c2s_inline_features({Sasl, Bind, Extra} = Acc, Host, _State) ->
     case gen_mod:is_loaded(Host, ?MODULE) of
 	true ->
 	    {[#feature_sm{xmlns = ?NS_STREAM_MGMT_3} | Sasl],
-	     [#bind2_feature{var = ?NS_STREAM_MGMT_3} | Bind]};
+	     [#bind2_feature{var = ?NS_STREAM_MGMT_3} | Bind],
+	     Extra};
 	false ->
 	    Acc
     end.

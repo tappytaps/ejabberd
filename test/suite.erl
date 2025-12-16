@@ -3,7 +3,7 @@
 %%% Created : 27 Jun 2013 by Evgeniy Khramtsov <ekhramtsov@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -51,6 +51,11 @@ init_config(Config) ->
     {ok, _} = file:copy(SelfSignedCertFile,
 			filename:join([CWD, "self-signed-cert.pem"])),
     {ok, _} = file:copy(CAFile, filename:join([CWD, "ca.pem"])),
+    copy_file(Config, "spam_jids.txt"),
+    copy_file(Config, "spam_urls.txt"),
+    copy_file(Config, "spam_domains.txt"),
+    copy_file(Config, "whitelist_domains.txt"),
+    file:write_file(filename:join([CWD, "spam.log"]), []),
     {ok, MacrosContentTpl} = file:read_file(MacrosPathTpl),
     Password = <<"password!@#$%^&*()'\"`~<>+-/;:_=[]{}|\\">>,
     Backends = get_config_backends(),
@@ -58,7 +63,7 @@ init_config(Config) ->
 		      MacrosContentTpl,
 		      [{c2s_port, 5222},
 		       {loglevel, 4},
-		       {new_schema, false},
+		       {multihost_schema, false},
 		       {update_sql_schema, true},
 		       {s2s_port, 5269},
 		       {stun_port, 3478},
@@ -84,6 +89,7 @@ init_config(Config) ->
 		       {priv_dir, PrivDir}]),
     MacrosPath = filename:join([CWD, "macros.yml"]),
     ok = file:write_file(MacrosPath, MacrosContent),
+    copy_configtest_yml(DataDir, CWD),
     copy_backend_configs(DataDir, CWD, Backends),
     setup_ejabberd_lib_path(Config),
     case application:load(sasl) of
@@ -137,11 +143,37 @@ init_config(Config) ->
      {backends, Backends}
      |Config].
 
+copy_file(Config, File) ->
+    {ok, CWD} = file:get_cwd(),
+    DataDir = proplists:get_value(data_dir, Config),
+    {ok, _} = file:copy(filename:join([DataDir, File]), filename:join([CWD, File])).
+
+copy_configtest_yml(DataDir, CWD) ->
+    Files = filelib:wildcard(filename:join([DataDir, "configtest.yml"])),
+    lists:foreach(
+	fun(Src) ->
+	    ct:pal("copying ~p", [Src]),
+	    File = filename:basename(Src),
+	    case string:tokens(File, ".") of
+		["configtest", "yml"] ->
+		    Dst = filename:join([CWD, File]),
+		    case true of
+			true ->
+			    {ok, _} = file:copy(Src, Dst);
+			false ->
+			    ok
+		    end;
+		_ ->
+		    ok
+	    end
+	end, Files).
+
+
 copy_backend_configs(DataDir, CWD, Backends) ->
     Files = filelib:wildcard(filename:join([DataDir, "ejabberd.*.yml"])),
     lists:foreach(
 	fun(Src) ->
-	    io:format("copying ~p", [Src]),
+	    ct:pal("copying ~p", [Src]),
 	    File = filename:basename(Src),
 	    case string:tokens(File, ".") of
 		["ejabberd", SBackend, "yml"] ->
@@ -182,7 +214,7 @@ setup_ejabberd_lib_path(Config) ->
 	    ok
     end.
 
-%% Read environment variable CT_DB=mysql to limit the backends to test.
+%% Read environment variable CT_BACKENDS=mysql to limit the backends to test.
 %% You can thus limit the backend you want to test with:
 %%  CT_BACKENDS=mysql rebar ct suites=ejabberd
 get_config_backends() ->
@@ -197,7 +229,7 @@ get_config_backends() ->
 		  end,
     application:load(ejabberd),
     EnabledBackends = application:get_env(ejabberd, enabled_backends, EnvBackends),
-    misc:intersection(EnvBackends, [mnesia, ldap, extauth|EnabledBackends]).
+    misc:intersection(EnvBackends, [agnostic, mnesia, ldap, extauth|EnabledBackends]).
 
 process_config_tpl(Content, []) ->
     Content;
@@ -882,6 +914,21 @@ receiver(NS, Owner, Socket, MRef) ->
 	{tcp_closed, _} ->
 	    Owner ! closed,
 	    receiver(NS, Owner, Socket, MRef)
+    end.
+
+%% @doc Retry an action until success, at max N times with an interval
+%% `Interval'
+%% Shamlessly stolen (with slight adaptations) from snabbkaffee.
+-spec retry(integer(), non_neg_integer(), fun(() -> Ret)) -> Ret.
+retry(_, 0, Fun) ->
+    Fun();
+retry(Interval, N, Fun) ->
+    try Fun()
+    catch
+        EC:Err  ->
+            timer:sleep(Interval),
+            ct:pal("retrying ~p more times, result was ~p:~p", [N, EC, Err]),
+            retry(Interval, N - 1, Fun)
     end.
 
 %%%===================================================================

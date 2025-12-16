@@ -1,6 +1,6 @@
 %%%----------------------------------------------------------------------
 %%%
-%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -44,7 +44,7 @@
     allow_visitor_nickchange             = true :: boolean(),
     public                               = true :: boolean(),
     public_list                          = true :: boolean(),
-    persistent                           = false :: boolean(),
+    persistent                           = false :: boolean() | {destroying, boolean()},
     moderated                            = true :: boolean(),
     captcha_protected                    = false :: boolean(),
     members_by_default                   = true :: boolean(),
@@ -126,7 +126,8 @@
     history                 = #lqueue{} :: lqueue(),
     subject                 = [] :: [text()],
     subject_author          = {<<"">>, #jid{}} :: {binary(), jid()},
-    hats_users              = #{} :: map(), % FIXME on OTP 21+: #{ljid() => #{binary() => binary()}},
+    hats_defs               = #{} :: #{binary() => {binary(), binary()}},
+    hats_users              = #{} :: #{ljid() => [binary()]},
     just_created            = erlang:system_time(microsecond) :: true | integer(),
     activity                = treap:empty() :: treap:treap(),
     room_shaper             = none :: ejabberd_shaper:shaper(),

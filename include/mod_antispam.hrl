@@ -1,6 +1,6 @@
 %%%----------------------------------------------------------------------
 %%%
-%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -18,10 +18,19 @@
 %%%
 %%%----------------------------------------------------------------------
 
--ifdef(DEPRECATED_GET_STACKTRACE).
--define(EX_RULE(Class, Reason, Stack), Class:Reason:Stack).
--define(EX_STACK(Stack), Stack).
--else.
--define(EX_RULE(Class, Reason, _), Class:Reason).
--define(EX_STACK(_), erlang:get_stacktrace()).
--endif.
+-define(MODULE_ANTISPAM, mod_antispam).
+
+-type url() :: binary().
+-type filename() :: binary() | none | false.
+-type jid_set() :: sets:set(ljid()).
+-type url_set() :: sets:set(url()).
+
+-define(DEFAULT_RTBL_DOMAINS_NODE, <<"spam_source_domains">>).
+
+-record(rtbl_service,
+        {host = none                       :: binary() | none,
+         node = ?DEFAULT_RTBL_DOMAINS_NODE :: binary(),
+         subscribed = false                :: boolean(),
+         retry_timer = undefined           :: reference() | undefined}).
+
+-type rtbl_service() :: #rtbl_service{}.

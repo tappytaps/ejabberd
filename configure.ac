@@ -2,8 +2,17 @@
 # Process this file with autoconf to produce a configure script.
 
 AC_PREREQ(2.59)
-AC_INIT(ejabberd, m4_esyscmd([echo `git describe --tags 2>/dev/null || echo 24.07` | sed 's/-g.*//;s/-/./' | tr -d '\012']), [ejabberd@process-one.net], [ejabberd])
-REQUIRE_ERLANG_MIN="9.0.5 (Erlang/OTP 20.0)"
+AC_INIT(ejabberd, m4_esyscmd([echo `git describe --tags 2>/dev/null || echo 25.10` | sed 's/-g.*//;s/-/./' | tr -d '\012']), [ejabberd@process-one.net], [ejabberd])
+
+AC_ARG_WITH(min-erlang,
+	AS_HELP_STRING([--with-min-erlang=version],[set minimal required erlang version, default to OTP25]),
+[if test "X$withval" = "X"; then
+    REQUIRE_ERLANG_MIN="13.0 (Erlang/OTP 25.0)"
+else
+    REQUIRE_ERLANG_MIN="$withval"
+fi
+], [REQUIRE_ERLANG_MIN="13.0 (Erlang/OTP 25.0)"])
+
 REQUIRE_ERLANG_MAX="100.0.0 (No Max)"
 
 AC_CONFIG_MACRO_DIR([m4])
@@ -183,12 +192,20 @@ AC_ARG_ENABLE(mysql,
 esac],[if test "x$mysql" = "x"; then mysql=false; fi])
 
 AC_ARG_ENABLE(new_sql_schema,
-[AS_HELP_STRING([--enable-new-sql-schema],[use new SQL schema by default (default: no)])],
+[AS_HELP_STRING([--enable-new-sql-schema],[obsolete, use --enable-multihost-sql-schema instead (default: no)])],
 [case "${enableval}" in
-  yes) new_sql_schema=true ;;
-  no)  new_sql_schema=false ;;
+  yes) multihost_sql_schema=true ;;
+  no)  multihost_sql_schema=false ;;
   *) AC_MSG_ERROR(bad value ${enableval} for --enable-new-sql-schema) ;;
-esac],[new_sql_schema=false])
+esac],[multihost_sql_schema=false])
+
+AC_ARG_ENABLE(multihost_sql_schema,
+[AS_HELP_STRING([--enable-multihost-sql-schema],[use multihost SQL schema by default (default: no)])],
+[case "${enableval}" in
+  yes) multihost_sql_schema=true ;;
+  no)  multihost_sql_schema=false ;;
+  *) AC_MSG_ERROR(bad value ${enableval} for --enable-multihost-sql-schema) ;;
+esac],[multihost_sql_schema=false])
 
 AC_ARG_ENABLE(odbc,
 [AS_HELP_STRING([--enable-odbc],[enable pure ODBC support (default: no)])],
@@ -309,7 +326,7 @@ esac
 AC_MSG_RESULT([build tool to use (change using --with-rebar): $rebar])
 
 AC_SUBST(roster_gateway_workaround)
-AC_SUBST(new_sql_schema)
+AC_SUBST(multihost_sql_schema)
 AC_SUBST(full_xml)
 AC_SUBST(odbc)
 AC_SUBST(mssql)

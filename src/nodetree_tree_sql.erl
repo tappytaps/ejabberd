@@ -5,7 +5,7 @@
 %%% Created :  1 Dec 2007 by Christophe Romain <christophe.romain@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -82,17 +82,22 @@ set_node(Record) when is_record(Record, pubsub_node) ->
 		   " parent=%(Parent)s, plugin=%(Type)s "
 		   "where nodeid=%(OldNidx)d")),
 	    OldNidx;
-	_ ->
+	{error, not_found} ->
 	    catch
 	    ejabberd_sql:sql_query_t(
 	      ?SQL("insert into pubsub_node(host, node, parent, plugin) "
 		   "values(%(H)s, %(Node)s, %(Parent)s, %(Type)s)")),
 	    case nodeidx(Host, Node) of
 		{result, NewNidx} -> NewNidx;
-		_ -> none  % this should not happen
-	    end
+		{error, not_found} -> none;  % this should not happen
+		{error, _} -> db_error
+	    end;
+	{error, _} ->
+	    db_error
     end,
     case Nidx of
+	db_error ->
+	    {error, xmpp:err_internal_server_error(?T("Database failure"), ejabberd_option:language())};
 	none ->
 	    Txt = ?T("Node index not found"),
 	    {error, xmpp:err_internal_server_error(Txt, ejabberd_option:language())};

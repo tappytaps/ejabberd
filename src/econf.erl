@@ -3,7 +3,7 @@
 %%% Purpose : Validator for ejabberd configuration options
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -482,6 +482,8 @@ domain() ->
       non_empty(binary()),
       fun(Val) ->
 	      try jid:tolower(jid:decode(Val)) of
+		  {<<"">>, <<"xn--", _/binary>> = Domain, <<"">>} ->
+		      unicode:characters_to_binary(idna:decode(binary_to_list(Domain)), utf8);
 		  {<<"">>, Domain, <<"">>} -> Domain;
 		  _ -> fail({bad_domain, Val})
 	      catch _:{bad_jid, _} ->
@@ -505,10 +507,15 @@ db_type(M) ->
     and_then(
       atom(),
       fun(T) ->
-	      case code:ensure_loaded(db_module(M, T)) of
-		  {module, _} -> T;
-		  {error, _} -> fail({bad_db_type, M, T})
-	      end
+        case code:ensure_loaded(db_module(M, T)) of
+          {module, _} -> T;
+          {error, _} ->
+            ElixirModule = "Elixir." ++ atom_to_list(T),
+            case code:ensure_loaded(list_to_atom(ElixirModule)) of
+              {module, _} -> list_to_atom(ElixirModule);
+              {error, _} -> fail({bad_db_type, M, T})
+            end
+          end
       end).
 
 -spec queue_type() -> yconf:validator(ram | file).
@@ -541,13 +548,10 @@ sip_uri() ->
 -spec host() -> yconf:validator(binary()).
 host() ->
     fun(Domain) ->
-	    Host = ejabberd_config:get_myname(),
 	    Hosts = ejabberd_config:get_option(hosts),
-	    Domain1 = (binary())(Domain),
-	    Domain2 = misc:expand_keyword(<<"@HOST@">>, Domain1, Host),
-	    Domain3 = (domain())(Domain2),
+	    Domain3 = (domain())(Domain),
 	    case lists:member(Domain3, Hosts) of
-		true -> fail({route_conflict, Domain3});
+		true -> fail({route_conflict, Domain});
 		false -> Domain3
 	    end
     end.

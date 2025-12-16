@@ -5,7 +5,7 @@
 %%% Created : 24 Aug 2008 by Stephan Maka <stephan@spaceboyz.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -27,7 +27,7 @@
 
 -behaviour(gen_mod).
 
--protocol({xep, 191, '1.2'}).
+-protocol({xep, 191, '1.2', '2.1.7', "complete", ""}).
 
 -export([start/2, stop/1, reload/3, process_iq/1, depends/2,
 	 disco_features/5, mod_options/1, mod_doc/0]).
@@ -269,5 +269,5 @@ mod_doc() ->
           [?T("The module implements "
               "https://xmpp.org/extensions/xep-0191.html"
               "[XEP-0191: Blocking Command]."), "",
-           ?T("This module depends on 'mod_privacy' where "
+           ?T("This module depends on _`mod_privacy`_ where "
               "all the configuration is performed.")]}.

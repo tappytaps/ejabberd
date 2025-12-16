@@ -5,7 +5,7 @@
 %%% Created :  9 Apr 2004 by Alexey Shchepin <alexey@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -238,7 +238,7 @@ get_auth_admin(Auth, HostHTTP, RPath, Method) ->
       {SJID, Pass} ->
 	  {HostOfRule, AccessRule} = get_acl_rule(RPath, Method),
 	    try jid:decode(SJID) of
-		#jid{user = <<"">>, server = User} ->
+		#jid{luser = <<"">>, lserver = User} ->
 		    case ejabberd_router:is_my_host(HostHTTP) of
 			true ->
 			    get_auth_account(HostOfRule, AccessRule, User, HostHTTP,
@@ -246,7 +246,7 @@ get_auth_admin(Auth, HostHTTP, RPath, Method) ->
 			_ ->
 			    {unauthorized, <<"missing-server">>}
 		    end;
-		#jid{user = User, server = Server} ->
+		#jid{luser = User, lserver = Server} ->
 		    get_auth_account(HostOfRule, AccessRule, User, Server,
 				     Pass)
 	    catch _:{bad_jid, _} ->
@@ -369,7 +369,7 @@ make_xhtml(Els, Host, Node, Username, #request{lang = Lang} = R, JID, Level) ->
 				 [?XE(<<"p">>,
 				  [?AC(<<"https://www.ejabberd.im/">>, <<"ejabberd">>),
 				   ?C(<<" ">>), ?C(ejabberd_option:version()),
-				   ?C(<<" (c) 2002-2024 ">>),
+				   ?C(<<" (c) 2002-2025 ">>),
 				   ?AC(<<"https://www.process-one.net/">>, <<"ProcessOne, leader in messaging and push solutions">>)]
                                  )])])])]}}.
 
@@ -584,12 +584,17 @@ process_admin(Host, #request{path = [<<"users">> | RPath], lang = Lang} = R, AJI
 process_admin(Host, #request{path = [<<"online-users">> | RPath], lang = Lang} = R, AJID)
     when is_binary(Host) ->
     Level = 3 + length(RPath),
-    Res = [make_command(connected_users_vhost,
+    Set = [make_command(kick_users,
+                        R,
+                        [{<<"host">>, Host}],
+                        [{style, danger}, {force_execution, false}])],
+    timer:sleep(200), % small delay after kicking users before getting the updated list
+    Get = [make_command(connected_users_vhost,
                         R,
                         [{<<"host">>, Host}],
                         [{table_options, {100, RPath}},
                          {result_links, [{sessions, user, Level, <<"">>}]}])],
-    make_xhtml([?XCT(<<"h1">>, ?T("Online Users"))] ++ Res, Host, R, AJID, Level);
+    make_xhtml([?XCT(<<"h1">>, ?T("Online Users"))] ++ Set ++ Get, Host, R, AJID, Level);
 process_admin(Host,
               #request{path = [<<"last-activity">>],
                        q = Query,
@@ -747,46 +752,99 @@ list_users(Host, Level, PageSize, RPath, R, RegisterEl) ->
     end.
 
 list_users(Host, Level, PageSize, RPath, R, Usernames, RegisterEl) ->
+    IsOffline = gen_mod:is_loaded(Host, mod_offline),
+    IsMam = gen_mod:is_loaded(Host, mod_mam),
+    IsRoster = gen_mod:is_loaded(Host, mod_roster),
+    IsLast = gen_mod:is_loaded(Host, mod_last),
     Columns =
         [<<"user">>,
-         {<<"offline">>, right},
-         {<<"roster">>, right},
-         {<<"timestamp">>, left},
-         {<<"status">>, left}],
+         list_users_element(IsOffline, column, offline, {}),
+         list_users_element(IsMam, column, mam, {}),
+         list_users_element(IsRoster, column, roster, {}),
+         list_users_element(IsLast, column, timestamp, {}),
+         list_users_element(IsLast, column, status, {})],
     Rows =
-        [{make_command(echo,
-                       R,
-                       [{<<"sentence">>,
-                         jid:encode(
-                             jid:make(Username, Host))}],
-                       [{only, raw_and_value}, {result_links, [{sentence, user, Level, <<"">>}]}]),
-          make_command(get_offline_count,
-                       R,
-                       [{<<"user">>, Username}, {<<"host">>, Host}],
-                       [{only, raw_and_value},
-                        {result_links,
-                         [{value, arg_host, Level, <<"user/", Username/binary, "/queue/">>}]}]),
-          make_command(get_roster_count,
-                       R,
-                       [{<<"user">>, Username}, {<<"host">>, Host}],
-                       [{only, raw_and_value},
-                        {result_links,
-                         [{value, arg_host, Level, <<"user/", Username/binary, "/roster/">>}]}]),
-          ?C(element(1,
-                     make_command_raw_value(get_last,
-                                            R,
-                                            [{<<"user">>, Username}, {<<"host">>, Host}]))),
-          ?C(element(2,
-                     make_command_raw_value(get_last,
-                                            R,
-                                            [{<<"user">>, Username}, {<<"host">>, Host}])))}
+        [list_to_tuple(lists:flatten([make_command(echo,
+                                                   R,
+                                                   [{<<"sentence">>,
+                                                     jid:encode(
+                                                         jid:make(Username, Host))}],
+                                                   [{only, raw_and_value},
+                                                    {result_links,
+                                                     [{sentence, user, Level, <<"">>}]}]),
+                                      list_users_element(IsOffline,
+                                                         row,
+                                                         offline,
+                                                         {R, Username, Host, Level}),
+                                      list_users_element(IsMam,
+                                                         row,
+                                                         mam,
+                                                         {R, Username, Host, Level}),
+                                      list_users_element(IsRoster,
+                                                         row,
+                                                         roster,
+                                                         {R, Username, Host, Level}),
+                                      list_users_element(IsLast, row, last, {R, Username, Host})]))
          || Username <- Usernames],
-    [RegisterEl,
-     make_command(registered_users, R, [], [{only, presentation}]),
-     make_command(get_offline_count, R, [], [{only, presentation}]),
-     make_command(get_roster_count, R, [], [{only, presentation}]),
-     make_command(get_last, R, [], [{only, presentation}]),
-     make_table(PageSize, RPath, Columns, Rows)].
+    Table = make_table(PageSize, RPath, lists:flatten(Columns), Rows),
+    Result =
+        [RegisterEl,
+         make_command(registered_users, R, [], [{only, presentation}]),
+         list_users_element(IsOffline, presentation, offline, R),
+         list_users_element(IsMam, presentation, mam, R),
+         list_users_element(IsRoster, presentation, roster, R),
+         list_users_element(IsLast, presentation, last, R),
+         Table],
+    lists:flatten(Result).
+
+list_users_element(false, _, _, _) ->
+    [];
+list_users_element(_, column, offline, _) ->
+    {<<"offline">>, right};
+list_users_element(_, column, mam, _) ->
+    {<<"mam">>, right};
+list_users_element(_, column, roster, _) ->
+    {<<"roster">>, right};
+list_users_element(_, column, timestamp, _) ->
+    {<<"timestamp">>, left};
+list_users_element(_, column, status, _) ->
+    {<<"status">>, left};
+list_users_element(_, row, offline, {R, Username, Host, Level}) ->
+    make_command(get_offline_count,
+                 R,
+                 [{<<"user">>, Username}, {<<"host">>, Host}],
+                 [{only, raw_and_value},
+                  {result_links,
+                   [{value, arg_host, Level, <<"user/", Username/binary, "/queue/">>}]}]);
+list_users_element(_, row, mam, {R, Username, Host, Level}) ->
+    make_command(get_mam_count,
+                 R,
+                 [{<<"user">>, Username}, {<<"host">>, Host}],
+                 [{only, raw_and_value},
+                  {result_links,
+                   [{value, arg_host, Level, <<"user/", Username/binary, "/mam/">>}]}]);
+list_users_element(_, row, roster, {R, Username, Host, Level}) ->
+    make_command(get_roster_count,
+                 R,
+                 [{<<"user">>, Username}, {<<"host">>, Host}],
+                 [{only, raw_and_value},
+                  {result_links,
+                   [{value, arg_host, Level, <<"user/", Username/binary, "/roster/">>}]}]);
+list_users_element(_, row, last, {R, Username, Host}) ->
+    [?C(element(1,
+                make_command_raw_value(get_last, R, [{<<"user">>, Username}, {<<"host">>, Host}]))),
+     ?C(element(2,
+                make_command_raw_value(get_last,
+                                       R,
+                                       [{<<"user">>, Username}, {<<"host">>, Host}])))];
+list_users_element(_, presentation, offline, R) ->
+    make_command(get_offline_count, R, [], [{only, presentation}]);
+list_users_element(_, presentation, mam, R) ->
+    make_command(get_mam_count, R, [], [{only, presentation}]);
+list_users_element(_, presentation, roster, R) ->
+    make_command(get_roster_count, R, [], [{only, presentation}]);
+list_users_element(_, presentation, last, R) ->
+    make_command(get_last, R, [], [{only, presentation}]).
 
 list_users_diapason(Host, R, Usernames, N, RegisterEl) ->
     URLFunc = fun url_func/1,
@@ -952,6 +1010,17 @@ user_info(User, Server, #request{q = Query, lang = Lang} = R) ->
     Res = user_parse_query(User, Server, Query),
     UserItems = ejabberd_hooks:run_fold(webadmin_user,
 					LServer, [], [User, Server, R]),
+    Lasts = case gen_mod:is_loaded(Server, mod_last) of
+                true ->
+                    [make_command(get_last, R,
+                                  [{<<"user">>, User}, {<<"host">>, Server}],
+                                  []),
+                     make_command(set_last, R,
+                                  [{<<"user">>, User}, {<<"host">>, Server}],
+                                  [])];
+                false ->
+                    []
+            end,
     [?XC(<<"h1">>, (str:translate_and_format(Lang, ?T("User ~ts"),
                                                 [us_to_list(US)])))]
       ++
@@ -968,13 +1037,8 @@ user_info(User, Server, #request{q = Query, lang = Lang} = R) ->
                              [{result_links, [{node, node, 4, <<>>}]}]),
                 make_command(change_password, R,
                              [{<<"user">>, User}, {<<"host">>, Server}],
-                             [{style, danger}]),
-                make_command(get_last, R,
-                             [{<<"user">>, User}, {<<"host">>, Server}],
-                             []),
-                make_command(set_last, R,
-                             [{<<"user">>, User}, {<<"host">>, Server}],
-                             [])] ++
+                             [{style, danger}])] ++
+                   Lasts ++
                    UserItems ++
                    [?P,
                 make_command(unregister, R,
@@ -1180,7 +1244,7 @@ pretty_print_xml({xmlcdata, CData}, Prefix) ->
                         ($\n) -> true;
                         ($\t) -> true;
                         ($\v) -> true;
-                        ($ ) -> true;
+                        ($\s) -> true;
                         (_) -> false
                      end, binary_to_list(CData)),
     if IsBlankCData ->
@@ -1596,9 +1660,19 @@ make_login_items(#request{us = {Username, Host}} = R, Level) ->
             _ ->
                 UserEl
         end,
+    MenuPost =
+        case ejabberd_hooks:run_fold(webadmin_menu_system_post, [], [R]) of
+            [] ->
+                [];
+            PostElements ->
+                [{xmlel,
+                  <<"div">>,
+                  [{<<"id">>, <<"navitemlogin">>}],
+                  [?XE(<<"ul">>, PostElements)]}]
+        end,
     [{xmlel,
       <<"li">>,
-      [],
+      [{<<"id">>, <<"navitemlogin-start">>}],
       [{xmlel,
         <<"div">>,
         [{<<"id">>, <<"navitemlogin">>}],
@@ -1609,10 +1683,12 @@ make_login_items(#request{us = {Username, Host}} = R, Level) ->
                                 R,
                                 [{<<"sentence">>, misc:atom_to_binary(node())}],
                                 [{only, value},
-                                 {result_links, [{sentence, node, Level, <<"">>}]}])]),
-              ?LI([?C(unicode:characters_to_binary("📤")),
-                   ?AC(<<(binary:copy(<<"../">>, Level))/binary, "logout/">>,
-                       <<"Logout">>)])])]}]}].
+                                 {result_links, [{sentence, node, Level, <<"">>}]}])])]
+             ++ ejabberd_hooks:run_fold(webadmin_menu_system_inside, [], [R])
+             ++ [?LI([?C(unicode:characters_to_binary("📤")),
+                      ?AC(<<(binary:copy(<<"../">>, Level))/binary, "logout/">>,
+                          <<"Logout">>)])])]}]
+      ++ MenuPost}].
 
 %%%==================================
 
@@ -1667,7 +1743,7 @@ make_command_raw_value(Name, Request, BaseArguments) ->
               raw_value |
               raw_and_value} |
              {input_name_append, [binary()]} |
-             {force_execution, boolean()} |
+             {force_execution, boolean() | undefined} |
              {table_options, {PageSize :: integer(), RemainingPath :: [binary()]}} |
              {result_named, boolean()} |
              {result_links,
@@ -1678,7 +1754,7 @@ make_command_raw_value(Name, Request, BaseArguments) ->
              {style, normal | danger}.
 make_command2(Name, Request, BaseArguments, Options) ->
     Only = proplists:get_value(only, Options, all),
-    ForceExecution = proplists:get_value(force_execution, Options, false),
+    ForceExecution = proplists:get_value(force_execution, Options, undefined),
     InputNameAppend = proplists:get_value(input_name_append, Options, []),
     Resultnamed = proplists:get_value(result_named, Options, false),
     ResultLinks = proplists:get_value(result_links, Options, []),
@@ -1732,6 +1808,8 @@ make_command2(Name,
         case {ForceExecution, ResultFormatApi} of
             {true, _} ->
                 auto;
+            {false, _} ->
+                manual;
             {_, {_, rescode}} ->
                 manual;
             {_, {_, restuple}} ->
@@ -1859,7 +1937,9 @@ lists_zipwith3(Combine, [E1 | List1], [E2 | List2], [], DefX, DefY, DefZ, Res) -
     E123 = Combine(E1, E2, DefZ),
     lists_zipwith3(Combine, List1, List2, [], DefX, DefY, DefZ, [E123 | Res]).
 
--else.
+-endif.
+
+-ifndef(OTP_BELOW_26).
 
 lists_zipwith3(Combine, List1, List2, List3, How) ->
     lists:zipwith3(Combine, List1, List2, List3, How).
@@ -2117,7 +2197,10 @@ make_command_result_element(_ArgumentsUsed,
                    || {ElementName, _ElementFormat} <- TupleElements])]),
          ?XE(<<"tbody">>,
              [?XE(<<"tr">>,
-                  [?XC(<<"td">>, format_result(V, {ElementName, ElementFormat}))
+                  [?XE(<<"td">>,
+                       [?XAC(<<"span">>,
+                             [{<<"style">>, <<"white-space: pre-wrap;">>}],
+                             format_result(V, {ElementName, ElementFormat}))])
                    || {V, {ElementName, ElementFormat}}
                           <- lists:zip(tuple_to_list(Values), TupleElements)])])]);
 make_command_result_element(ArgumentsUsed,
@@ -2224,13 +2307,13 @@ make_result(Binary,
     First = proplists:get_value(first, ArgumentsUsed),
     Second = proplists:get_value(second, ArgumentsUsed),
     FirstUrlencoded =
-        hd(string:replace(
-               misc:url_encode(First), "%40", "@")),
+        list_to_binary(string:replace(
+                           misc:url_encode(First), "%40", "@")),
     {GroupId, Host} =
         case jid:decode(FirstUrlencoded) of
-            #jid{luser = <<"">>, lserver = G} ->
+            #jid{luser = <<"">>, server = G} ->
                 {G, Second};
-            #jid{luser = G, lserver = H} ->
+            #jid{user = G, lserver = H} ->
                 {G, H}
         end,
     UrlBinary =
@@ -2298,11 +2381,21 @@ format_result([], {_Name, {list, _ElementsDef}}) ->
     "";
 format_result([FirstElement | Elements], {_Name, {list, ElementsDef}}) ->
     Separator = ",",
-    [format_result(FirstElement, ElementsDef) | lists:map(fun(Element) ->
-                                                             [Separator | format_result(Element,
-                                                                                        ElementsDef)]
-                                                          end,
-                                                          Elements)];
+    Head = format_result(FirstElement, ElementsDef),
+    Tail =
+        lists:map(fun(Element) -> [Separator | format_result(Element, ElementsDef)] end,
+                  Elements),
+    [Head | Tail];
+format_result([], {_Name, {tuple, _ElementsDef}}) ->
+    "";
+format_result(Value, {_Name, {tuple, [FirstDef | ElementsDef]}}) ->
+    [FirstElement | Elements] = tuple_to_list(Value),
+    Separator = ":",
+    Head = format_result(FirstElement, FirstDef),
+    Tail =
+        lists:map(fun(Element) -> [Separator | format_result(Element, ElementsDef)] end,
+                  Elements),
+    [Head | Tail];
 format_result(Value, _ResultFormat) when is_atom(Value) ->
     misc:atom_to_binary(Value);
 format_result(Value, _ResultFormat) when is_list(Value) ->

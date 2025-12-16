@@ -4,7 +4,7 @@
 %%% Created :  9 Mar 2015 by Evgeny Khramtsov <ekhramtsov@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -109,7 +109,7 @@ set_session(#session{sid = {Now, Pid}, usr = {U, LServer, R},
 
 delete_session(#session{usr = {_, LServer, _}, sid = {Now, Pid}}) ->
     TS = now_to_timestamp(Now),
-    PidS = list_to_binary(erlang:pid_to_list(Pid)),
+    PidS = misc:encode_pid(Pid),
     case ejabberd_sql:sql_query(
 	   LServer,
 	   ?SQL("delete from sm where usec=%(TS)d and pid=%(PidS)s")) of

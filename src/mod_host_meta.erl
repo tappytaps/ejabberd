@@ -27,14 +27,14 @@
 
 -author('badlop@process-one.net').
 
--protocol({xep, 156, '1.4.0', '22.05', "", ""}).
+-protocol({xep, 156, '1.4.0', '22.05', "complete", ""}).
 
 -behaviour(gen_mod).
 
 -export([start/2, stop/1, reload/3, process/2,
          mod_opt_type/1, mod_options/1, depends/2]).
 -export([mod_doc/0]).
--export([get_url/4]).
+-export([get_url/4, get_auto_url/2]).
 
 -include("logger.hrl").
 
@@ -151,10 +151,10 @@ get_auto_url(Tls, Module) ->
         [] -> undefined;
         [{ThisTls, Port, Path} | _] ->
             Protocol = case {ThisTls, Module} of
-                           {false, mod_bosh} -> <<"http">>;
-                           {true, mod_bosh} -> <<"https">>;
                            {false, ejabberd_http_ws} -> <<"ws">>;
-                           {true, ejabberd_http_ws} -> <<"wss">>
+                           {true, ejabberd_http_ws} -> <<"wss">>;
+                           {false, _} -> <<"http">>;
+                           {true, _} -> <<"https">>
                        end,
             <<Protocol/binary,
               "://@HOST@:",
@@ -168,7 +168,7 @@ find_handler_port_path(Tls, Module) ->
       fun({{Port, _, _},
            ejabberd_http,
            #{tls := ThisTls, request_handlers := Handlers}})
-            when (Tls == any) or (Tls == ThisTls) ->
+            when is_integer(Port) and ((Tls == any) or (Tls == ThisTls)) ->
               case lists:keyfind(Module, 2, Handlers) of
                   false -> false;
                   {Path, Module} -> {true, {ThisTls, Port, Path}}
@@ -214,7 +214,8 @@ mod_doc() ->
            ?T("To use this module, in addition to adding it to the 'modules' "
               "section, you must also enable it in 'listen' -> 'ejabberd_http' -> "
               "_`listen-options.md#request_handlers|request_handlers`_."), "",
-           ?T("Notice it only works if ejabberd_http has tls enabled.")],
+           ?T("Notice it only works if _`listen.md#ejabberd_http|ejabberd_http`_ "
+              "has _`listen-options.md#tls|tls`_ enabled.")],
       note => "added in 22.05",
       example =>
           ["listen:",

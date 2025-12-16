@@ -5,7 +5,7 @@
 %%% Created : 19 Feb 2015 by Christophe Romain <christophe.romain@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2006-2024   ProcessOne
+%%% ejabberd, Copyright (C) 2006-2025   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -49,6 +49,7 @@
 -include("logger.hrl").
 -include("translate.hrl").
 -include_lib("xmpp/include/xmpp.hrl").
+-include_lib("stdlib/include/zip.hrl").
 
 -define(REPOS, "git@github.com:processone/ejabberd-contrib.git").
 
@@ -78,6 +79,11 @@ handle_call(Request, From, State) ->
 handle_cast(Msg, State) ->
     ?WARNING_MSG("Unexpected cast: ~p", [Msg]),
     {noreply, State}.
+
+handle_info({'ETS-TRANSFER', Table, Process, Module}, State) ->
+    ?DEBUG("ejabberd now controls ETS table ~p from process ~p for module ~p",
+              [Table, Process, Module]),
+    {noreply, State};
 
 handle_info(Info, State) ->
     ?WARNING_MSG("Unexpected info: ~p", [Info]),
@@ -143,7 +149,8 @@ get_commands_spec() ->
      #ejabberd_commands{name = module_upgrade,
                         tags = [modules],
                         desc = "Upgrade the running code of an installed module",
-                        longdesc = "In practice, this uninstalls and installs the module",
+                        longdesc = "In practice, this uninstalls, cleans the compiled files, and installs the module",
+                        note = "improved in 25.07",
                         module = ?MODULE, function = upgrade,
                         args_desc = ["Module name"],
                         args_example = [<<"mod_rest">>],
@@ -236,6 +243,7 @@ install(Package, Config) when is_binary(Package) ->
                 ok ->
                     code:add_pathsz([module_ebin_dir(Module)|module_deps_dirs(Module)]),
                     ejabberd_config_reload(Config),
+                    maybe_print_module_status(Module),
                     copy_commit_json(Package, Attrs),
                     ModuleRuntime = get_runtime_module_name(Module),
                     case erlang:function_exported(ModuleRuntime, post_install, 0) of
@@ -255,6 +263,14 @@ ejabberd_config_reload(Config) when is_list(Config) ->
     ok;
 ejabberd_config_reload(undefined) ->
     ejabberd_config:reload().
+
+maybe_print_module_status(Module) ->
+    case get_module_status_el(Module) of
+        [_, {xmlcdata, String}] ->
+            io:format("~ts~n", [String]);
+        _ ->
+            ok
+    end.
 
 uninstall(Module) when is_atom(Module) ->
     uninstall(misc:atom_to_binary(Module));
@@ -284,7 +300,18 @@ upgrade(Module) when is_atom(Module) ->
     upgrade(misc:atom_to_binary(Module));
 upgrade(Package) when is_binary(Package) ->
     uninstall(Package),
+    clean(Package),
     install(Package).
+
+clean(Package) ->
+    Spec = [S || {Mod, S} <- available(), misc:atom_to_binary(Mod)==Package],
+    case Spec of
+        [] ->
+            {error, not_available};
+        [Attrs] ->
+            Path = proplists:get_value(path, Attrs),
+            [delete_path(SubPath) || SubPath <- filelib:wildcard(Path++"/{deps,ebin}")]
+    end.
 
 add_sources(Path) when is_list(Path) ->
     add_sources(iolist_to_binary(module_name(Path)), Path).
@@ -366,8 +393,6 @@ geturl(Url) ->
             {error, Reason}
     end.
 
-getenv(Env) ->
-    getenv(Env, "").
 getenv(Env, Default) ->
     case os:getenv(Env) of
         false -> Default;
@@ -384,6 +409,23 @@ extract(tar, {ok, _, Body}, DestDir) ->
 extract(_, {error, Reason}, _) ->
     {error, Reason};
 extract(zip, Zip, DestDir) ->
+    {ok, DirList} = zip:list_dir(Zip),
+    Offending =
+        lists:filter(fun (#zip_comment{}) ->
+                             false;
+                         (#zip_file{name = Filename}) ->
+                             absolute == filename:pathtype(Filename)
+                     end,
+                     DirList),
+    case Offending of
+        [] ->
+            extract(zip_verified, Zip, DestDir);
+        _ ->
+            Filenames = [F#zip_file.name || F <- Offending],
+            ?ERROR_MSG("The zip file includes absolute file paths:~n  ~p", [Filenames]),
+            {error, {zip_absolute_path, Filenames}}
+    end;
+extract(zip_verified, Zip, DestDir) ->
     case zip:extract(Zip, [{cwd, DestDir}]) of
         {ok, _} -> ok;
         Error -> Error
@@ -448,7 +490,7 @@ delete_path(Path, Package) ->
     delete_path(filename:join(filename:dirname(Path), Package)).
 
 modules_dir() ->
-    DefaultDir = filename:join(getenv("HOME"), ".ejabberd-modules"),
+    DefaultDir = filename:join(misc:get_home(), ".ejabberd-modules"),
     getenv("CONTRIB_MODULES_PATH", DefaultDir).
 
 sources_dir() ->
@@ -538,7 +580,7 @@ check_sources(Module) ->
                     true -> Acc;
                     false -> [{missing, Name}|Acc]
                 end
-            end, HaveSrc, [{is_file, "README.txt"},
+            end, HaveSrc, [{is_file, "README.md"},
                            {is_file, "COPYING"},
                            {is_file, SpecFile}]),
     SpecCheck = case consult(SpecFile) of
@@ -568,7 +610,7 @@ compile_and_install(Module, Spec, Config) ->
         true ->
             case compile_deps(SrcDir) of
                 ok ->
-                    case compile(SrcDir) of
+                    case compile(SrcDir, filename:join(SrcDir, "deps")) of
                         ok -> install(Module, Spec, SrcDir, LibDir, Config);
                         Error -> Error
                     end;
@@ -584,25 +626,31 @@ compile_and_install(Module, Spec, Config) ->
     end.
 
 compile_deps(LibDir) ->
-    Deps = filename:join(LibDir, "deps"),
-    case filelib:is_dir(Deps) of
+    DepsDir = filename:join(LibDir, "deps"),
+    case filelib:is_dir(DepsDir) of
         true -> ok;  % assume deps are included
         false -> fetch_rebar_deps(LibDir)
     end,
-    Rs = [compile(Dep) || Dep <- filelib:wildcard(filename:join(Deps, "*"))],
+    Rs = [compile(Dep, DepsDir) || Dep <- filelib:wildcard(filename:join(DepsDir, "*"))],
     compile_result(Rs).
 
-compile(LibDir) ->
+compile(LibDir, DepsDir) ->
     Bin = filename:join(LibDir, "ebin"),
     Lib = filename:join(LibDir, "lib"),
     Src = filename:join(LibDir, "src"),
-    Includes = [{i, Inc} || Inc <- filelib:wildcard(LibDir++"/../../**/include")],
-    Options = [{outdir, Bin}, {i, LibDir++"/.."} | Includes ++ compile_options()],
+    Includes = [ {i, Inc} || Inc <- filelib:wildcard(DepsDir++"/**/include") ],
+    Options = [ {outdir, Bin},
+                {i, LibDir++"/.."},
+                {i, filename:join(LibDir, "include")}
+              | Includes ++ compile_options()],
+    ?DEBUG("compile options: ~p", [Options]),
     filelib:ensure_dir(filename:join(Bin, ".")),
     [copy(App, filename:join(Bin, filename:basename(App, ".src"))) || App <- filelib:wildcard(Src++"/*.app*")],
     compile_c_files(LibDir),
+    ErlFiles = filelib:wildcard(Src++"/**/*.erl"),
+    ?DEBUG("erl files to compile: ~p", [ErlFiles]),
     Er = [compile_erlang_file(Bin, File, Options)
-          || File <- filelib:wildcard(Src++"/**/*.erl")],
+          || File <- ErlFiles],
     Ex = compile_elixir_files(Bin, filelib:wildcard(Lib ++ "/**/*.ex")),
     compile_result(lists:flatten([Er, Ex])).
 
@@ -630,10 +678,13 @@ maybe_define_lager_macro() ->
     end.
 
 compile_options() ->
-    [verbose, report_errors, report_warnings, debug_info, ?ALL_DEFS]
+    [verbose, report_errors, report_warnings, debug_info, ?ALL_DEFS,
+     {feature, maybe_expr, enable}]
     ++ maybe_define_lager_macro()
     ++ [{i, filename:join(app_dir(App), "include")}
         || App <- [fast_xml, xmpp, p1_utils, ejabberd]]
+    ++ [{i, filename:join(app_dir(App), "include")}
+        || App <- [p1_xml, p1_xmpp]] % paths used in Debian packages
     ++ [{i, filename:join(mod_dir(Mod), "include")}
         || Mod <- installed()].
 
@@ -787,7 +838,7 @@ rebar_dep({App, Version, Git}) when Version /= ".*" ->
     Help = os:cmd("mix hex.package"),
     case string:find(Help, "mix hex.package fetch") /= nomatch of
         true ->
-            {App, "mix hex.package fetch "++AppS++" "++Version++" --unpack"};
+            {App, "mix hex.package fetch "++AppS++" "++Version++" --unpack --output "++AppS};
         false ->
             io:format("I'll download ~p using git because I can't use Mix "
                       "to fetch from hex.pm:~n~s", [AppS, Help]),

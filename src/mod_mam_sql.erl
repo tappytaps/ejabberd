@@ -4,7 +4,7 @@
 %%% Created : 15 Apr 2016 by Evgeny Khramtsov <ekhramtsov@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -29,7 +29,7 @@
 
 %% API
 -export([init/2, remove_user/2, remove_room/3, delete_old_messages/3,
-	 extended_fields/0, store/10, write_prefs/4, get_prefs/2, select/7, export/1, remove_from_archive/3,
+	 extended_fields/1, store/10, write_prefs/4, get_prefs/2, select/7, export/1, remove_from_archive/3,
 	 is_empty_for_user/2, is_empty_for_room/3, select_with_mucsub/6,
 	 delete_old_messages_batch/4, count_messages_to_delete/3]).
 -export([sql_schemas/0]).
@@ -213,21 +213,47 @@ count_messages_to_delete(ServerHost, TimeStamp, Type) ->
 delete_old_messages_batch(ServerHost, TimeStamp, Type, Batch) ->
     TS = misc:now_to_usec(TimeStamp),
     Res =
-    case Type of
-	all ->
-	    ejabberd_sql:sql_query(
-		ServerHost,
-		?SQL("delete from archive"
-		     " where timestamp < %(TS)d and %(ServerHost)H limit %(Batch)d"));
-	_ ->
-	    SType = misc:atom_to_binary(Type),
-	    ejabberd_sql:sql_query(
-		ServerHost,
-		?SQL("delete from archive"
-		     " where timestamp < %(TS)d"
-		     " and kind=%(SType)s"
-		     " and %(ServerHost)H limit %(Batch)d"))
-    end,
+	case Type of
+	    all ->
+		ejabberd_sql:sql_query(
+		    ServerHost,
+		    fun(sqlite, _) ->
+			ejabberd_sql:sql_query_t(
+			    ?SQL("delete from archive where rowid in "
+				 "(select rowid from archive where timestamp < %(TS)d and %(ServerHost)H limit %(Batch)d)"));
+		       (mssql, _) ->
+			   ejabberd_sql:sql_query_t(
+			       ?SQL("delete top(%(Batch)d)§ from archive"
+				    " where timestamp < %(TS)d and %(ServerHost)H"));
+		       (_, _) ->
+			   ejabberd_sql:sql_query_t(
+			       ?SQL("delete from archive"
+				    " where timestamp < %(TS)d and %(ServerHost)H limit %(Batch)d"))
+		    end);
+	    _ ->
+		SType = misc:atom_to_binary(Type),
+		ejabberd_sql:sql_query(
+		    ServerHost,
+		    fun(sqlite,_)->
+			ejabberd_sql:sql_query_t(
+			    ?SQL("delete from archive where rowid in ("
+				 " select rowid from archive where timestamp < %(TS)d"
+				 " and kind=%(SType)s"
+				 " and %(ServerHost)H limit %(Batch)d)"));
+		       (mssql, _)->
+			   ejabberd_sql:sql_query_t(
+			       ?SQL("delete top(%(Batch)d) from archive"
+				    " where timestamp < %(TS)d"
+				    " and kind=%(SType)s"
+				    " and %(ServerHost)H"));
+		       (_,_)->
+			   ejabberd_sql:sql_query_t(
+			       ?SQL("delete from archive"
+				    " where timestamp < %(TS)d"
+				    " and kind=%(SType)s"
+				    " and %(ServerHost)H limit %(Batch)d"))
+		    end)
+	end,
     case Res of
 	{updated, Count} ->
 	    {ok, Count};
@@ -254,8 +280,17 @@ delete_old_messages(ServerHost, TimeStamp, Type) ->
     end,
     ok.
 
-extended_fields() ->
-    [{withtext, <<"">>}].
+extended_fields(LServer) ->
+    case ejabberd_option:sql_type(LServer) of
+	mysql ->
+	    [{withtext, <<"">>},
+	     #xdata_field{var = <<"{urn:xmpp:fulltext:0}fulltext">>,
+			  type = 'text-single',
+			  label = <<"Search the text">>,
+			  values = []}];
+	_ ->
+	    []
+    end.
 
 store(Pkt, LServer, {LUser, LHost}, Type, Peer, Nick, _Dir, TS,
       OriginID, Retract) ->
@@ -621,7 +656,7 @@ make_sql_query(User, LServer, MAMQuery, RSM, ExtraUsernames) ->
     SUser = ToString(User),
     SServer = ToString(LServer),
 
-    HostMatch = case ejabberd_sql:use_new_schema() of
+    HostMatch = case ejabberd_sql:use_multihost_schema() of
 		    true ->
 			[<<" and server_host=", SServer/binary>>];
 		    _ ->

@@ -5,7 +5,7 @@
 %%% Created :  1 Dec 2007 by Christophe Romain <christophe.romain@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -35,16 +35,18 @@
 -behaviour(gen_mod).
 -behaviour(gen_server).
 -author('christophe.romain@process-one.net').
--protocol({xep, 60, '1.14'}).
--protocol({xep, 163, '1.2'}).
--protocol({xep, 248, '0.2'}).
+-protocol({xep, 48, '1.2', '0.5.0', "complete", ""}).
+-protocol({xep, 60, '1.14', '0.5.0', "partial", ""}).
+-protocol({xep, 163, '1.2', '2.0.0', "complete", ""}).
+-protocol({xep, 223, '1.1.1', '2.0.0', "complete", ""}).
+-protocol({xep, 248, '0.2', '2.1.0', "complete", ""}).
 
 -include("logger.hrl").
 -include_lib("xmpp/include/xmpp.hrl").
 -include("pubsub.hrl").
 -include("mod_roster.hrl").
 -include("translate.hrl").
--include("ejabberd_stacktrace.hrl").
+
 -include("ejabberd_commands.hrl").
 
 -define(STDTREE, <<"tree">>).
@@ -265,10 +267,7 @@ init([ServerHost|_]) ->
 		  ejabberd_router:register_route(
 		    Host, ServerHost, {apply, ?MODULE, route}),
 		  {Plugins, NodeTree, PepMapping} = init_plugins(Host, ServerHost, Opts),
-		  DefaultModule = plugin(Host, hd(Plugins)),
-		  DefaultNodeCfg = merge_config(
-				     [mod_pubsub_opt:default_node_config(Opts),
-				      DefaultModule:options()]),
+		  DefaultNodeCfg = mod_pubsub_opt:default_node_config(Opts),
 		  lists:foreach(
 		    fun(H) ->
 			    T = gen_mod:get_module_proc(H, config),
@@ -341,7 +340,7 @@ init([ServerHost|_]) ->
 	false ->
 	    ok
     end,
-    ejabberd_commands:register_commands(?MODULE, get_commands_spec()),
+    ejabberd_commands:register_commands(ServerHost, ?MODULE, get_commands_spec()),
     NodeTree = config(ServerHost, nodetree),
     Plugins = config(ServerHost, plugins),
     PepMapping = config(ServerHost, pep_mapping),
@@ -599,7 +598,7 @@ on_self_presence(Acc) ->
 
 -spec on_user_offline(ejabberd_c2s:state(), atom()) -> ejabberd_c2s:state().
 on_user_offline(#{jid := JID} = C2SState, _Reason) ->
-    purge_offline(jid:tolower(JID)),
+    purge_offline(JID),
     C2SState;
 on_user_offline(C2SState, _Reason) ->
     C2SState.
@@ -749,11 +748,11 @@ handle_cast(Msg, State) ->
 
 handle_info({route, Packet}, State) ->
     try route(Packet)
-    catch ?EX_RULE(Class, Reason, St) ->
-	    StackTrace = ?EX_STACK(St),
-	    ?ERROR_MSG("Failed to route packet:~n~ts~n** ~ts",
-		       [xmpp:pp(Packet),
-			misc:format_exception(2, Class, Reason, StackTrace)])
+    catch
+        Class:Reason:StackTrace ->
+            ?ERROR_MSG("Failed to route packet:~n~ts~n** ~ts",
+                       [xmpp:pp(Packet),
+                        misc:format_exception(2, Class, Reason, StackTrace)])
     end,
     {noreply, State};
 handle_info(Info, State) ->
@@ -812,12 +811,7 @@ terminate(_Reason,
 	      terminate_plugins(Host, ServerHost, Plugins, TreePlugin),
 	      ejabberd_router:unregister_route(Host)
       end, Hosts),
-    case gen_mod:is_loaded_elsewhere(ServerHost, ?MODULE) of
-	false ->
-	    ejabberd_commands:unregister_commands(get_commands_spec());
-	true ->
-	    ok
-    end.
+    ejabberd_commands:unregister_commands(ServerHost, ?MODULE, get_commands_spec()).
 
 %%--------------------------------------------------------------------
 %% Func: code_change(OldVsn, State, Extra) -> {ok, NewState}
@@ -1900,14 +1894,14 @@ publish_item(Host, ServerHost, Node, Publisher, ItemId, Payload, PubOpts, Access
 	    Nidx = TNode#pubsub_node.id,
 	    Type = TNode#pubsub_node.type,
 	    Options = TNode#pubsub_node.options,
-	    broadcast_retract_items(Host, Node, Nidx, Type, Options, Removed),
+	    broadcast_retract_items(Host, Publisher, Node, Nidx, Type, Options, Removed),
 	    set_cached_item(Host, Nidx, ItemId, Publisher, Payload),
 	    {result, Reply};
 	{result, {TNode, {Result, Removed}}} ->
 	    Nidx = TNode#pubsub_node.id,
 	    Type = TNode#pubsub_node.type,
 	    Options = TNode#pubsub_node.options,
-	    broadcast_retract_items(Host, Node, Nidx, Type, Options, Removed),
+	    broadcast_retract_items(Host, Publisher, Node, Nidx, Type, Options, Removed),
 	    set_cached_item(Host, Nidx, ItemId, Publisher, Payload),
 	    {result, Result};
 	{result, {_, default}} ->
@@ -1978,7 +1972,7 @@ delete_item(Host, Node, Publisher, ItemId, ForceNotify) ->
 	    ServerHost = serverhost(Host),
 	    ejabberd_hooks:run(pubsub_delete_item, ServerHost,
 			       [ServerHost, Node, Publisher, service_jid(Host), ItemId]),
-	    broadcast_retract_items(Host, Node, Nidx, Type, Options, [ItemId], ForceNotify),
+	    broadcast_retract_items(Host, Publisher, Node, Nidx, Type, Options, [ItemId], ForceNotify),
 	    case get_cached_item(Host, Nidx) of
 		#pubsub_item{itemid = {ItemId, Nidx}} -> unset_cached_item(Host, Nidx);
 		_ -> ok
@@ -2837,16 +2831,16 @@ broadcast_publish_item(Host, Node, Nidx, Type, NodeOptions, ItemId, From, Payloa
 	    {result, false}
     end.
 
--spec broadcast_retract_items(host(), binary(), nodeIdx(), binary(),
+-spec broadcast_retract_items(host(), jid(), binary(), nodeIdx(), binary(),
 			      nodeOptions(), [itemId()]) -> {result, boolean()}.
-broadcast_retract_items(Host, Node, Nidx, Type, NodeOptions, ItemIds) ->
-    broadcast_retract_items(Host, Node, Nidx, Type, NodeOptions, ItemIds, false).
+broadcast_retract_items(Host, Publisher, Node, Nidx, Type, NodeOptions, ItemIds) ->
+    broadcast_retract_items(Host, Publisher, Node, Nidx, Type, NodeOptions, ItemIds, false).
 
--spec broadcast_retract_items(host(), binary(), nodeIdx(), binary(),
+-spec broadcast_retract_items(host(), jid(), binary(), nodeIdx(), binary(),
 			      nodeOptions(), [itemId()], boolean()) -> {result, boolean()}.
-broadcast_retract_items(_Host, _Node, _Nidx, _Type, _NodeOptions, [], _ForceNotify) ->
+broadcast_retract_items(_Host, _Publisher, _Node, _Nidx, _Type, _NodeOptions, [], _ForceNotify) ->
     {result, false};
-broadcast_retract_items(Host, Node, Nidx, Type, NodeOptions, ItemIds, ForceNotify) ->
+broadcast_retract_items(Host, Publisher, Node, Nidx, Type, NodeOptions, ItemIds, ForceNotify) ->
     case (get_option(NodeOptions, notify_retract) or ForceNotify) of
 	true ->
 	    case get_collection_subscriptions(Host, Node) of
@@ -2857,7 +2851,7 @@ broadcast_retract_items(Host, Node, Nidx, Type, NodeOptions, ItemIds, ForceNotif
 					items = #ps_items{
 						   node = Node,
 						   retract = ItemIds}}]},
-		    broadcast_stanza(Host, Node, Nidx, Type,
+		    broadcast_stanza(Host, Publisher, Node, Nidx, Type,
 			NodeOptions, SubsByDepth, items, Stanza, true),
 		    {result, true};
 		_ ->
@@ -3029,7 +3023,8 @@ broadcast_stanza(Host, _Node, _Nidx, _Type, NodeOptions, SubsByDepth, NotifyType
 		end,
 		lists:foreach(fun(To) ->
 			    ejabberd_router:route(
-			      xmpp:set_to(StanzaToSend, jid:make(To)))
+			      xmpp:set_to(xmpp:put_meta(StanzaToSend, ignore_sm_bounce, true),
+				          jid:make(To)))
 		    end, LJIDs)
 	end, SubIDsByJID).
 
@@ -3051,8 +3046,7 @@ broadcast_stanza({LUser, LServer, LResource}, Publisher, Node, Nidx, Type, NodeO
 	       extended_headers([Publisher])),
     Pred = fun(To) -> delivery_permitted(Owner, To, NodeOptions) end,
     ejabberd_sm:route(jid:make(LUser, LServer, SenderResource),
-		      {pep_message, <<((Node))/binary, "+notify">>, Stanza, Pred}),
-    ejabberd_router:route(xmpp:set_to(Stanza, jid:make(LUser, LServer)));
+		      {pep_message, <<((Node))/binary, "+notify">>, Stanza, Pred});
 broadcast_stanza(Host, _Publisher, Node, Nidx, Type, NodeOptions, SubsByDepth, NotifyType, BaseStanza, SHIM) ->
     broadcast_stanza(Host, Node, Nidx, Type, NodeOptions, SubsByDepth, NotifyType, BaseStanza, SHIM).
 
@@ -3369,22 +3363,19 @@ get_option(Options, Var, Def) ->
 
 -spec node_options(host(), binary()) -> [{atom(), any()}].
 node_options(Host, Type) ->
-    DefaultOpts = node_plugin_options(Host, Type),
-    case lists:member(Type, config(Host, plugins)) of
-	true ->
-            config(Host, default_node_config, DefaultOpts);
-	false -> DefaultOpts
-    end.
+    ConfigOpts = config(Host, default_node_config),
+    PluginOpts = node_plugin_options(Host, Type),
+    merge_config([ConfigOpts, PluginOpts]).
 
 -spec node_plugin_options(host(), binary()) -> [{atom(), any()}].
 node_plugin_options(Host, Type) ->
     Module = plugin(Host, Type),
-    case catch Module:options() of
-	{'EXIT', {undef, _}} ->
+    case {lists:member(Type, config(Host, plugins)), catch Module:options()} of
+	{true, Opts} when is_list(Opts) ->
+	    Opts;
+	{_, _} ->
 	    DefaultModule = plugin(Host, ?STDNODE),
-	    DefaultModule:options();
-	Result ->
-	    Result
+	    DefaultModule:options()
     end.
 
 -spec node_owners_action(host(), binary(), nodeIdx(), [ljid()]) -> [ljid()].
@@ -3828,9 +3819,9 @@ tree_action(Host, Function, Args) ->
     DBType = mod_pubsub_opt:db_type(ServerHost),
     Fun = fun () ->
 		  try tree_call(Host, Function, Args)
-		  catch ?EX_RULE(Class, Reason, St) when DBType == sql ->
-			  StackTrace = ?EX_STACK(St),
-			  ejabberd_sql:abort({exception, Class, Reason, StackTrace})
+                  catch
+                      Class:Reason:StackTrace when DBType == sql ->
+                          ejabberd_sql:abort({exception, Class, Reason, StackTrace})
 		  end
 	  end,
     Ret = case DBType of
@@ -3928,15 +3919,17 @@ transaction(Host, Fun, Trans) ->
 do_transaction(ServerHost, Fun, Trans, DBType) ->
     F = fun() ->
 		try Fun()
-		catch ?EX_RULE(Class, Reason, St) when (DBType == mnesia andalso
-							Trans == transaction) orelse
-						       DBType == sql ->
-			StackTrace = ?EX_STACK(St),
-			Ex = {exception, Class, Reason, StackTrace},
-			case DBType of
-			    mnesia -> mnesia:abort(Ex);
-			    sql -> ejabberd_sql:abort(Ex)
-			end
+                catch
+					exit:{aborted, _} = Err when DBType == mnesia ->
+						exit(Err);
+                    Class:Reason:StackTrace when (DBType == mnesia andalso
+                                                  Trans == transaction) orelse
+                                                 DBType == sql ->
+                        Ex = {exception, Class, Reason, StackTrace},
+                        case DBType of
+                            mnesia -> mnesia:abort(Ex);
+                            sql -> ejabberd_sql:abort(Ex)
+                        end
 		end
 	end,
     Res = case DBType of
@@ -4106,9 +4099,8 @@ subid_shim(SubIds) ->
 extended_headers(Jids) ->
     [#address{type = replyto, jid = Jid} || Jid <- Jids].
 
--spec purge_offline(ljid()) -> ok.
-purge_offline(LJID) ->
-    Host = host(element(2, LJID)),
+-spec purge_offline(jid()) -> ok.
+purge_offline(#jid{lserver = Host} = JID) ->
     Plugins = plugins(Host),
     Result = lists:foldl(
 	       fun(Type, {Status, Acc}) ->
@@ -4123,7 +4115,7 @@ purge_offline(LJID) ->
 				   andalso lists:member(<<"persistent-items">>, Features),
 			       if Items ->
 				       case node_action(Host, Type,
-							get_entity_affiliations, [Host, LJID]) of
+							get_entity_affiliations, [Host, JID]) of
 					   {result, Affs} ->
 					       {Status, [Affs | Acc]};
 					   {error, _} = Err ->
@@ -4144,7 +4136,7 @@ purge_offline(LJID) ->
 			    Purge = (get_option(Options, purge_offline)
 				andalso get_option(Options, persist_items)),
 			    if (Publisher or Open) and Purge ->
-				purge_offline(Host, LJID, Node);
+				purge_offline(Host, JID, Node);
 			    true ->
 				ok
 			    end
@@ -4153,8 +4145,8 @@ purge_offline(LJID) ->
 	    ok
     end.
 
--spec purge_offline(host(), ljid(), #pubsub_node{}) -> ok | {error, stanza_error()}.
-purge_offline(Host, LJID, Node) ->
+-spec purge_offline(host(), jid(), #pubsub_node{}) -> ok | {error, stanza_error()}.
+purge_offline(Host, #jid{luser = User, lserver = Server, lresource = Resource} = JID, Node) ->
     Nidx = Node#pubsub_node.id,
     Type = Node#pubsub_node.type,
     Options = Node#pubsub_node.options,
@@ -4162,7 +4154,6 @@ purge_offline(Host, LJID, Node) ->
 	{result, {[], _}} ->
 	    ok;
 	{result, {Items, _}} ->
-	    {User, Server, Resource} = LJID,
 	    PublishModel = get_option(Options, publish_model),
 	    ForceNotify = get_option(Options, notify_retract),
 	    {_, NodeId} = Node#pubsub_node.nodeid,
@@ -4171,7 +4162,7 @@ purge_offline(Host, LJID, Node) ->
 		    when (U == User) and (S == Server) and (R == Resource) ->
 		      case node_action(Host, Type, delete_item, [Nidx, {U, S, <<>>}, PublishModel, ItemId]) of
 			  {result, {_, broadcast}} ->
-			      broadcast_retract_items(Host, NodeId, Nidx, Type, Options, [ItemId], ForceNotify),
+			      broadcast_retract_items(Host, JID, NodeId, Nidx, Type, Options, [ItemId], ForceNotify),
 			      case get_cached_item(Host, Nidx) of
 				  #pubsub_item{itemid = {ItemId, Nidx}} -> unset_cached_item(Host, Nidx);
 				  _ -> ok
@@ -4200,7 +4191,7 @@ delete_old_items(N) ->
 				  fun(#pubsub_node{id = Nidx, type = Type}) ->
 					  case node_action(Host, Type,
 							   remove_extra_items,
-							   [Nidx , N]) of
+							   [Nidx, N]) of
 					      {result, _} ->
 						  ok;
 					      {error, _} ->

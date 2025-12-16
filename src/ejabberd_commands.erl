@@ -5,7 +5,7 @@
 %%% Created : 20 May 2008 by Badlop <badlop@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -33,6 +33,7 @@
 -export([start_link/0,
 	 list_commands/0,
 	 list_commands/1,
+	 list_commands/2,
 	 get_command_format/1,
 	 get_command_format/2,
 	 get_command_format/3,
@@ -42,7 +43,9 @@
 	 get_tags_commands/1,
 	 register_commands/1,
 	 register_commands/2,
+	 register_commands/3,
 	 unregister_commands/1,
+	 unregister_commands/3,
 	 get_commands_spec/0,
 	 get_commands_definition/0,
 	 get_commands_definition/1,
@@ -55,8 +58,6 @@
 -include("ejabberd_commands.hrl").
 -include("logger.hrl").
 -include_lib("stdlib/include/ms_transform.hrl").
-
--define(POLICY_ACCESS, '$policy').
 
 -type auth() :: {binary(), binary(), binary() | {oauth, binary()}, boolean()} | map().
 
@@ -144,19 +145,34 @@ code_change(_OldVsn, State, _Extra) ->
 register_commands(Commands) ->
     register_commands(unknown, Commands).
 
+-spec register_commands(atom(), [ejabberd_commands()]) -> ok.
+
 register_commands(Definer, Commands) ->
+    ExistingCommands = list_commands(),
     lists:foreach(
       fun(Command) ->
-              %% XXX check if command exists
-              mnesia:dirty_write(register_command_prepare(Command, Definer))
-              %% ?DEBUG("This command is already defined:~n~p", [Command])
+              Name = Command#ejabberd_commands.name,
+              case lists:keyfind(Name, 1, ExistingCommands) of
+                  false ->
+                      mnesia:dirty_write(register_command_prepare(Command, Definer));
+                  _ ->
+                      OtherCommandDef = get_command_definition(Name),
+                      ?CRITICAL_MSG("Error trying to define a command: another one already exists with the same name:~n Existing: ~p~n New: ~p", [OtherCommandDef, Command])
+              end
       end,
       Commands),
     ejabberd_access_permissions:invalidate(),
     ok.
 
+-spec register_commands(binary(), atom(), [ejabberd_commands()]) -> ok.
 
-
+register_commands(Host, Definer, Commands) ->
+    case gen_mod:is_loaded_elsewhere(Host, Definer) of
+        false ->
+            register_commands(Definer, Commands);
+        true ->
+            ok
+    end.
 
 register_command_prepare(Command, Definer) ->
     Tags1 = Command#ejabberd_commands.tags,
@@ -172,10 +188,20 @@ register_command_prepare(Command, Definer) ->
 unregister_commands(Commands) ->
     lists:foreach(
       fun(Command) ->
-	      mnesia:dirty_delete_object(Command)
+	      mnesia:dirty_delete(ejabberd_commands, Command#ejabberd_commands.name)
       end,
       Commands),
     ejabberd_access_permissions:invalidate().
+
+-spec unregister_commands(binary(), atom(), [ejabberd_commands()]) -> ok.
+
+unregister_commands(Host, Definer, Commands) ->
+    case gen_mod:is_loaded_elsewhere(Host, Definer) of
+        false ->
+            unregister_commands(Commands);
+        true ->
+            ok
+    end.
 
 -spec list_commands() -> [{atom(), [aterm()], string()}].
 
@@ -191,6 +217,16 @@ list_commands(Version) ->
                                               tags = Tags,
                                               desc = Desc} <- Commands,
                            not lists:member(internal, Tags)].
+
+-spec list_commands(integer(), map()) -> [{atom(), [aterm()], string()}].
+
+list_commands(Version, CallerInfo) ->
+    lists:filter(
+      fun({Name, _Args, _Desc}) ->
+        allow == ejabberd_access_permissions:can_access(Name, CallerInfo)
+      end,
+      list_commands(Version)
+    ).
 
 -spec get_command_format(atom()) -> {[aterm()], [{atom(),atom()}], rterm()}.
 

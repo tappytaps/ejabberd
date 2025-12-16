@@ -4,7 +4,7 @@
 %%% Created : 20 Jan 2016 by Evgeny Khramtsov <ekhramtsov@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -87,8 +87,8 @@ convert_dir(Path, Host, Type) ->
 			      case eval_file(FilePath) of
 				  {ok, Data} ->
 				      Name = iolist_to_binary(filename:rootname(File)),
-				      convert_data(url_decode(Host), Type,
-						   url_decode(Name), Data);
+				      convert_data(misc:uri_decode(Host), Type,
+						   misc:uri_decode(Name), Data);
 				  Err ->
 				      Err
 			      end
@@ -409,16 +409,6 @@ convert_privacy_item({_, Item}) ->
 	      match_message = MatchMsg,
 	      match_presence_in = MatchPresIn,
 	      match_presence_out = MatchPresOut}.
-
-url_decode(Encoded) ->
-    url_decode(Encoded, <<>>).
-url_decode(<<$%, Hi, Lo, Tail/binary>>, Acc) ->
-    Hex = list_to_integer([Hi, Lo], 16),
-    url_decode(Tail, <<Acc/binary, Hex>>);
-url_decode(<<H, Tail/binary>>, Acc) ->
-    url_decode(Tail, <<Acc/binary, H>>);
-url_decode(<<>>, Acc) ->
-    Acc.
 
 decode_pubsub_host(Host) ->
     try jid:decode(Host) of

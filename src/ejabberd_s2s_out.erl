@@ -2,7 +2,7 @@
 %%% Created : 16 Dec 2016 by Evgeny Khramtsov <ekhramtsov@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -34,7 +34,7 @@
 	 terminate/2, code_change/3]).
 %% Hooks
 -export([process_auth_result/2, process_closed/2, handle_unexpected_info/2,
-	 handle_unexpected_cast/2, process_downgraded/2]).
+	 handle_unexpected_cast/2, process_downgraded/2, handle_unauthenticated_features/2]).
 %% API
 -export([start/3, start_link/3, connect/1, close/1, close/2, stop_async/1, send/2,
 	 route/2, establish/1, update_state/2, host_up/1, host_down/1]).
@@ -215,6 +215,9 @@ dns_retries(#{server_host := ServerHost}) ->
 
 dns_timeout(#{server_host := ServerHost}) ->
     ejabberd_option:s2s_dns_timeout(ServerHost).
+
+handle_unauthenticated_features(Features, #{server_host := ServerHost} = State) ->
+    ejabberd_hooks:run_fold(s2s_out_unauthenticated_features, ServerHost, State, [Features]).
 
 handle_auth_success(Mech, #{socket := Socket, ip := IP,
 			    remote_server := RServer,

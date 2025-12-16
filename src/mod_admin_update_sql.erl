@@ -1,11 +1,11 @@
 %%%-------------------------------------------------------------------
 %%% File    : mod_admin_update_sql.erl
 %%% Author  : Alexey Shchepin <alexey@process-one.net>
-%%% Purpose : Convert SQL DB to the new format
+%%% Purpose : Convert the SQL database from singlehost to multihost
 %%% Created :  9 Aug 2017 by Alexey Shchepin <alexey@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -48,10 +48,10 @@
 %%%
 
 start(_Host, _Opts) ->
-    ejabberd_commands:register_commands(?MODULE, get_commands_spec()).
+    {ok, [{commands, get_commands_spec()}]}.
 
 stop(_Host) ->
-    ejabberd_commands:unregister_commands(get_commands_spec()).
+    ok.
 
 reload(_Host, _NewOpts, _OldOpts) ->
     ok.
@@ -65,7 +65,7 @@ depends(_Host, _Opts) ->
 
 get_commands_spec() ->
     [#ejabberd_commands{name = update_sql, tags = [sql],
-                        desc = "Convert MS SQL, MySQL or PostgreSQL DB to the new format",
+                        desc = "Convert SQL database from singlehost to multihost (MS SQL, MySQL, PostgreSQL)",
                         note = "improved in 23.04",
                         module = ?MODULE, function = update_sql,
                         args = [],
@@ -119,18 +119,18 @@ update_sql(Host) ->
     end.
 
 check_config() ->
-    case ejabberd_sql:use_new_schema() of
+    case ejabberd_sql:use_multihost_schema() of
         true -> ok;
         false ->
-            ejabberd_config:set_option(new_sql_schema, true),
-            io:format('~nNOTE: you must add "new_sql_schema: true" to ejabberd.yml before next restart~n~n', [])
+            ejabberd_config:set_option(sql_schema_multihost, true),
+            io:format('~nNOTE: you must add "sql_schema_multihost: true" to ejabberd.yml before next restart~n~n', [])
     end.
 
 update_tables(State) ->
     case add_sh_column(State, "users") of
         true ->
             drop_pkey(State, "users"),
-            add_pkey(State, "users", ["server_host", "username"]),
+            add_pkey(State, "users", ["server_host", "username", "type"]),
             drop_sh_default(State, "users");
         false ->
             ok
@@ -150,8 +150,8 @@ update_tables(State) ->
             drop_index(State, "rosterusers", "i_rosteru_user_jid"),
             drop_index(State, "rosterusers", "i_rosteru_username"),
             drop_index(State, "rosterusers", "i_rosteru_jid"),
-            create_unique_index(State, "rosterusers", "i_rosteru_sh_user_jid", ["server_host", "username", "jid"]),
-            create_index(State, "rosterusers", "i_rosteru_sh_jid", ["server_host", "jid"]),
+            create_unique_index(State, "rosterusers", "i_rosteru_server_host_user_jid", ["server_host", "username", "jid"]),
+            create_index(State, "rosterusers", "i_rosteru_server_host_jid", ["server_host", "jid"]),
             drop_sh_default(State, "rosterusers");
         false ->
             ok
@@ -160,7 +160,7 @@ update_tables(State) ->
     case add_sh_column(State, "rostergroups") of
         true ->
             drop_index(State, "rostergroups", "pk_rosterg_user_jid"),
-            create_index(State, "rostergroups", "i_rosterg_sh_user_jid", ["server_host", "username", "jid"]),
+            create_index(State, "rostergroups", "i_rosterg_server_host_user_jid", ["server_host", "username", "jid"]),
             drop_sh_default(State, "rostergroups");
         false ->
             ok
@@ -169,7 +169,7 @@ update_tables(State) ->
     case add_sh_column(State, "sr_group") of
         true ->
             drop_index(State, "sr_group", "i_sr_group_name"),
-            create_unique_index(State, "sr_group", "i_sr_group_sh_name", ["server_host", "name"]),
+            create_unique_index(State, "sr_group", "i_sr_group_server_host_name", ["server_host", "name"]),
             drop_sh_default(State, "sr_group");
         false ->
             ok
@@ -180,8 +180,8 @@ update_tables(State) ->
             drop_index(State, "sr_user", "i_sr_user_jid_grp"),
             drop_index(State, "sr_user", "i_sr_user_jid"),
             drop_index(State, "sr_user", "i_sr_user_grp"),
-            create_unique_index(State, "sr_user", "i_sr_user_sh_jid_grp", ["server_host", "jid", "grp"]),
-            create_index(State, "sr_user", "i_sr_user_sh_grp", ["server_host", "grp"]),
+            create_unique_index(State, "sr_user", "i_sr_user_server_host_jid_grp", ["server_host", "jid", "grp"]),
+            create_index(State, "sr_user", "i_sr_user_server_host_grp", ["server_host", "grp"]),
             drop_sh_default(State, "sr_user");
         false ->
             ok
@@ -190,7 +190,7 @@ update_tables(State) ->
     case add_sh_column(State, "spool") of
         true ->
             drop_index(State, "spool", "i_despool"),
-            create_index(State, "spool", "i_spool_sh_username", ["server_host", "username"]),
+            create_index(State, "spool", "i_spool_server_host_username", ["server_host", "username"]),
             drop_sh_default(State, "spool");
         false ->
             ok
@@ -205,10 +205,10 @@ update_tables(State) ->
             drop_index(State, "archive", "i_bare_peer"),
             drop_index(State, "archive", "i_username_peer"),
             drop_index(State, "archive", "i_username_bare_peer"),
-            create_index(State, "archive", "i_archive_sh_username_timestamp", ["server_host", "username", "timestamp"]),
-            create_index(State, "archive", "i_archive_sh_timestamp", ["server_host", "timestamp"]),
-            create_index(State, "archive", "i_archive_sh_username_peer", ["server_host", "username", "peer"]),
-            create_index(State, "archive", "i_archive_sh_username_bare_peer", ["server_host", "username", "bare_peer"]),
+            create_index(State, "archive", "i_archive_server_host_username_timestamp", ["server_host", "username", "timestamp"]),
+            create_index(State, "archive", "i_archive_server_host_timestamp", ["server_host", "timestamp"]),
+            create_index(State, "archive", "i_archive_server_host_username_peer", ["server_host", "username", "peer"]),
+            create_index(State, "archive", "i_archive_server_host_username_bare_peer", ["server_host", "username", "bare_peer"]),
             drop_sh_default(State, "archive");
         false ->
             ok
@@ -247,17 +247,17 @@ update_tables(State) ->
             drop_index(State, "vcard_search", "i_vcard_search_lorgname"),
             drop_index(State, "vcard_search", "i_vcard_search_lorgunit"),
             add_pkey(State, "vcard_search", ["server_host", "lusername"]),
-            create_index(State, "vcard_search", "i_vcard_search_sh_lfn",       ["server_host", "lfn"]),
-            create_index(State, "vcard_search", "i_vcard_search_sh_lfamily",   ["server_host", "lfamily"]),
-            create_index(State, "vcard_search", "i_vcard_search_sh_lgiven",    ["server_host", "lgiven"]),
-            create_index(State, "vcard_search", "i_vcard_search_sh_lmiddle",   ["server_host", "lmiddle"]),
-            create_index(State, "vcard_search", "i_vcard_search_sh_lnickname", ["server_host", "lnickname"]),
-            create_index(State, "vcard_search", "i_vcard_search_sh_lbday",     ["server_host", "lbday"]),
-            create_index(State, "vcard_search", "i_vcard_search_sh_lctry",     ["server_host", "lctry"]),
-            create_index(State, "vcard_search", "i_vcard_search_sh_llocality", ["server_host", "llocality"]),
-            create_index(State, "vcard_search", "i_vcard_search_sh_lemail",    ["server_host", "lemail"]),
-            create_index(State, "vcard_search", "i_vcard_search_sh_lorgname",  ["server_host", "lorgname"]),
-            create_index(State, "vcard_search", "i_vcard_search_sh_lorgunit",  ["server_host", "lorgunit"]),
+            create_index(State, "vcard_search", "i_vcard_search_server_host_lfn",       ["server_host", "lfn"]),
+            create_index(State, "vcard_search", "i_vcard_search_server_host_lfamily",   ["server_host", "lfamily"]),
+            create_index(State, "vcard_search", "i_vcard_search_server_host_lgiven",    ["server_host", "lgiven"]),
+            create_index(State, "vcard_search", "i_vcard_search_server_host_lmiddle",   ["server_host", "lmiddle"]),
+            create_index(State, "vcard_search", "i_vcard_search_server_host_lnickname", ["server_host", "lnickname"]),
+            create_index(State, "vcard_search", "i_vcard_search_server_host_lbday",     ["server_host", "lbday"]),
+            create_index(State, "vcard_search", "i_vcard_search_server_host_lctry",     ["server_host", "lctry"]),
+            create_index(State, "vcard_search", "i_vcard_search_server_host_llocality", ["server_host", "llocality"]),
+            create_index(State, "vcard_search", "i_vcard_search_server_host_lemail",    ["server_host", "lemail"]),
+            create_index(State, "vcard_search", "i_vcard_search_server_host_lorgname",  ["server_host", "lorgname"]),
+            create_index(State, "vcard_search", "i_vcard_search_server_host_lorgunit",  ["server_host", "lorgunit"]),
             drop_sh_default(State, "vcard_search");
         false ->
             ok
@@ -276,7 +276,7 @@ update_tables(State) ->
         true ->
             drop_index(State, "privacy_list", "i_privacy_list_username"),
             drop_index(State, "privacy_list", "i_privacy_list_username_name"),
-            create_unique_index(State, "privacy_list", "i_privacy_list_sh_username_name", ["server_host", "username", "name"]),
+            create_unique_index(State, "privacy_list", "i_privacy_list_server_host_username_name", ["server_host", "username", "name"]),
             drop_sh_default(State, "privacy_list");
         false ->
             ok
@@ -286,6 +286,7 @@ update_tables(State) ->
         true ->
             drop_index(State, "private_storage", "i_private_storage_username"),
             drop_index(State, "private_storage", "i_private_storage_username_namespace"),
+            drop_pkey(State, "private_storage"),
             add_pkey(State, "private_storage", ["server_host", "username", "namespace"]),
             drop_sh_default(State, "private_storage");
         false ->
@@ -342,8 +343,9 @@ update_tables(State) ->
         true ->
             drop_index(State, "sm", "i_sm_sid"),
             drop_index(State, "sm", "i_sm_username"),
+            drop_pkey(State, "sm"),
             add_pkey(State, "sm", ["usec", "pid"]),
-            create_index(State, "sm", "i_sm_sh_username", ["server_host", "username"]),
+            create_index(State, "sm", "i_sm_server_host_username", ["server_host", "username"]),
             drop_sh_default(State, "sm");
         false ->
             ok
@@ -354,7 +356,7 @@ update_tables(State) ->
             drop_index(State, "push_session", "i_push_usn"),
             drop_index(State, "push_session", "i_push_ut"),
             create_unique_index(State, "push_session", "i_push_session_susn", ["server_host", "username", "service", "node"]),
-            create_index(State, "push_session", "i_push_session_sh_username_timestamp", ["server_host", "username", "timestamp"]),
+            create_index(State, "push_session", "i_push_session_server_host_username_timestamp", ["server_host", "username", "timestamp"]),
             drop_sh_default(State, "push_session");
         false ->
             ok
@@ -441,7 +443,8 @@ drop_pkey(#state{dbtype = mysql} = State, Table) ->
       ["ALTER TABLE ", Table, " DROP PRIMARY KEY;"]).
 
 add_pkey(#state{dbtype = pgsql} = State, Table, Cols) ->
-    SCols = string:join(Cols, ", "),
+    Cols2 = lists:map(fun("type") -> "\"type\""; (V) -> V end, Cols),
+    SCols = string:join(Cols2, ", "),
     sql_query(
       State#state.host,
       ["ALTER TABLE ", Table, " ADD PRIMARY KEY (", SCols, ");"]);
@@ -520,7 +523,7 @@ create_unique_index(#state{dbtype = pgsql} = State, Table, Index, Cols) ->
       State#state.host,
       ["CREATE UNIQUE INDEX ", Index, " ON ", Table, " USING btree (",
        SCols, ");"]);
-create_unique_index(#state{dbtype = mssql} = State, Table, "i_privacy_list_sh_username_name" = Index, Cols) ->
+create_unique_index(#state{dbtype = mssql} = State, Table, "i_privacy_list_server_host_username_name" = Index, Cols) ->
     create_index(State, Table, Index, Cols);
 create_unique_index(#state{dbtype = mssql} = State, Table, Index, Cols) ->
     SCols = string:join(Cols, ", "),
@@ -578,10 +581,10 @@ old_index_name(mssql, "i_sr_user_jid_grp") -> "sr_user_jid_group";
 old_index_name(mssql, Index) -> string:substr(Index, 3);
 old_index_name(_Type, Index) -> Index.
 
-new_index_name(mssql, "i_rosterg_sh_user_jid") -> "rostergroups_sh_username_jid";
-new_index_name(mssql, "i_rosteru_sh_jid") -> "rosterusers_sh_jid";
-new_index_name(mssql, "i_rosteru_sh_user_jid") -> "rosterusers_sh_username_jid";
-new_index_name(mssql, "i_sr_user_sh_jid_grp") -> "sr_user_sh_jid_group";
+new_index_name(mssql, "i_rosterg_server_host_user_jid") -> "rostergroups_server_host_username_jid";
+new_index_name(mssql, "i_rosteru_server_host_jid") -> "rosterusers_server_host_jid";
+new_index_name(mssql, "i_rosteru_server_host_user_jid") -> "rosterusers_server_host_username_jid";
+new_index_name(mssql, "i_sr_user_server_host_jid_grp") -> "sr_user_server_host_jid_group";
 new_index_name(mssql, Index) -> string:substr(Index, 3);
 new_index_name(_Type, Index) -> Index.
 
@@ -592,17 +595,31 @@ mssql_clustered(_) -> "CLUSTERED ".
 mysql_keylen(_, "bare_peer") -> "(191)";
 mysql_keylen(_, "channel") -> "(191)";
 mysql_keylen(_, "domain") -> "(75)";
+mysql_keylen(_, "grp") -> "(191)"; %% in mysql*.sql this is text, not varchar(191)
 mysql_keylen(_, "jid") -> "(75)";
+mysql_keylen(_, "lbday") -> "(191)";
+mysql_keylen(_, "lctry") -> "(191)";
+mysql_keylen(_, "lemail") -> "(191)";
+mysql_keylen(_, "lfamily") -> "(191)";
+mysql_keylen(_, "lfn") -> "(191)";
+mysql_keylen(_, "lgiven") -> "(191)";
+mysql_keylen(_, "llocality") -> "(191)";
+mysql_keylen(_, "lmiddle") -> "(191)";
+mysql_keylen(_, "lnickname") -> "(191)";
+mysql_keylen(_, "lorgname") -> "(191)";
+mysql_keylen(_, "lorgunit") -> "(191)";
+mysql_keylen(_, "lusername") -> "(191)";
 mysql_keylen(_, "name") -> "(75)";
+mysql_keylen(_, "namespace") -> "(191)";
 mysql_keylen(_, "node") -> "(75)";
 mysql_keylen(_, "peer") -> "(191)";
 mysql_keylen(_, "pid") -> "(75)";
 mysql_keylen(_, "server_host") -> "(191)";
 mysql_keylen(_, "service") -> "(191)";
 mysql_keylen(_, "topic") -> "(191)";
-mysql_keylen("i_privacy_list_sh_username_name", "username") -> "(75)";
-mysql_keylen("i_rosterg_sh_user_jid", "username") -> "(75)";
-mysql_keylen("i_rosteru_sh_user_jid", "username") -> "(75)";
+mysql_keylen("i_privacy_list_server_host_username_name", "username") -> "(75)";
+mysql_keylen("i_rosterg_server_host_user_jid", "username") -> "(75)";
+mysql_keylen("i_rosteru_server_host_user_jid", "username") -> "(75)";
 mysql_keylen(_, "username") -> "(191)";
 mysql_keylen(_, _) -> "".
 

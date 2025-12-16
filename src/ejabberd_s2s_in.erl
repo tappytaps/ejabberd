@@ -2,7 +2,7 @@
 %%% Created : 12 Dec 2016 by Evgeny Khramtsov <ekhramtsov@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -138,7 +138,7 @@ process_closed(#{server := LServer} = State, Reason) ->
 %%% xmpp_stream_in callbacks
 %%%===================================================================
 tls_options(#{tls_options := TLSOpts, lserver := LServer, server_host := ServerHost}) ->
-    ejabberd_s2s:tls_options(LServer, ServerHost, TLSOpts).
+    [override_cert_purpose | ejabberd_s2s:tls_options(LServer, ServerHost, TLSOpts)].
 
 tls_required(#{server_host := ServerHost}) ->
     ejabberd_s2s:tls_required(ServerHost).

@@ -5,7 +5,7 @@
 %%% Created : 15 Aug 2023 by Alexey Shchepin <alexey@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -49,7 +49,7 @@ start(Host) ->
                                   #sql_schema_info{
                                      db_type = DBType,
                                      db_version = DBVersion,
-                                     new_schema = ejabberd_sql:use_new_schema()}
+                                     multihost_schema = ejabberd_sql:use_multihost_schema()}
                           end),
                     Table = filter_table_sh(SchemaInfo, schema_table()),
                     Res = create_table(Host, SchemaInfo, Table),
@@ -268,7 +268,7 @@ table_exists(Host, Table) ->
       end).
 
 filter_table_sh(SchemaInfo, Table) ->
-    case {SchemaInfo#sql_schema_info.new_schema, Table#sql_table.name} of
+    case {SchemaInfo#sql_schema_info.multihost_schema, Table#sql_table.name} of
         {true, _} ->
             Table;
         {_, <<"route">>} ->
@@ -407,21 +407,24 @@ get_current_version(Host, Module, Schemas) ->
 
 sqlite_table_copy_t(SchemaInfo, Table) ->
     TableName = Table#sql_table.name,
-    NewTableName = <<"new_", TableName/binary>>,
+    NewTableName = <<"multihost_", TableName/binary>>,
     NewTable = Table#sql_table{name = NewTableName},
     create_table_t(SchemaInfo, NewTable),
-    SQL2 = <<"INSERT INTO ", NewTableName/binary,
-             " SELECT * FROM ", TableName/binary>>,
+    Columns = lists:join(<<",">>,
+                         lists:map(fun(C) -> escape_name(SchemaInfo, C#sql_column.name) end,
+                                   Table#sql_table.columns)),
+    SQL2 = [<<"INSERT INTO ">>, NewTableName,
+            <<" SELECT ">>, Columns, <<" FROM ">>, TableName],
     ?INFO_MSG("Copying table ~s to ~s:~n~s~n",
               [TableName, NewTableName, SQL2]),
     ejabberd_sql:sql_query_t(SQL2),
     SQL3 = <<"DROP TABLE ", TableName/binary>>,
     ?INFO_MSG("Droping old table ~s:~n~s~n",
-              [TableName, SQL2]),
+              [TableName, SQL3]),
     ejabberd_sql:sql_query_t(SQL3),
     SQL4 = <<"ALTER TABLE ", NewTableName/binary,
              " RENAME TO ", TableName/binary>>,
-    ?INFO_MSG("Renameing table ~s to ~s:~n~s~n",
+    ?INFO_MSG("Renaming table ~s to ~s:~n~s~n",
               [NewTableName, TableName, SQL4]),
     ejabberd_sql:sql_query_t(SQL4).
 
@@ -774,7 +777,7 @@ should_update_schema(Host) ->
         end,
     case ejabberd_option:update_sql_schema() andalso SupportedDB of
         true ->
-            case ejabberd_sql:use_new_schema() of
+            case ejabberd_sql:use_multihost_schema() of
                 true ->
                     lists:member(sql, ejabberd_option:auth_method(Host));
                 false ->
@@ -847,7 +850,7 @@ update_schema(Host, Module, RawSchemas) ->
                           #sql_schema_info{
                              db_type = DBType,
                              db_version = DBVersion,
-                             new_schema = ejabberd_sql:use_new_schema()}
+                             multihost_schema = ejabberd_sql:use_multihost_schema()}
                   end),
             Schemas = preprocess_schemas(SchemaInfo, RawSchemas),
             Version = get_current_version(Host, Module, Schemas),
@@ -951,7 +954,7 @@ do_update_schema(Host, Module, SchemaInfo, Schema) ->
                    end;
                ({create_index, TableName, Columns1}) ->
                    Columns =
-                       case ejabberd_sql:use_new_schema() of
+                       case ejabberd_sql:use_multihost_schema() of
                            true ->
                                Columns1;
                            false ->
@@ -1002,7 +1005,7 @@ do_update_schema(Host, Module, SchemaInfo, Schema) ->
                    end;
                ({update_primary_key, TableName, Columns1}) ->
                    Columns =
-                       case ejabberd_sql:use_new_schema() of
+                       case ejabberd_sql:use_multihost_schema() of
                            true ->
                                Columns1;
                            false ->
@@ -1068,7 +1071,7 @@ do_update_schema(Host, Module, SchemaInfo, Schema) ->
                    end;
                ({drop_index, TableName, Columns1}) ->
                    Columns =
-                       case ejabberd_sql:use_new_schema() of
+                       case ejabberd_sql:use_multihost_schema() of
                            true ->
                                Columns1;
                            false ->
@@ -1157,7 +1160,7 @@ print_schema(SDBType, SDBVersion, SNewSchema) ->
             "false" -> false;
             "true" -> true;
             _ ->
-                io:format("new_schema must be one of the following: "
+                io:format("multihost_schema must be one of the following: "
                           "'0', '1', 'false', 'true'~n"),
                 error
         end,
@@ -1169,7 +1172,7 @@ print_schema(SDBType, SDBVersion, SNewSchema) ->
                 #sql_schema_info{
                    db_type = DBType,
                    db_version = DBVersion,
-                   new_schema = NewSchema},
+                   multihost_schema = NewSchema},
             Mods = ejabberd_config:beams(all),
             lists:foreach(
               fun(Mod) ->

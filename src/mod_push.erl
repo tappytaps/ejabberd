@@ -5,7 +5,7 @@
 %%% Created : 15 Jul 2017 by Holger Weiss <holger@zedat.fu-berlin.de>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2017-2024 ProcessOne
+%%% ejabberd, Copyright (C) 2017-2025 ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -25,7 +25,7 @@
 
 -module(mod_push).
 -author('holger@zedat.fu-berlin.de').
--protocol({xep, 357, '0.2', '17.08', "", ""}).
+-protocol({xep, 357, '0.2', '17.08', "complete", ""}).
 
 -behaviour(gen_mod).
 
@@ -96,8 +96,8 @@ start(Host, Opts) ->
     Mod = gen_mod:db_mod(Opts, ?MODULE),
     Mod:init(Host, Opts),
     init_cache(Mod, Host, Opts),
-    ejabberd_commands:register_commands(?MODULE, get_commands_spec()),
-    {ok, [{iq_handler, ejabberd_sm,  ?NS_PUSH_0, process_iq},
+    {ok, [{commands, get_commands_spec()},
+          {iq_handler, ejabberd_sm,  ?NS_PUSH_0, process_iq},
           {hook, disco_sm_features, disco_sm_features, 50},
           {hook, c2s_session_pending, c2s_session_pending, 50},
           {hook, c2s_copy_session, c2s_copy_session, 50},
@@ -110,13 +110,8 @@ start(Host, Opts) ->
 
 
 -spec stop(binary()) -> ok.
-stop(Host) ->
-    case gen_mod:is_loaded_elsewhere(Host, ?MODULE) of
-        false ->
-            ejabberd_commands:unregister_commands(get_commands_spec());
-        true ->
-            ok
-    end.
+stop(_Host) ->
+    ok.
 
 -spec reload(binary(), gen_mod:opts(), gen_mod:opts()) -> ok.
 reload(Host, NewOpts, OldOpts) ->
@@ -531,12 +526,20 @@ notify(LServer, PushLJID, Node, XData, Pkt0, Dir, HandleResponse) ->
 	    Item = #ps_item{sub_els = [#push_notification{xdata = Summary}]},
 	    PubSub = #pubsub{publish = #ps_publish{node = Node, items = [Item]},
 			     publish_options = XData},
-	    IQ = #iq{type = set,
-		     from = From,
-		     to = jid:make(PushLJID),
-		     id = p1_rand:get_string(),
-		     sub_els = [PubSub]},
-	    ejabberd_router:route_iq(IQ, HandleResponse)
+	    IQ0 = #iq{type = set,
+		      from = From,
+		      to = jid:make(PushLJID),
+		      id = p1_rand:get_string(),
+		      sub_els = [PubSub]},
+	    case ejabberd_hooks:run_fold(push_send_notification,
+					 LServer, IQ0, [Pkt]) of
+	      drop ->
+		    ?DEBUG("Notification dropped by hook", []),
+		    ok;
+		IQ ->
+		    ?DEBUG("Sending notification: ~n~ts", [xmpp:pp(IQ)]),
+		    ejabberd_router:route_iq(IQ, HandleResponse)
+	    end
     end.
 
 %%--------------------------------------------------------------------

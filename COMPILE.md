@@ -19,7 +19,7 @@ To compile ejabberd you need:
 - GCC
 - Libexpat ≥ 1.95
 - Libyaml ≥ 0.1.4
-- Erlang/OTP ≥ 20.0
+- Erlang/OTP ≥ 25.0
 - OpenSSL ≥ 1.0.0
 
 Other optional libraries are:
@@ -28,8 +28,7 @@ Other optional libraries are:
 - PAM library, for Pluggable Authentication Modules (PAM)
 - ImageMagick's Convert program and Ghostscript fonts, for CAPTCHA
   challenges
-- Elixir ≥ 1.10.3, for Elixir support. It is recommended Elixir 1.13.4 or higher
-  and Erlang/OTP 23.0 or higher.
+- Elixir ≥ 1.10.3, for Elixir support. It is recommended Elixir 1.14.0 or higher
 
 If your system splits packages in libraries and development headers,
 install the development packages too.
@@ -44,7 +43,7 @@ There are several ways to obtain the ejabberd source code:
 - Source code package from [ejabberd GitHub Releases][ghr]
 - Latest development code from [ejabberd Git repository][gitrepo]
 
-[p1dl]: https://www.process-one.net/en/ejabberd/downloads/
+[p1dl]: https://www.process-one.net/download/ejabberd/
 [ghr]: https://github.com/processone/ejabberd/releases
 [gitrepo]: https://github.com/processone/ejabberd
 
@@ -65,6 +64,11 @@ first of all install `autoconf` and run this to generate it:
 To configure the compilation, features, install paths...
 
     ./configure --help
+
+The build tool automatically downloads and compiles the
+erlang libraries that [ejabberd depends on][docs-repo].
+
+[docs-repo]: https://docs.ejabberd.im/developer/repositories/
 
 
 Install in the System

@@ -1,5 +1,5 @@
 %%%----------------------------------------------------------------------
-%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -21,10 +21,10 @@
 
 -export([opt_type/1, options/0, globals/0, doc/0]).
 
--ifdef(NEW_SQL_SCHEMA).
--define(USE_NEW_SQL_SCHEMA_DEFAULT, true).
+-ifdef(MULTIHOST_SQL_SCHEMA).
+-define(USE_MULTIHOST_SQL_SCHEMA_DEFAULT, true).
 -else.
--define(USE_NEW_SQL_SCHEMA_DEFAULT, false).
+-define(USE_MULTIHOST_SQL_SCHEMA_DEFAULT, false).
 -endif.
 
 -include_lib("kernel/include/inet.hrl").
@@ -77,6 +77,10 @@ opt_type(auth_opts) ->
                       {path_prefix, V}
               end, L)
     end;
+opt_type(auth_stored_password_types) ->
+    econf:list(econf:enum([plain, scram_sha1, scram_sha256, scram_sha512]));
+opt_type(auth_password_types_hidden_in_sasl1) ->
+    econf:list(econf:enum([plain, scram_sha1, scram_sha256, scram_sha512]));
 opt_type(auth_password_format) ->
     econf:enum([plain, scram]);
 opt_type(auth_scram_hash) ->
@@ -112,14 +116,7 @@ opt_type(cache_missed) ->
 opt_type(cache_size) ->
     econf:pos_int(infinity);
 opt_type(captcha_cmd) ->
-    econf:and_then(
-	econf:binary(),
-	fun(V) ->
-		V2 = misc:expand_keyword(<<"@SEMVER@">>, V,
-				    ejabberd_option:version()),
-		misc:expand_keyword(<<"@VERSION@">>, V2,
-				    misc:semver_to_xxyy(ejabberd_option:version()))
-	end);
+    econf:binary();
 opt_type(captcha_host) ->
     econf:binary();
 opt_type(captcha_limit) ->
@@ -138,8 +135,10 @@ opt_type(default_db) ->
     econf:enum([mnesia, sql]);
 opt_type(default_ram_db) ->
     econf:enum([mnesia, sql, redis]);
+opt_type(define_keyword) ->
+    econf:map(econf:binary(), econf:any(), [unique]);
 opt_type(define_macro) ->
-    econf:any();
+    econf:map(econf:binary(), econf:any(), [unique]);
 opt_type(disable_sasl_scram_downgrade_protection) ->
     econf:bool();
 opt_type(disable_sasl_mechanisms) ->
@@ -185,6 +184,13 @@ opt_type(host_config) ->
         [unique]));
 opt_type(hosts) ->
     econf:non_empty(econf:list(econf:domain(), [unique]));
+opt_type(hosts_alias) ->
+    econf:and_then(
+      econf:map(econf:domain(), econf:domain(), [unique]),
+      econf:map(
+        econf:domain(),
+        econf:enum(ejabberd_config:get_option(hosts)),
+        [unique]));
 opt_type(include_config_file) ->
     econf:any();
 opt_type(install_contrib_modules) ->
@@ -260,7 +266,7 @@ opt_type(negotiation_timeout) ->
     econf:timeout(second);
 opt_type(net_ticktime) ->
     econf:timeout(second);
-opt_type(new_sql_schema) ->
+opt_type(sql_schema_multihost) ->
     econf:bool();
 opt_type(update_sql_schema) ->
     econf:bool();
@@ -336,6 +342,14 @@ opt_type(registration_timeout) ->
     econf:timeout(second, infinity);
 opt_type(resource_conflict) ->
     econf:enum([setresource, closeold, closenew, acceptnew]);
+opt_type(rest_proxy) ->
+    econf:domain();
+opt_type(rest_proxy_port) ->
+    econf:port();
+opt_type(rest_proxy_username) ->
+    econf:string();
+opt_type(rest_proxy_password) ->
+    econf:string();
 opt_type(router_cache_life_time) ->
     econf:timeout(second, infinity);
 opt_type(router_cache_missed) ->
@@ -509,6 +523,7 @@ opt_type(jwt_auth_only_rule) ->
 		    {jwt_key, jose_jwk:key() | undefined} |
 		    {append_host_config, [{binary(), any()}]} |
 		    {host_config, [{binary(), any()}]} |
+		    {define_keyword, any()} |
 		    {define_macro, any()} |
 		    {include_config_file, any()} |
 		    {atom(), any()}].
@@ -550,6 +565,8 @@ options() ->
      {auth_opts, []},
      {auth_password_format, plain},
      {auth_scram_hash, sha},
+     {auth_stored_password_types, []},
+     {auth_password_types_hidden_in_sasl1, []},
      {auth_external_user_exists_check, true},
      {auth_use_cache,
       fun(Host) -> ejabberd_config:get_option({use_cache, Host}) end},
@@ -566,6 +583,7 @@ options() ->
      {certfiles, undefined},
      {cluster_backend, mnesia},
      {cluster_nodes, []},
+     {define_keyword, []},
      {define_macro, []},
      {disable_sasl_scram_downgrade_protection, false},
      {disable_sasl_mechanisms, []},
@@ -579,6 +597,7 @@ options() ->
      {extauth_program, undefined},
      {fqdn, fun fqdn/1},
      {hide_sensitive_log_data, false},
+     {hosts_alias, []},
      {host_config, []},
      {include_config_file, []},
      {language, <<"en">>},
@@ -613,7 +632,7 @@ options() ->
      {modules, []},
      {negotiation_timeout, timer:seconds(120)},
      {net_ticktime, timer:seconds(60)},
-     {new_sql_schema, ?USE_NEW_SQL_SCHEMA_DEFAULT},
+     {sql_schema_multihost, ?USE_MULTIHOST_SQL_SCHEMA_DEFAULT},
      {update_sql_schema, true},
      {update_sql_schema_timeout, timer:minutes(5)},
      {oauth_access, none},
@@ -652,6 +671,10 @@ options() ->
      {redis_server, "localhost"},
      {registration_timeout, timer:seconds(600)},
      {resource_conflict, acceptnew},
+     {rest_proxy, <<>>},
+     {rest_proxy_port, 0},
+     {rest_proxy_username, ""},
+     {rest_proxy_password, ""},
      {router_cache_life_time,
       fun(Host) -> ejabberd_config:get_option({cache_life_time, Host}) end},
      {router_cache_missed,
@@ -749,10 +772,12 @@ globals() ->
      certfiles,
      cluster_backend,
      cluster_nodes,
+     define_macro,
      domain_balancing,
      ext_api_path_oauth,
      fqdn,
      hosts,
+     hosts_alias,
      host_config,
      install_contrib_modules,
      listen,
@@ -764,7 +789,6 @@ globals() ->
      log_modules_fully,
      negotiation_timeout,
      net_ticktime,
-     new_sql_schema,
      update_sql_schema,
      node_start,
      oauth_cache_life_time,
@@ -797,6 +821,7 @@ globals() ->
      sm_cache_life_time,
      sm_cache_missed,
      sm_cache_size,
+     sql_schema_multihost,
      trusted_proxies,
      validate_stream,
      version,

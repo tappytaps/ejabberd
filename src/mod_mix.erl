@@ -24,7 +24,7 @@
 -module(mod_mix).
 -behaviour(gen_mod).
 -behaviour(gen_server).
--protocol({xep, 369, '0.14.1', '16.03', "", ""}).
+-protocol({xep, 369, '0.14.1', '16.03', "complete", ""}).
 
 %% API
 -export([route/1]).
@@ -44,7 +44,8 @@
 -include_lib("xmpp/include/xmpp.hrl").
 -include("logger.hrl").
 -include("translate.hrl").
--include("ejabberd_stacktrace.hrl").
+
+
 
 -callback init(binary(), gen_mod:opts()) -> ok | {error, db_failure}.
 -callback set_channel(binary(), binary(), binary(),
@@ -122,7 +123,7 @@ mod_doc() ->
               desc =>
                   ?T("This option defines the Jabber IDs of the service. "
                      "If the 'hosts' option is not specified, the only Jabber ID will "
-                     "be the hostname of the virtual host with the prefix \"mix.\". "
+                     "be the hostname of the virtual host with the prefix '\"mix.\"'. "
                      "The keyword '@HOST@' is replaced with the real virtual host name.")}},
            {name,
             #{value => ?T("Name"),
@@ -319,11 +320,11 @@ handle_cast(Request, State) ->
 
 handle_info({route, Packet}, State) ->
     try route(Packet)
-    catch ?EX_RULE(Class, Reason, St) ->
-	    StackTrace = ?EX_STACK(St),
-	    ?ERROR_MSG("Failed to route packet:~n~ts~n** ~ts",
-		       [xmpp:pp(Packet),
-			misc:format_exception(2, Class, Reason, StackTrace)])
+    catch
+        Class:Reason:StackTrace ->
+            ?ERROR_MSG("Failed to route packet:~n~ts~n** ~ts",
+                       [xmpp:pp(Packet),
+                        misc:format_exception(2, Class, Reason, StackTrace)])
     end,
     {noreply, State};
 handle_info(Info, State) ->
@@ -626,7 +627,7 @@ notify_participant_joined(Mod, LServer, To, From, ID, Nick) ->
 notify_participant_left(Mod, LServer, To, ID) ->
     {Chan, Host, _} = jid:tolower(To),
     Items = #ps_items{node = ?NS_MIX_NODES_PARTICIPANTS,
-		      retract = ID},
+		      retract = [ID]},
     Event = #ps_event{items = Items},
     Msg = #message{from = jid:remove_resource(To),
 		   id = p1_rand:get_string(),

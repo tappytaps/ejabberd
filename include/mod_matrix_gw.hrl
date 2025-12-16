@@ -1,6 +1,6 @@
 %%%----------------------------------------------------------------------
 %%%
-%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -21,8 +21,16 @@
 -record(room_version,
         {id :: binary(),
          %% use the same field names as in Synapse
+         enforce_key_validity :: boolean(),
+         special_case_aliases_auth :: boolean(),
+         strict_canonicaljson :: boolean(),
+         limit_notifications_power_levels :: boolean(),
+         knock_join_rule :: boolean(),
+         restricted_join_rule :: boolean(),
+         restricted_join_rule_fix :: boolean(),
          knock_restricted_join_rule :: boolean(),
          enforce_int_power_levels :: boolean(),
          implicit_room_creator :: boolean(),
-         updated_redaction_rules :: boolean()
+         updated_redaction_rules :: boolean(),
+         hydra :: boolean()
         }).

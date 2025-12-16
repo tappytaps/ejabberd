@@ -5,7 +5,7 @@
 %%% Created :  7 Aug 2009 by Pablo Polvorin <pablo.polvorin@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -56,7 +56,7 @@ delete_subscription(SubID) ->
            "where subid = %(SubID)s")),
     ok.
 
--spec update_subscription(#pubsub_subscription{}) -> ok .
+-spec update_subscription(#pubsub_subscription{}) -> ok.
 update_subscription(#pubsub_subscription{subid = SubId} = Sub) ->
     delete_subscription(SubId), add_subscription(Sub).
 

@@ -5,7 +5,7 @@
 %%% Created : 20 May 2008 by Badlop <badlop@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -97,6 +97,8 @@ perl_gen({Name, string}, Str, _Indent, HTMLOutput) ->
     [?ARG(Name), ?OP_L(" => "), ?STR(Str)];
 perl_gen({Name, binary}, Str, _Indent, HTMLOutput) ->
     [?ARG(Name), ?OP_L(" => "), ?STR(Str)];
+perl_gen({Name, binary_or_list}, Str, Indent, HTMLOutput) ->
+    perl_gen({Name, {list, {Name, binary}}}, Str, Indent, HTMLOutput);
 perl_gen({Name, atom}, Atom, _Indent, HTMLOutput) ->
     [?ARG(Name), ?OP_L(" => "), ?STR_A(Atom)];
 perl_gen({Name, {tuple, Fields}}, Tuple, Indent, HTMLOutput) ->
@@ -128,6 +130,8 @@ java_gen({Name, string}, Str, _Indent, HTMLOutput) ->
     [?ID_L("put"), ?OP_L("("), ?STR_A(Name), ?OP_L(", "), ?STR(Str), ?OP_L(");")];
 java_gen({Name, binary}, Str, _Indent, HTMLOutput) ->
     [?ID_L("put"), ?OP_L("("), ?STR_A(Name), ?OP_L(", "), ?STR(Str), ?OP_L(");")];
+java_gen({Name, binary_or_list}, Str, Indent, HTMLOutput) ->
+    java_gen({Name, {list, {Name, binary}}}, Str, Indent, HTMLOutput);
 java_gen({Name, atom}, Atom, _Indent, HTMLOutput) ->
     [?ID_L("put"), ?OP_L("("), ?STR_A(Name), ?OP_L(", "), ?STR_A(Atom), ?OP_L(");")];
 java_gen({Name, {tuple, Fields}}, Tuple, Indent, HTMLOutput) ->
@@ -178,6 +182,8 @@ xml_gen({Name, binary}, Str, Indent, HTMLOutput) ->
          [?XML_L(name, Indent, 1, ?ID_A(Name)),
           ?XML(value, Indent, 1,
                [?XML_L(string, Indent, 2, ?ID(Str))])])];
+xml_gen({Name, binary_or_list}, Str, Indent, HTMLOutput) ->
+    xml_gen({Name, {list, {Name, binary}}}, Str, Indent, HTMLOutput);
 xml_gen({Name, atom}, Atom, Indent, HTMLOutput) ->
     [?XML(member, Indent,
          [?XML_L(name, Indent, 1, ?ID_A(Name)),
@@ -215,6 +221,8 @@ json_gen({_Name, string}, Str, _Indent, HTMLOutput) ->
     [?STR(Str)];
 json_gen({_Name, binary}, Str, _Indent, HTMLOutput) ->
     [?STR(Str)];
+json_gen({Name, binary_or_list}, Str, Indent, HTMLOutput) ->
+    json_gen({Name, {list, {Name, binary}}}, Str, Indent, HTMLOutput);
 json_gen({_Name, atom}, Atom, _Indent, HTMLOutput) ->
     [?STR_A(Atom)];
 json_gen({_Name, rescode}, Val, _Indent, HTMLOutput) ->
@@ -270,6 +278,8 @@ generate_example_input({_Name, string}, {LastStr, LastNum}) ->
     {string:chars(LastStr+1, 5), {LastStr+1, LastNum}};
 generate_example_input({_Name, binary}, {LastStr, LastNum}) ->
     {iolist_to_binary(string:chars(LastStr+1, 5)), {LastStr+1, LastNum}};
+generate_example_input({_Name, binary_or_list}, {LastStr, LastNum}) ->
+    {[iolist_to_binary(string:chars(LastStr+1, 5))], {LastStr+1, LastNum}};
 generate_example_input({_Name, atom}, {LastStr, LastNum}) ->
     {list_to_atom(string:chars(LastStr+1, 5)), {LastStr+1, LastNum}};
 generate_example_input({_Name, rescode}, {LastStr, LastNum}) ->
@@ -347,6 +357,8 @@ format_type({Name, Type}) ->
     io_lib:format("~ts::~ts", [Name, format_type(Type)]);
 format_type(binary) ->
     "string";
+format_type(binary_or_list) ->
+    "string | [string]";
 format_type(atom) ->
     "string";
 format_type(Type) ->
@@ -398,7 +410,7 @@ gen_doc(#ejabberd_commands{name=Name, tags=Tags, desc=Desc, longdesc=LongDesc,
         TagsText = ?RAW(string:join(["_`"++atom_to_list(Tag)++"`_" || Tag <- Tags], ", ")),
         IsDefinerMod = case Definer of
                          unknown -> false;
-                         _ -> lists:member(gen_mod, proplists:get_value(behaviour, Definer:module_info(attributes)))
+                         _ -> lists:member(gen_mod, lists:flatten(proplists:get_all_values(behaviour, Definer:module_info(attributes))))
                      end,
         ModuleText = case IsDefinerMod of
                        true ->

@@ -33,7 +33,7 @@
 %%% NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 %%% POSSIBILITY OF SUCH DAMAGE.
 %%% ==========================================================================================================
-%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
 %%%----------------------------------------------------------------------
 
 -module(ejabberd_websocket).
@@ -61,6 +61,11 @@
 -define(OPTIONS_HEADER, [?CT_PLAIN, ?AC_ALLOW_ORIGIN, ?AC_ALLOW_METHODS,
                           ?AC_ALLOW_HEADERS, ?AC_MAX_AGE]).
 -define(HEADER, [?CT_XML, ?AC_ALLOW_ORIGIN, ?AC_ALLOW_HEADERS]).
+
+-ifndef(OTP_BELOW_28).
+-dialyzer([no_opaque_union]).
+-endif.
+
 
 is_valid_websocket_upgrade(_Path, Headers) ->
     HeadersToValidate = [{'Upgrade', <<"websocket">>},
@@ -256,9 +261,9 @@ ws_loop(Codec, Socket, WsHandleLoopPid, SockMod, Shaper) ->
 		 "with pid ~p",
 		 [self()]),
             websocket_close(Codec, Socket, WsHandleLoopPid, SockMod, 1001); % going away
-        _Ignored ->
+        Ignored ->
             ?WARNING_MSG("Received unexpected message, ignoring: ~p",
-                         [_Ignored]),
+                         [Ignored]),
             ws_loop(Codec, Socket, WsHandleLoopPid,
                     SockMod, Shaper)
     end.

@@ -1,5 +1,5 @@
 --
--- ejabberd, Copyright (C) 2002-2024   ProcessOne
+-- ejabberd, Copyright (C) 2002-2025   ProcessOne
 --
 -- This program is free software; you can redistribute it and/or
 -- modify it under the terms of the GNU General Public License as
@@ -18,13 +18,14 @@
 
 CREATE TABLE users (
     username varchar(191) NOT NULL,
+    type smallint NOT NULL,
     server_host varchar(191) NOT NULL,
     password text NOT NULL,
     serverkey varchar(128) NOT NULL DEFAULT '',
     salt varchar(128) NOT NULL DEFAULT '',
     iterationcount integer NOT NULL DEFAULT 0,
     created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (server_host(191), username)
+    PRIMARY KEY (server_host(191), username, type)
 ) ENGINE=InnoDB CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 -- Add support for SCRAM auth to a database created before ejabberd 16.03:
@@ -122,7 +123,7 @@ CREATE INDEX i_archive_sh_timestamp USING BTREE ON archive(server_host(191), tim
 CREATE INDEX i_archive_sh_username_origin_id USING BTREE ON archive(server_host(191), username(191), origin_id(191));
 
 -- To update 'archive' from ejabberd <= 23.10:
--- ALTER TABLE archive ADD COLUMN origin_id text NOT NULL DEFAULT '';
+-- ALTER TABLE archive ADD COLUMN origin_id varchar(191) NOT NULL DEFAULT '';
 -- ALTER TABLE archive ALTER COLUMN origin_id DROP DEFAULT;
 -- CREATE INDEX i_archive_sh_username_origin_id USING BTREE ON archive(server_host(191), username(191), origin_id(191));
 

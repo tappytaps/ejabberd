@@ -5,7 +5,7 @@
 %%% Created : 23 Nov 2002 by Alexey Shchepin <alexey@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -48,7 +48,7 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
 	 terminate/2, code_change/3]).
 
--export([auth_modules/1, convert_to_scram/1]).
+-export([auth_modules/1, convert_to_scram/1, drop_password_type/2, set_password_instance/3]).
 
 -include_lib("xmpp/include/scram.hrl").
 -include("logger.hrl").
@@ -76,26 +76,38 @@
 -callback store_type(binary()) -> plain | external | scram.
 -callback set_password(binary(), binary(), password()) ->
     {ets_cache:tag(), {ok, password()} | {error, db_failure | not_allowed}}.
+-callback set_password_multiple(binary(), binary(), [password()]) ->
+    {ets_cache:tag(), {ok, [password()]} | {error, db_failure | not_allowed}}.
+-callback set_password_instance(binary(), binary(), password()) ->
+    ok | {error, db_failure | not_allowed}.
 -callback remove_user(binary(), binary()) -> ok | {error, db_failure | not_allowed}.
 -callback user_exists(binary(), binary()) -> {ets_cache:tag(), boolean() | {error, db_failure}}.
 -callback check_password(binary(), binary(), binary(), binary()) -> {ets_cache:tag(), boolean() | {stop, boolean()}}.
 -callback try_register(binary(), binary(), password()) ->
     {ets_cache:tag(), {ok, password()} | {error, exists | db_failure | not_allowed}}.
+-callback try_register_multiple(binary(), binary(), [password()]) ->
+    {ets_cache:tag(), {ok, [password()]} | {error, exists | db_failure | not_allowed}}.
 -callback get_users(binary(), opts()) -> [{binary(), binary()}].
 -callback count_users(binary(), opts()) -> number().
--callback get_password(binary(), binary()) -> {ets_cache:tag(), {ok, password()} | error}.
+-callback get_password(binary(), binary()) -> {ets_cache:tag(), {ok, password() | [password()]} | error}.
+-callback drop_password_type(binary(), atom()) ->
+    ok | {error, db_failure | not_allowed}.
 -callback use_cache(binary()) -> boolean().
 -callback cache_nodes(binary()) -> boolean().
 
 -optional_callbacks([reload/1,
 		     set_password/3,
+		     set_password_multiple/3,
+		     set_password_instance/3,
 		     remove_user/2,
 		     user_exists/2,
 		     check_password/4,
 		     try_register/3,
+		     try_register_multiple/3,
 		     get_users/2,
 		     count_users/2,
 		     get_password/2,
+		     drop_password_type/2,
 		     use_cache/1,
 		     cache_nodes/1]).
 
@@ -225,6 +237,7 @@ check_password(User, AuthzId, Server, Password, Digest, DigestGen) ->
     case check_password_with_authmodule(
 	   User, AuthzId, Server, Password, Digest, DigestGen) of
 	{true, _AuthModule} -> true;
+	{false, _ErrorAtom, _Reason} -> false;
 	false -> false
     end.
 
@@ -265,18 +278,70 @@ check_password_with_authmodule(User, AuthzId, Server, Password, Digest, DigestGe
 	    false
     end.
 
+convert_password_for_storage(_Server, #scram{} = Password) ->
+    {Password, [Password]};
+convert_password_for_storage(Server, Password) ->
+    P = case ejabberd_option:auth_stored_password_types(Server) of
+	[] ->
+	    case ejabberd_option:auth_password_format(Server) of
+		plain ->
+		    [Password];
+		_ ->
+		    [password_to_scram(Server, Password)]
+	    end;
+	M ->
+	    lists:sort(lists:map(
+		fun(scram_sha1) ->
+		    password_to_scram(Server, Password, sha, ?SCRAM_DEFAULT_ITERATION_COUNT);
+		   (scram_sha256) ->
+		       password_to_scram(Server, Password, sha256, ?SCRAM_DEFAULT_ITERATION_COUNT);
+		   (scram_sha512) ->
+		       password_to_scram(Server, Password, sha512, ?SCRAM_DEFAULT_ITERATION_COUNT);
+		   (plain) ->
+		       Password
+		end, M))
+    end,
+    {Password, P}.
+
 -spec set_password(binary(), binary(), password()) -> ok | {error,
 							    db_failure | not_allowed |
 							    invalid_jid | invalid_password}.
 set_password(User, Server, Password) ->
     case validate_credentials(User, Server, Password) of
 	{ok, LUser, LServer} ->
+	    {Plain, Passwords} = convert_password_for_storage(Server, Password),
 	    lists:foldl(
 	      fun(M, {error, _}) ->
-		      db_set_password(LUser, LServer, Password, M);
+		      db_set_password(LUser, LServer, Plain, Passwords, M);
 		 (_, ok) ->
 		      ok
 	      end, {error, not_allowed}, auth_modules(LServer));
+	Err ->
+	    Err
+    end.
+
+set_password_instance(User, Server, Password) ->
+    case validate_credentials(User, Server, Password) of
+	{ok, LUser, LServer} ->
+	    lists:foldl(
+		fun(Mod, {error, _} = Acc) ->
+		    case erlang:function_exported(Mod, set_password_instance, 3) of
+			true ->
+			    R = Mod:set_password_instance(LUser, LServer, Password),
+			    case use_cache(Mod, LServer) of
+				true ->
+				    ets_cache:delete(cache_tab(Mod), {LUser, LServer},
+						     cache_nodes(Mod, LServer));
+				_ ->
+				    ok
+			    end,
+			    R;
+			_ ->
+			    Acc
+		    end;
+		   (_, ok) ->
+		       ok
+		end, {error, not_allowed}, auth_modules(LServer));
 	Err ->
 	    Err
     end.
@@ -293,19 +358,25 @@ try_register(User, Server, Password) ->
 		false ->
 		    case ejabberd_router:is_my_host(LServer) of
 			true ->
-			    case lists:foldl(
-				   fun(_, ok) ->
-					   ok;
-				      (Mod, _) ->
-					   db_try_register(
-					     LUser, LServer, Password, Mod)
-				   end, {error, not_allowed},
-				   auth_modules(LServer)) of
-				ok ->
-				    ejabberd_hooks:run(
-				      register_user, LServer, [LUser, LServer]);
-				{error, _} = Err ->
-				    Err
+			    case ejabberd_hooks:run_fold(check_register_user, LServer, true,
+							 [User, Server, Password]) of
+				true ->
+				    {Plain, Passwords} = convert_password_for_storage(Server, Password),
+				    case lists:foldl(
+					fun(_, ok) ->
+					    ok;
+					   (Mod, _) ->
+					       db_try_register(
+						   LUser, LServer, Plain, Passwords, Mod)
+					end, {error, not_allowed}, auth_modules(LServer)) of
+					ok ->
+					    ejabberd_hooks:run(
+						register_user, LServer, [LUser, LServer]);
+					{error, _} = Err ->
+					    Err
+				    end;
+				false ->
+				    {error, not_allowed}
 			    end;
 			false ->
 			    {error, not_allowed}
@@ -351,32 +422,26 @@ count_users(Server, Opts) ->
 		auth_modules(LServer)))
     end.
 
--spec get_password(binary(), binary()) -> false | password().
+-spec get_password(binary(), binary()) -> false | [password()].
 get_password(User, Server) ->
-    case validate_credentials(User, Server) of
-	{ok, LUser, LServer} ->
-	    case lists:foldl(
-		   fun(M, error) -> db_get_password(LUser, LServer, M);
-		      (_M, Acc) -> Acc
-		   end, error, auth_modules(LServer)) of
-		{ok, Password} ->
-		    Password;
-		error ->
-		    false
-	    end;
-	_ ->
-	    false
-    end.
+    {Passwords, _} = get_password_with_authmodule(User, Server),
+    Passwords.
 
 -spec get_password_s(binary(), binary()) -> password().
 get_password_s(User, Server) ->
     case get_password(User, Server) of
       false -> <<"">>;
-      Password -> Password
+      Passwords ->
+	  {_, Pass} = lists:foldl(
+	      fun(Plain, _) when is_binary(Plain) -> {true, Plain};
+		 (Pass, {false, _}) -> {true, Pass};
+		 (_, Acc) -> Acc
+	      end, {false, <<"">>}, Passwords),
+	  Pass
     end.
 
 -spec get_password_with_authmodule(binary(), binary()) ->
-    {false | {false, atom(), binary()} | password(), module()}.
+    {false | {false, atom(), binary()} | [password()], module()}.
 get_password_with_authmodule(User, Server) ->
     case validate_credentials(User, Server) of
 	{ok, LUser, LServer} ->
@@ -390,8 +455,10 @@ get_password_with_authmodule(User, Server) ->
 		      (_M, Acc) ->
 			   Acc
 		   end, {error, undefined}, auth_modules(LServer)) of
-		{{ok, Password}, Module} ->
+		{{ok, Password}, Module} when is_list(Password) ->
 		    {Password, Module};
+		{{ok, Password}, Module} ->
+		    {[Password], Module};
 		{error, Module} ->
 		    {false, Module}
             end
@@ -449,6 +516,30 @@ user_exists_in_other_modules_loop([AuthModule | AuthModules], User, Server) ->
 	{{error, _}, _} ->
 	    maybe_exists
     end.
+
+drop_password_type(LServer, Type) ->
+    Hash = case Type of
+	       plain -> plain;
+	       scram_sha1 -> sha;
+	       scram_sha256 -> sha256;
+	       scram_sha512 -> sha512
+	   end,
+    lists:foreach(
+	fun(M) ->
+	    case erlang:function_exported(M, drop_password_type, 2) of
+		true ->
+		    M:drop_password_type(LServer, Hash),
+		    case use_cache(M, LServer) of
+			true ->
+			    ets_cache:clear(cache_tab(M),
+					    cache_nodes(M, LServer));
+			false ->
+			    ok
+		    end;
+		_ ->
+		    ok
+	    end
+	end, auth_modules(LServer)).
 
 -spec which_users_exists(list({binary(), binary()})) -> list({binary(), binary()}).
 which_users_exists(USPairs) ->
@@ -587,54 +678,86 @@ get_is_banned(User, Server) ->
 %%%----------------------------------------------------------------------
 %%% Backend calls
 %%%----------------------------------------------------------------------
--spec db_try_register(binary(), binary(), password(), module()) -> ok | {error, exists | db_failure | not_allowed}.
-db_try_register(User, Server, Password, Mod) ->
-    case erlang:function_exported(Mod, try_register, 3) of
+-spec db_try_register(binary(), binary(), binary(), [password()], module()) -> ok | {error, exists | db_failure | not_allowed}.
+db_try_register(User, Server, PlainPassword, Passwords, Mod) ->
+    Ret = case erlang:function_exported(Mod, try_register_multiple, 3) of
 	true ->
-	    Password1 = case Mod:store_type(Server) of
-			    scram -> password_to_scram(Server, Password);
-			    _ -> Password
-			end,
-	    Ret = case use_cache(Mod, Server) of
-		      true ->
-			  ets_cache:update(
-			    cache_tab(Mod), {User, Server}, {ok, Password},
-			    fun() -> Mod:try_register(User, Server, Password1) end,
-			    cache_nodes(Mod, Server));
-		      false ->
-			  ets_cache:untag(Mod:try_register(User, Server, Password1))
-		  end,
-	    case Ret of
-		{ok, _} -> ok;
-		{error, _} = Err -> Err
+	    case use_cache(Mod, Server) of
+		true ->
+		    ets_cache:update(
+			cache_tab(Mod), {User, Server}, {ok, Passwords},
+			fun() -> Mod:try_register_multiple(User, Server, Passwords) end,
+			cache_nodes(Mod, Server));
+		false ->
+		    ets_cache:untag(Mod:try_register_multiple(User, Server, Passwords))
 	    end;
-	false ->
-	    {error, not_allowed}
+	_ ->
+	    case erlang:function_exported(Mod, try_register, 3) of
+		true ->
+		    case use_cache(Mod, Server) of
+			true ->
+			    ets_cache:update(
+				cache_tab(Mod), {User, Server}, {ok, [PlainPassword]},
+				fun() ->
+				    case Mod:try_register(User, Server, PlainPassword) of
+					{Tag, {ok, Pass}} -> {Tag, {ok, [Pass]}};
+					Other -> Other
+				    end
+				end, cache_nodes(Mod, Server));
+			false ->
+			    case Mod:try_register(User, Server, PlainPassword) of
+				{_, {ok, Pass}} -> {ok, [Pass]};
+				V -> ets_cache:untag(V)
+			    end
+		    end;
+		false ->
+		    {error, not_allowed}
+	    end
+	  end,
+    case Ret of
+	{ok, _} -> ok;
+	{error, _} = Err -> Err
     end.
 
--spec db_set_password(binary(), binary(), password(), module()) -> ok | {error, db_failure | not_allowed}.
-db_set_password(User, Server, Password, Mod) ->
-    case erlang:function_exported(Mod, set_password, 3) of
-	true ->
-	    Password1 = case Mod:store_type(Server) of
-			    scram -> password_to_scram(Server, Password);
-			    _ -> Password
-			end,
-	    Ret = case use_cache(Mod, Server) of
+-spec db_set_password(binary(), binary(), binary(), [password()], module()) -> ok | {error, db_failure | not_allowed}.
+db_set_password(User, Server, PlainPassword, Passwords, Mod) ->
+    Ret = case erlang:function_exported(Mod, set_password_multiple, 3) of
+	      true ->
+		  case use_cache(Mod, Server) of
 		      true ->
 			  ets_cache:update(
-			    cache_tab(Mod), {User, Server}, {ok, Password},
-			    fun() -> Mod:set_password(User, Server, Password1) end,
-			    cache_nodes(Mod, Server));
+			      cache_tab(Mod), {User, Server}, {ok, Passwords},
+			      fun() -> Mod:set_password_multiple(User, Server, Passwords) end,
+			      cache_nodes(Mod, Server));
 		      false ->
-			  ets_cache:untag(Mod:set_password(User, Server, Password1))
-		  end,
-	    case Ret of
-		{ok, _} -> ok;
-		{error, _} = Err -> Err
-	    end;
-	false ->
-	    {error, not_allowed}
+			  ets_cache:untag(Mod:set_password_multiple(User, Server, Passwords))
+		  end;
+	      _ ->
+		  case erlang:function_exported(Mod, set_password, 3) of
+		      true ->
+			  case use_cache(Mod, Server) of
+			      true ->
+				  ets_cache:update(
+				      cache_tab(Mod), {User, Server}, {ok, [PlainPassword]},
+				      fun() ->
+					  case Mod:set_password(User, Server, PlainPassword) of
+					      {Tag, {ok, Pass}} -> {Tag, {ok, [Pass]}};
+					      Other -> Other
+					  end
+				      end, cache_nodes(Mod, Server));
+			      false ->
+				  case Mod:set_password(User, Server, PlainPassword) of
+				      {_, {ok, Pass}} -> {ok, [Pass]};
+				      V -> ets_cache:untag(V)
+				  end
+			  end;
+		      false ->
+			  {error, not_allowed}
+		  end
+	  end,
+    case Ret of
+	{ok, _} -> ejabberd_hooks:run(set_password, Server, [User, Server]);
+	{error, _} = Err -> Err
     end.
 
 db_get_password(User, Server, Mod) ->
@@ -644,16 +767,28 @@ db_get_password(User, Server, Mod) ->
 	    case ets_cache:lookup(cache_tab(Mod), {User, Server}) of
 		{ok, exists} -> error;
 		not_found -> error;
+		{ok, List} = V when is_list(List) -> V;
+		{ok, Single} -> {ok, [Single]};
 		Other -> Other
 	    end;
 	false ->
 	    error;
 	true when UseCache ->
 	    ets_cache:lookup(
-	      cache_tab(Mod), {User, Server},
-	      fun() -> Mod:get_password(User, Server) end);
+		cache_tab(Mod), {User, Server},
+		fun() ->
+		    case Mod:get_password(User, Server) of
+			{_, {ok, List}} = V when is_list(List) -> V;
+			{Tag, {ok, Single}} -> {Tag, {ok, [Single]}};
+			Other -> Other
+		    end
+		end);
 	true ->
-	    ets_cache:untag(Mod:get_password(User, Server))
+	    case Mod:get_password(User, Server) of
+		{_, {ok, List}} when is_list(List) -> {ok, List};
+		{_, {ok, Single}} -> {ok, [Single]};
+		Other -> ets_cache:untag(Other)
+	    end
     end.
 
 db_user_exists(User, Server, Mod) ->
@@ -680,7 +815,7 @@ db_user_exists(User, Server, Mod) ->
 			  end,
 		    case Val of
 			{ok, _} ->
-			    {true, Mod /= ejabberd_auth_anonymous} ;
+			    {true, Mod /= ejabberd_auth_anonymous};
 			not_found ->
 			    {false, Mod /= ejabberd_auth_anonymous};
 			error ->
@@ -698,8 +833,8 @@ db_user_exists(User, Server, Mod) ->
 db_check_password(User, AuthzId, Server, ProvidedPassword,
 		  Digest, DigestFun, Mod) ->
     case db_get_password(User, Server, Mod) of
-	{ok, ValidPassword} ->
-	    match_passwords(ProvidedPassword, ValidPassword, Digest, DigestFun);
+	{ok, ValidPasswords} ->
+	    match_passwords(ProvidedPassword, ValidPasswords, Digest, DigestFun);
 	error ->
 	    case {Mod:store_type(Server), use_cache(Mod, Server)} of
 		{external, true} ->
@@ -804,7 +939,9 @@ password_to_scram(Host, Password) ->
 password_to_scram(_Host, #scram{} = Password, _IterationCount) ->
     Password;
 password_to_scram(Host, Password, IterationCount) ->
-    Hash = ejabberd_option:auth_scram_hash(Host),
+    password_to_scram(Host, Password, ejabberd_option:auth_scram_hash(Host), IterationCount).
+
+password_to_scram(_Host, Password, Hash, IterationCount) ->
     Salt = p1_rand:bytes(?SALT_LENGTH),
     SaltedPassword = scram:salted_password(Hash, Password, Salt, IterationCount),
     StoredKey = scram:stored_key(Hash, scram:client_key(Hash, SaltedPassword)),
@@ -888,15 +1025,23 @@ auth_modules() ->
 auth_modules(Server) ->
     LServer = jid:nameprep(Server),
     Methods = ejabberd_option:auth_method(LServer),
-    [ejabberd:module_name([<<"ejabberd">>, <<"auth">>,
+    [ejabberd:module_name([<<"auth">>,
 			   misc:atom_to_binary(M)])
      || M <- Methods].
 
--spec match_passwords(password(), password(),
+-spec match_passwords(password(), [password()],
 		      binary(), digest_fun() | undefined) -> boolean().
-match_passwords(Password, #scram{} = Scram, <<"">>, undefined) ->
+match_passwords(Provided, Passwords, Digest, DigestFun) ->
+    lists:any(
+	fun(Pass) ->
+	    match_password(Provided, Pass, Digest, DigestFun)
+	end, Passwords).
+
+-spec match_password(password(), password(),
+		     binary(), digest_fun() | undefined) -> boolean().
+match_password(Password, #scram{} = Scram, <<"">>, undefined) ->
     is_password_scram_valid(Password, Scram);
-match_passwords(Password, #scram{} = Scram, Digest, DigestFun) ->
+match_password(Password, #scram{} = Scram, Digest, DigestFun) ->
     StoredKey = base64:decode(Scram#scram.storedkey),
     DigRes = if Digest /= <<"">> ->
 		     Digest == DigestFun(StoredKey);
@@ -907,9 +1052,9 @@ match_passwords(Password, #scram{} = Scram, Digest, DigestFun) ->
        true ->
 	    StoredKey == Password andalso Password /= <<"">>
     end;
-match_passwords(ProvidedPassword, ValidPassword, <<"">>, undefined) ->
+match_password(ProvidedPassword, ValidPassword, <<"">>, undefined) ->
     ProvidedPassword == ValidPassword andalso ProvidedPassword /= <<"">>;
-match_passwords(ProvidedPassword, ValidPassword, Digest, DigestFun) ->
+match_password(ProvidedPassword, ValidPassword, Digest, DigestFun) ->
     DigRes = if Digest /= <<"">> ->
 		     Digest == DigestFun(ValidPassword);
 		true -> false
@@ -978,7 +1123,7 @@ convert_to_scram(Server) ->
 	    lists:foreach(
 		fun({U, S}) ->
 		    case get_password(U, S) of
-			Pass when is_binary(Pass) ->
+			[Pass] when is_binary(Pass) ->
 			    SPass = password_to_scram(Server, Pass),
 			    set_password(U, S, SPass);
 			_ ->

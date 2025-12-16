@@ -5,7 +5,7 @@
 %%% Created : 15 Sep 2014 by Christophe Romain <christophe.romain@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -30,13 +30,13 @@
 -behaviour(gen_mod).
 
 -export([start/2, stop/1, reload/3, process/2, depends/2,
-         format_arg/2,
-	 mod_options/1, mod_doc/0]).
+         format_arg/2, handle/4,
+	 mod_opt_type/1, mod_options/1, mod_doc/0]).
 
 -include_lib("xmpp/include/xmpp.hrl").
 -include("logger.hrl").
 -include("ejabberd_http.hrl").
--include("ejabberd_stacktrace.hrl").
+
 -include("translate.hrl").
 
 -define(DEFAULT_API_VERSION, 1000000).
@@ -145,12 +145,11 @@ process([Call | _], #request{method = 'POST', data = Data, ip = IPPort} = Req) -
         %% TODO We need to refactor to remove redundant error return formatting
         throw:{error, unknown_command} ->
             json_format({404, 44, <<"Command not found.">>});
-        _:{error,{_,invalid_json}} = _Err ->
-	    ?DEBUG("Bad Request: ~p", [_Err]),
+        _:{error,{_,invalid_json}} = Err ->
+	    ?DEBUG("Bad Request: ~p", [Err]),
 	    badrequest_response(<<"Invalid JSON input">>);
-	?EX_RULE(_Class, _Error, Stack) ->
-	    StackTrace = ?EX_STACK(Stack),
-            ?DEBUG("Bad Request: ~p ~p", [_Error, StackTrace]),
+        _Class:Error:StackTrace ->
+            ?DEBUG("Bad Request: ~p ~p", [Error, StackTrace]),
             badrequest_response()
     end;
 process([Call | _], #request{method = 'GET', q = Data, ip = {IP, _}} = Req) ->
@@ -166,9 +165,8 @@ process([Call | _], #request{method = 'GET', q = Data, ip = {IP, _}} = Req) ->
         %% TODO We need to refactor to remove redundant error return formatting
         throw:{error, unknown_command} ->
             json_format({404, 44, <<"Command not found.">>});
-        ?EX_RULE(_, _Error, Stack) ->
-	    StackTrace = ?EX_STACK(Stack),
-            ?DEBUG("Bad Request: ~p ~p", [_Error, StackTrace]),
+        _:Error:StackTrace ->
+            ?DEBUG("Bad Request: ~p ~p", [Error, StackTrace]),
             badrequest_response()
     end;
 process([_Call], #request{method = 'OPTIONS', data = <<>>}) ->
@@ -201,19 +199,25 @@ extract_args(Data) ->
     maps:to_list(Maps).
 
 % get API version N from last "vN" element in URL path
-get_api_version(#request{path = Path}) ->
-    get_api_version(lists:reverse(Path));
-get_api_version([<<"v", String/binary>> | Tail]) ->
+get_api_version(#request{path = Path, host = Host}) ->
+    get_api_version(lists:reverse(Path), Host).
+
+get_api_version([<<"v", String/binary>> | Tail], Host) ->
     case catch binary_to_integer(String) of
 	N when is_integer(N) ->
 	    N;
 	_ ->
-	    get_api_version(Tail)
+	    get_api_version(Tail, Host)
     end;
-get_api_version([_Head | Tail]) ->
-    get_api_version(Tail);
-get_api_version([]) ->
-    ?DEFAULT_API_VERSION.
+get_api_version([_Head | Tail], Host) ->
+    get_api_version(Tail, Host);
+get_api_version([], Host) ->
+    try mod_http_api_opt:default_version(Host)
+    catch error:{module_not_loaded, ?MODULE, Host} ->
+        ?WARNING_MSG("Using module ~p for host ~s, but it isn't configured "
+                     "in the configuration file", [?MODULE, Host]),
+        ?DEFAULT_API_VERSION
+    end.
 
 %% ----------------
 %% command handlers
@@ -251,13 +255,15 @@ handle(Call, Auth, Args, Version) when is_atom(Call), is_list(Args) ->
 	    {400, misc:atom_to_binary(Error)};
 	  throw:Msg when is_list(Msg); is_binary(Msg) ->
 	    {400, iolist_to_binary(Msg)};
-	  ?EX_RULE(Class, Error, Stack) ->
-	    StackTrace = ?EX_STACK(Stack),
-	    ?ERROR_MSG("REST API Error: "
-		       "~ts(~p) -> ~p:~p ~p",
-		       [Call, hide_sensitive_args(Args),
-			Class, Error, StackTrace]),
-	    {500, <<"internal_error">>}
+        Class:Error:StackTrace ->
+            ?ERROR_MSG("REST API Error: "
+                       "~ts(~p) -> ~p:~p ~p",
+                       [Call,
+                        hide_sensitive_args(Args),
+                        Class,
+                        Error,
+                        StackTrace]),
+            {500, <<"internal_error">>}
     end.
 
 handle2(Call, Auth, Args, Version) when is_atom(Call), is_list(Args) ->
@@ -347,6 +353,9 @@ format_arg(Elements,
      || Element <- Elements];
 
 %% Covered by command_test_list and command_test_list_tuple
+format_arg(Element, {list, Def})
+    when not is_list(Element) ->
+    format_arg([Element], {list, Def});
 format_arg(Elements,
 	   {list, {_ElementDefName, ElementDefFormat}})
     when is_list(Elements) ->
@@ -363,8 +372,8 @@ format_arg({[{Name, Value}]},
 format_arg(Elements,
 	   {tuple, ElementsDef})
   when is_map(Elements) ->
-    list_to_tuple([element(2, maps:find(atom_to_binary(Name, latin1), Elements))
-                   || {Name, _Format} <- ElementsDef]);
+    list_to_tuple([format_arg(element(2, maps:find(atom_to_binary(Name, latin1), Elements)), Format)
+                   || {Name, Format} <- ElementsDef]);
 
 format_arg({Elements},
 	   {tuple, ElementsDef})
@@ -389,11 +398,18 @@ format_arg(Elements, {list, ElementsDef})
      || Element <- Elements];
 
 format_arg(Arg, integer) when is_integer(Arg) -> Arg;
+format_arg(Arg, integer) when is_binary(Arg) -> binary_to_integer(Arg);
 format_arg(Arg, binary) when is_list(Arg) -> process_unicode_codepoints(Arg);
 format_arg(Arg, binary) when is_binary(Arg) -> Arg;
+format_arg([], binary_or_list) -> [];
+format_arg([First | _] = Arg, binary_or_list) when is_binary(First) -> Arg;
+format_arg([First | _] = Arg, binary_or_list) when is_integer(First) ->
+    [process_unicode_codepoints(Arg)];
+format_arg(Arg, binary_or_list) when is_binary(Arg) -> [Arg];
 format_arg(Arg, string) when is_list(Arg) -> Arg;
 format_arg(Arg, string) when is_binary(Arg) -> binary_to_list(Arg);
 format_arg(undefined, binary) -> <<>>;
+format_arg(undefined, binary_or_list) -> [];
 format_arg(undefined, string) -> "";
 format_arg(Arg, Format) ->
     ?ERROR_MSG("Don't know how to format Arg ~p for format ~p", [Arg, Format]),
@@ -454,6 +470,9 @@ format_result([String | _] = StringList, {Name, string}) when is_list(String) ->
 format_result(String, {Name, string}) ->
     {misc:atom_to_binary(Name), iolist_to_binary(String)};
 
+format_result(Binary, {Name, binary}) ->
+    {misc:atom_to_binary(Name), Binary};
+
 format_result(Code, {Name, rescode}) ->
     {misc:atom_to_binary(Name), Code == true orelse Code == ok};
 
@@ -467,14 +486,17 @@ format_result(Code, {Name, restuple}) ->
      {[{<<"res">>, Code == true orelse Code == ok},
        {<<"text">>, <<"">>}]}};
 
-format_result(Els, {Name, {list, {_, {tuple, [{_, atom}, _]}} = Fmt}}) ->
+format_result(Els1, {Name, {list, {_, {tuple, [{_, atom}, _]}} = Fmt}}) ->
+    Els = lists:keysort(1, Els1),
     {misc:atom_to_binary(Name), {[format_result(El, Fmt) || El <- Els]}};
 
-format_result(Els, {Name, {list, {_, {tuple, [{name, string}, {value, _}]}} = Fmt}}) ->
+format_result(Els1, {Name, {list, {_, {tuple, [{name, string}, {value, _}]}} = Fmt}}) ->
+    Els = lists:keysort(1, Els1),
     {misc:atom_to_binary(Name), {[format_result(El, Fmt) || El <- Els]}};
 
 %% Covered by command_test_list and command_test_list_tuple
-format_result(Els, {Name, {list, Def}}) ->
+format_result(Els1, {Name, {list, Def}}) ->
+    Els = lists:sort(Els1),
     {misc:atom_to_binary(Name), [element(2, format_result(El, Def)) || El <- Els]};
 
 format_result(Tuple, {_Name, {tuple, [{_, atom}, ValFmt]}}) ->
@@ -542,15 +564,33 @@ log(Call, Args, IP) ->
     ?INFO_MSG("API call ~ts ~p (~p)", [Call, hide_sensitive_args(Args), IP]).
 
 hide_sensitive_args(Args=[_H|_T]) ->
-    lists:map( fun({<<"password">>, Password}) -> {<<"password">>, ejabberd_config:may_hide_data(Password)};
+    lists:map(fun({<<"password">>, Password}) -> {<<"password">>, ejabberd_config:may_hide_data(Password)};
          ({<<"newpass">>,NewPassword}) -> {<<"newpass">>, ejabberd_config:may_hide_data(NewPassword)};
          (E) -> E end,
          Args);
 hide_sensitive_args(NonListArgs) ->
     NonListArgs.
 
+mod_opt_type(default_version) ->
+    econf:either(
+        econf:int(0, 3),
+        econf:and_then(
+            econf:binary(),
+            fun(Binary) ->
+               case binary_to_list(Binary) of
+                   F when F >= "24.06" ->
+                       2;
+                   F when (F > "23.10") and (F < "24.06") ->
+                       1;
+                   F when F =< "23.10" ->
+                       0
+               end
+            end)).
+
+-spec mod_options(binary()) -> [{default_version, integer()}].
+
 mod_options(_) ->
-    [].
+    [{default_version, ?DEFAULT_API_VERSION}].
 
 mod_doc() ->
     #{desc =>
@@ -561,10 +601,20 @@ mod_doc() ->
 	      "section, you must also enable it in 'listen' -> 'ejabberd_http' -> "
               "_`listen-options.md#request_handlers|request_handlers`_."), "",
 	   ?T("To use a specific API version N, when defining the URL path "
-	      "in the request_handlers, add a 'vN'. "
-	      "For example: '/api/v2: mod_http_api'"), "",
+	      "in the request_handlers, add a vN. "
+	      "For example: '/api/v2: mod_http_api'."), "",
 	   ?T("To run a command, send a POST request to the corresponding "
-	      "URL: 'http://localhost:5280/api/<command_name>'")],
+	      "URL: 'http://localhost:5280/api/COMMAND-NAME'")],
+     opts =>
+          [{default_version,
+            #{value => "integer() | string()",
+              note => "added in 24.12",
+              desc =>
+                  ?T("What API version to use when none is specified in the URL path. "
+                     "If setting an ejabberd version, it will use the latest API "
+                     "version that was available in that ejabberd version. "
+                     "For example, setting '\"24.06\"' in this option implies '2'. "
+                     "The default value is the latest version.")}}],
      example =>
          ["listen:",
           "  -",
@@ -574,4 +624,5 @@ mod_doc() ->
           "      /api: mod_http_api",
           "",
           "modules:",
-          "  mod_http_api: {}"]}.
+          "  mod_http_api:",
+          "    default_version: 2"]}.

@@ -5,7 +5,7 @@
 %%% Created :  8 Nov 2021 by Alexey Shchepin <alexey@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -31,6 +31,7 @@
 
 -export([start/2, stop/1, reload/3, process/2, depends/2,
          mod_opt_type/1, mod_options/1, mod_doc/0]).
+-export([web_menu_system/2]).
 
 -include_lib("xmpp/include/xmpp.hrl").
 -include("logger.hrl").
@@ -39,7 +40,7 @@
 -include("ejabberd_web_admin.hrl").
 
 start(_Host, _Opts) ->
-    ok.
+    {ok, [{hook, webadmin_menu_system_post, web_menu_system, 50, global}]}.
 
 stop(_Host) ->
     ok.
@@ -50,8 +51,10 @@ reload(_Host, _NewOpts, _OldOpts) ->
 depends(_Host, _Opts) ->
     [].
 
-process([], #request{method = 'GET', host = Host, raw_path = RawPath}) ->
+process([], #request{method = 'GET', host = Host, q = Query, raw_path = RawPath1}) ->
+    [RawPath | _] = string:split(RawPath1, "?"),
     ExtraOptions = get_auth_options(Host)
+        ++ get_autologin_options(Query)
         ++ get_register_options(Host)
         ++ get_extra_options(Host),
     Domain = mod_conversejs_opt:default_domain(Host),
@@ -61,11 +64,12 @@ process([], #request{method = 'GET', host = Host, raw_path = RawPath}) ->
     CSS = get_file_url(Host, conversejs_css,
                        <<RawPath/binary, "/converse.min.css">>,
                        <<"https://cdn.conversejs.org/dist/converse.min.css">>),
+    PluginsHtml = get_plugins_html(Host, RawPath),
     Init = [{<<"discover_connection_methods">>, false},
             {<<"default_domain">>, Domain},
             {<<"domain_placeholder">>, Domain},
             {<<"registration_domain">>, Domain},
-            {<<"assets_path">>, RawPath},
+            {<<"assets_path">>, <<RawPath/binary, "/">>},
             {<<"view_mode">>, <<"fullscreen">>}
            | ExtraOptions],
     Init2 =
@@ -86,7 +90,8 @@ process([], #request{method = 'GET', host = Host, raw_path = RawPath}) ->
       <<"<meta charset='utf-8'>">>,
       <<"<link rel='stylesheet' type='text/css' media='screen' href='">>,
       fxml:crypt(CSS), <<"'>">>,
-      <<"<script src='">>, fxml:crypt(Script), <<"' charset='utf-8'></script>">>,
+      <<"<script src='">>, fxml:crypt(Script), <<"' charset='utf-8'></script>">>
+     ] ++ PluginsHtml ++ [
       <<"</head>">>,
       <<"<body>">>,
       <<"<script>">>,
@@ -112,6 +117,7 @@ is_served_file([<<"emojis.js">>]) -> true;
 is_served_file([<<"locales">>, _]) -> true;
 is_served_file([<<"locales">>, <<"dayjs">>, _]) -> true;
 is_served_file([<<"webfonts">>, _]) -> true;
+is_served_file([<<"plugins">>, _]) -> true;
 is_served_file(_) -> false.
 
 serve(Host, LocalPath) ->
@@ -221,6 +227,90 @@ get_auto_file_url(Host, Filename, Default) ->
         _ -> Filename
     end.
 
+get_plugins_html(Host, RawPath) ->
+    Resources = get_conversejs_resources(Host),
+    lists:map(fun(F) ->
+                 Plugin =
+                     case {F, Resources} of
+                         {<<"libsignal">>, undefined} ->
+                             <<"https://cdn.conversejs.org/3rdparty/libsignal-protocol.min.js">>;
+                         {<<"libsignal">>, Path} ->
+                             ?WARNING_MSG("~p is configured to use local Converse files "
+                                          "from path ~ts but the public plugin ~ts!",
+                                          [?MODULE, Path, F]),
+                             <<"https://cdn.conversejs.org/3rdparty/libsignal-protocol.min.js">>;
+                         _ ->
+                             fxml:crypt(<<RawPath/binary, "/plugins/", F/binary>>)
+                     end,
+                 <<"<script src='", Plugin/binary, "' charset='utf-8'></script>">>
+              end,
+              gen_mod:get_module_opt(Host, ?MODULE, conversejs_plugins)).
+
+%%----------------------------------------------------------------------
+%% WebAdmin link and autologin
+%%----------------------------------------------------------------------
+
+%% @format-begin
+
+web_menu_system(Result,
+                #request{host = Host,
+                         auth = Auth,
+                         tp = Protocol}) ->
+    AutoUrl = mod_host_meta:get_auto_url(any, ?MODULE),
+    ConverseUrl = misc:expand_keyword(<<"@HOST@">>, AutoUrl, Host),
+    AutologinQuery =
+        case {Protocol, Auth} of
+            {http, {Jid, _Password}} ->
+                <<"/?autologinjid=", Jid/binary>>;
+            {https, {Jid, Password}} ->
+                AuthToken = build_token(Jid, Password),
+                <<"/?autologinjid=", Jid/binary, "&autologintoken=", AuthToken/binary>>;
+            _ ->
+                <<"">>
+        end,
+    ConverseEl =
+        ?LI([?C(unicode:characters_to_binary("☯️")),
+             ?XAE(<<"a">>,
+                  [{<<"href">>, <<ConverseUrl/binary, AutologinQuery/binary>>},
+                   {<<"target">>, <<"_blank">>}],
+                  [?C(unicode:characters_to_binary("Converse"))])]),
+    [ConverseEl | Result].
+
+get_autologin_options(Query) ->
+    case {proplists:get_value(<<"autologinjid">>, Query),
+          proplists:get_value(<<"autologintoken">>, Query)}
+    of
+        {undefined, _} ->
+            [];
+        {Jid, Token} ->
+            [{<<"auto_login">>, <<"true">>},
+             {<<"jid">>, <<"admin@localhost">>},
+             {<<"password">>, check_token_get_password(Jid, Token)}]
+    end.
+
+build_token(Jid, Password) ->
+    Minutes =
+        integer_to_binary(calendar:datetime_to_gregorian_seconds(
+                              calendar:universal_time())
+                          div 60),
+    Cookie =
+        misc:atom_to_binary(
+            erlang:get_cookie()),
+    str:sha(<<Jid/binary, Password/binary, Minutes/binary, Cookie/binary>>).
+
+check_token_get_password(_, undefined) ->
+    <<"">>;
+check_token_get_password(JidString, TokenProvided) ->
+    Jid = jid:decode(JidString),
+    Password = ejabberd_auth:get_password_s(Jid#jid.luser, Jid#jid.lserver),
+    case build_token(JidString, Password) of
+        TokenProvided ->
+            Password;
+        _ ->
+            <<"">>
+    end.
+%% @format-end
+
 %%----------------------------------------------------------------------
 %%
 %%----------------------------------------------------------------------
@@ -237,6 +327,8 @@ mod_opt_type(conversejs_script) ->
     econf:binary();
 mod_opt_type(conversejs_css) ->
     econf:binary();
+mod_opt_type(conversejs_plugins) ->
+    econf:list(econf:binary());
 mod_opt_type(default_domain) ->
     econf:host().
 
@@ -247,6 +339,7 @@ mod_options(Host) ->
      {conversejs_resources, undefined},
      {conversejs_options, []},
      {conversejs_script, auto},
+     {conversejs_plugins, []},
      {conversejs_css, auto}].
 
 mod_doc() ->
@@ -256,13 +349,13 @@ mod_doc() ->
            ?T("To use this module, in addition to adding it to the 'modules' "
               "section, you must also enable it in 'listen' -> 'ejabberd_http' -> "
               "_`listen-options.md#request_handlers|request_handlers`_."), "",
-           ?T("Make sure either 'mod_bosh' or 'ejabberd_http_ws' "
-              "_`listen-options.md#request_handlers|request_handlers`_ "
-              "are enabled."), "",
+           ?T("Make sure either _`mod_bosh`_ or _`listen.md#ejabberd_http_ws|ejabberd_http_ws`_ "
+              "are enabled in at least one 'request_handlers'."), "",
            ?T("When 'conversejs_css' and 'conversejs_script' are 'auto', "
-              "by default they point to the public Converse client.")
+              "by default they point to the public Converse client."), "",
+           ?T("This module is available since ejabberd 21.12.")
           ],
-      note => "added in 21.12 and improved in 22.05",
+      note => "improved in 25.07",
       example =>
           [{?T("Manually setup WebSocket url, and use the public Converse client:"),
             ["listen:",
@@ -277,6 +370,7 @@ mod_doc() ->
              "modules:",
              "  mod_bosh: {}",
              "  mod_conversejs:",
+             "    conversejs_plugins: [\"libsignal\"]",
              "    websocket_url: \"ws://@HOST@:5280/websocket\""]},
            {?T("Host Converse locally and let auto detection of WebSocket and Converse URLs:"),
             ["listen:",
@@ -290,7 +384,9 @@ mod_doc() ->
              "",
              "modules:",
              "  mod_conversejs:",
-             "    conversejs_resources: \"/home/ejabberd/conversejs-9.0.0/package/dist\""]},
+             "    conversejs_resources: \"/home/ejabberd/conversejs-x.y.z/package/dist\"",
+             "    conversejs_plugins: [\"libsignal-protocol.min.js\"]",
+             "    # File path is: /home/ejabberd/conversejs-x.y.z/package/dist/plugins/libsignal-protocol.min.js"]},
            {?T("Configure some additional options for Converse"),
             ["modules:",
              "  mod_conversejs:",
@@ -308,7 +404,7 @@ mod_doc() ->
             #{value => ?T("auto | WebSocketURL"),
               desc =>
                   ?T("A WebSocket URL to which Converse can connect to. "
-                     "The keyword '@HOST@' is replaced with the real virtual "
+                     "The '@HOST@' keyword is replaced with the real virtual "
                      "host name. "
                      "If set to 'auto', it will build the URL of the first "
                      "configured WebSocket request handler. "
@@ -342,6 +438,15 @@ mod_doc() ->
                      "See https://conversejs.org/docs/html/configuration.html[Converse configuration]. "
                      "Only boolean, integer and string values are supported; "
                      "lists are not supported.")}},
+           {conversejs_plugins,
+            #{value => ?T("[Filename]"),
+              desc =>
+                  ?T("List of additional local files to include as scripts in the homepage. "
+                     "Please make sure those files are available in the path specified in "
+                     "'conversejs_resources' option, in subdirectory 'plugins/'. "
+                     "If using the public Converse client, then '\"libsignal\"' "
+                     "gets replaced with the URL of the public library. "
+                     "The default value is '[]'.")}},
            {conversejs_script,
             #{value => ?T("auto | URL"),
               desc =>

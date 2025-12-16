@@ -9,7 +9,7 @@
 
 -define(PUBSUB(Node), <<(?NS_PUBSUB)/binary, "#", Node>>).
 
--define(EJABBERD_CT_URI, <<"http://www.process-one.net/en/ejabberd_ct/">>).
+-define(EJABBERD_CT_URI, <<"https://docs.ejabberd.im/developer/extending-ejabberd/testing/">>).
 
 -define(recv1(P1),
         P1 = (fun() ->
@@ -89,6 +89,8 @@
 -define(send_recv(Send, Recv),
     ?match(Recv, suite:send_recv(Config, Send))).
 
+-define(retry(TIMEOUT, N, FUN), suite:retry(TIMEOUT, N, fun() -> FUN end)).
+
 -define(COMMON_VHOST, <<"localhost">>).
 -define(MNESIA_VHOST, <<"mnesia.localhost">>).
 -define(REDIS_VHOST, <<"redis.localhost">>).
@@ -101,7 +103,7 @@
 -define(S2S_VHOST, <<"s2s.localhost">>).
 -define(UPLOAD_VHOST, <<"upload.localhost">>).
 
--define(BACKENDS, [mnesia, redis, mysql, mssql, odbc, pgsql, sqlite, ldap, extauth]).
+-define(BACKENDS, [agnostic, mnesia, redis, mysql, mssql, pgsql, sqlite, ldap, extauth]).
 
 insert(Val, N, Tuple) ->
     L = tuple_to_list(Tuple),

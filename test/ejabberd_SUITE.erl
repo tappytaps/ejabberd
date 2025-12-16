@@ -3,7 +3,7 @@
 %%% Created :  2 Jun 2013 by Evgeniy Khramtsov <ekhramtsov@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -60,13 +60,24 @@ init_per_suite(Config) ->
     NewConfig.
 
 start_ejabberd(_) ->
+    TestBeams = case filelib:is_dir("../../test/") of
+       true -> "../../test/";
+       _ -> "../../lib/ejabberd/test/"
+    end,
+    application:set_env(ejabberd, external_beams, TestBeams),
     {ok, _} = application:ensure_all_started(ejabberd, transient).
 
 end_per_suite(_Config) ->
     application:stop(ejabberd).
 
 init_per_group(Group, Config) ->
-    case lists:member(Group, ?BACKENDS) of
+    BackendOfGroup = case Group of
+                         component -> agnostic;
+                         no_db -> agnostic;
+                         s2s -> agnostic;
+                         _ -> Group
+                     end,
+    case lists:member(BackendOfGroup, ?BACKENDS) of
         false ->
             %% Not a backend related group, do default init:
             do_init_per_group(Group, Config);
@@ -77,7 +88,7 @@ init_per_group(Group, Config) ->
                     do_init_per_group(Group, Config);
                 Backends ->
                     %% Skipped backends that were not explicitly enabled
-		    case lists:member(Group, Backends) of
+		    case lists:member(BackendOfGroup, Backends) of
 			true ->
 			    do_init_per_group(Group, Config);
 			false ->
@@ -100,6 +111,7 @@ do_init_per_group(mysql, Config) ->
         {selected, _, _} ->
             mod_muc:shutdown_rooms(?MYSQL_VHOST),
             update_sql(?MYSQL_VHOST, Config),
+            stop_temporary_modules(?MYSQL_VHOST),
             set_opt(server, ?MYSQL_VHOST, Config);
         Err ->
             {skip, {mysql_not_available, Err}}
@@ -109,6 +121,7 @@ do_init_per_group(mssql, Config) ->
         {selected, _, _} ->
             mod_muc:shutdown_rooms(?MSSQL_VHOST),
             update_sql(?MSSQL_VHOST, Config),
+            stop_temporary_modules(?MSSQL_VHOST),
             set_opt(server, ?MSSQL_VHOST, Config);
         Err ->
             {skip, {mssql_not_available, Err}}
@@ -118,6 +131,7 @@ do_init_per_group(pgsql, Config) ->
         {selected, _, _} ->
             mod_muc:shutdown_rooms(?PGSQL_VHOST),
             update_sql(?PGSQL_VHOST, Config),
+            stop_temporary_modules(?PGSQL_VHOST),
             set_opt(server, ?PGSQL_VHOST, Config);
         Err ->
             {skip, {pgsql_not_available, Err}}
@@ -160,6 +174,10 @@ do_init_per_group(GroupName, Config) ->
 	anonymous -> set_opt(anonymous, true, NewConfig);
 	_ -> NewConfig
     end.
+
+stop_temporary_modules(Host) ->
+    Modules = [mod_shared_roster],
+    [gen_mod:stop_module(Host, M) || M <- Modules].
 
 end_per_group(mnesia, _Config) ->
     ok;
@@ -327,6 +345,10 @@ init_per_testcase(TestCase, OrigConfig) ->
             bind(auth(connect(Config)));
 	"replaced" ++ _ ->
 	    auth(connect(Config));
+        "antispam" ++ _ ->
+            Password = ?config(password, Config),
+            ejabberd_auth:try_register(User, Server, Password),
+            open_session(bind(auth(connect(Config))));
         _ when IsMaster or IsSlave ->
             Password = ?config(password, Config),
             ejabberd_auth:try_register(User, Server, Password),
@@ -391,6 +413,7 @@ no_db_tests() ->
      auth_external_wrong_server,
      auth_external_invalid_cert,
      commands_tests:single_cases(),
+     configtest_tests:single_cases(),
      jidprep_tests:single_cases(),
      sm_tests:single_cases(),
      sm_tests:master_slave_cases(),
@@ -412,6 +435,7 @@ db_tests(DB) when DB == mnesia; DB == redis ->
        auth_md5,
        presence_broadcast,
        last,
+       antispam_tests:single_cases(),
        webadmin_tests:single_cases(),
        roster_tests:single_cases(),
        private_tests:single_cases(),
@@ -423,6 +447,7 @@ db_tests(DB) when DB == mnesia; DB == redis ->
        mam_tests:single_cases(),
        csi_tests:single_cases(),
        push_tests:single_cases(),
+       test_pass_change,
        test_unregister]},
      muc_tests:master_slave_cases(),
      privacy_tests:master_slave_cases(),
@@ -452,6 +477,7 @@ db_tests(DB) ->
        offline_tests:single_cases(),
        mam_tests:single_cases(),
        push_tests:single_cases(),
+       test_pass_change,
        test_unregister]},
      muc_tests:master_slave_cases(),
      privacy_tests:master_slave_cases(),
@@ -669,6 +695,25 @@ register(Config) ->
               sub_els = [#register{username = ?config(user, Config),
                                    password = ?config(password, Config)}]}),
     Config.
+
+test_pass_change(Config) ->
+    case ?config(register, Config) of
+	true ->
+	    #iq{type = result, sub_els = []} =
+		send_recv(
+		    Config,
+		    #iq{type = set,
+			sub_els = [#register{username = ?config(user, Config),
+					     password = ?config(password, Config)}]}),
+	    #iq{type = result, sub_els = []} =
+		send_recv(
+		    Config,
+		    #iq{type = set,
+			sub_els = [#register{username = str:to_upper(?config(user, Config)),
+					     password = ?config(password, Config)}]});
+	_ ->
+	    {skipped, 'registration_not_available'}
+    end.
 
 test_unregister(Config) ->
     case ?config(register, Config) of
@@ -922,8 +967,6 @@ presence_broadcast(Config) ->
 	     sub_els = [#disco_info{node = Node}]} = recv_iq(Config),
     #message{type = chat,
              subject = [#text{lang = <<"en">>,data = <<"Welcome!">>}]} = recv_message(Config),
-    #message{type = normal,
-             subject = [#text{lang = <<"en">>,data = <<"Welcome!">>}]} = recv_message(Config),
     #presence{from = JID, to = JID} = recv_presence(Config),
     send(Config, #iq{type = result, id = IQ#iq.id,
 		     to = JID, sub_els = [Info]}),
@@ -1052,7 +1095,7 @@ update_sql(Host, Config) ->
     end.
 
 schema_suffix(Config) ->
-    case ejabberd_sql:use_new_schema() of
+    case ejabberd_sql:use_multihost_schema() of
         true ->
             case ?config(update_sql, Config) of
                 true ->  ".sql";
@@ -1094,7 +1137,17 @@ clear_table_queries(Queries) ->
       fun(Query, Acc) ->
               case split(str:to_lower(Query)) of
                   [<<"create">>, <<"table">>, Table|_] ->
-                      [<<"DELETE FROM ", Table/binary, ";">>|Acc];
+                      GlobalRamTables = [<<"bosh">>,
+                                         <<"oauth_client">>,
+                                         <<"oauth_token">>,
+                                         <<"proxy65">>,
+                                         <<"route">>],
+                      case lists:member(Table, GlobalRamTables) of
+                          true ->
+                              Acc;
+                          false ->
+                              [<<"DELETE FROM ", Table/binary, ";">>|Acc]
+                      end;
                   _ ->
                       Acc
               end

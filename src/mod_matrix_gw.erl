@@ -5,7 +5,7 @@
 %%% Created : 23 Apr 2022 by Alexey Shchepin <alexey@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -24,7 +24,7 @@
 %%%----------------------------------------------------------------------
 
 -module(mod_matrix_gw).
--ifndef(OTP_BELOW_24).
+-ifndef(OTP_BELOW_25).
 
 -author('alexey@process-one.net').
 
@@ -41,11 +41,14 @@
 	 handle_info/2, terminate/2, code_change/3,
          depends/2, mod_opt_type/1, mod_options/1, mod_doc/0]).
 -export([parse_auth/1, encode_canonical_json/1,
+         is_canonical_json/1,
          get_id_domain_exn/1,
          base64_decode/1, base64_encode/1,
          prune_event/2, get_event_id/2, content_hash/1,
          sign_event/3, sign_pruned_event/2, sign_json/2,
          send_request/8, s2s_out_bounce_packet/2, user_receive_packet/1,
+	 process_disco_info/1,
+	 process_disco_items/1,
          route/1]).
 
 -include_lib("xmpp/include/xmpp.hrl").
@@ -56,6 +59,11 @@
 -include("mod_matrix_gw.hrl").
 
 -define(MAX_REQUEST_SIZE, 1000000).
+
+-define(CORS_HEADERS,
+        [{<<"Access-Control-Allow-Origin">>, <<"*">>},
+         {<<"Access-Control-Allow-Methods">>, <<"GET, POST, PUT, DELETE, OPTIONS">>},
+         {<<"Access-Control-Allow-Headers">>, <<"X-Requested-With, Content-Type, Authorization">>}]).
 
 process([<<"key">>, <<"v2">>, <<"server">> | _],
         #request{method = 'GET', host = _Host} = _Request) ->
@@ -137,25 +145,35 @@ process([<<"federation">>, <<"v2">>, <<"invite">>, RoomID, EventID],
         #request{method = 'PUT', host = _Host} = Request) ->
     case preprocess_federation_request(Request) of
         {ok, #{<<"event">> := #{%<<"origin">> := Origin,
+                                <<"content">> := Content,
                                 <<"room_id">> := RoomID,
                                 <<"sender">> := Sender,
                                 <<"state_key">> := UserID} = Event,
-               <<"room_version">> := RoomVer},
+               <<"room_version">> := RoomVer} = JSON,
          Origin} ->
             case mod_matrix_gw_room:binary_to_room_version(RoomVer) of
                 #room_version{} = RoomVersion ->
                     %% TODO: check type and userid
                     Host = ejabberd_config:get_myname(),
                     PrunedEvent = prune_event(Event, RoomVersion),
-                    ?DEBUG("invite ~p~n", [{RoomID, EventID, Event, RoomVer, catch mod_matrix_gw_s2s:check_signature(Host, PrunedEvent), get_pruned_event_id(PrunedEvent)}]),
-                    case mod_matrix_gw_s2s:check_signature(Host, PrunedEvent) of
+                    %?DEBUG("invite ~p~n", [{RoomID, EventID, Event, RoomVer, catch mod_matrix_gw_s2s:check_signature(Host, PrunedEvent, RoomVersion), get_pruned_event_id(PrunedEvent)}]),
+                    case mod_matrix_gw_s2s:check_signature(Host, PrunedEvent, RoomVersion) of
                         true ->
                             case get_pruned_event_id(PrunedEvent) of
                                 EventID ->
                                     SEvent = sign_pruned_event(Host, PrunedEvent),
                                     ?DEBUG("sign event ~p~n", [SEvent]),
                                     ResJSON = #{<<"event">> => SEvent},
-                                    mod_matrix_gw_room:join(Host, Origin, RoomID, Sender, UserID),
+                                    case Content of
+                                        #{<<"is_direct">> := true} ->
+                                            mod_matrix_gw_room:join_direct(Host, Origin, RoomID, Sender, UserID);
+                                        _ ->
+                                            IRS = case JSON of
+                                                      #{<<"invite_room_state">> := IRS1} -> IRS1;
+                                                      _ -> []
+                                                  end,
+                                            mod_matrix_gw_room:send_muc_invite(Host, Origin, RoomID, Sender, UserID, Event, IRS)
+                                    end,
                                     ?DEBUG("res ~s~n", [misc:json_encode(ResJSON)]),
                                     {200, [{<<"Content-Type">>, <<"application/json;charset=UTF-8">>}], misc:json_encode(ResJSON)};
                                 _ ->
@@ -386,8 +404,15 @@ process([<<"federation">>, <<"v2">>, <<"send_join">>, RoomID, EventID],
         {result, HTTPResult} ->
             HTTPResult
     end;
-process(_Path, _Request) ->
-    ?DEBUG("matrix 404: ~p~n~p~n", [_Path, _Request]),
+%process([<<"client">> | ClientPath], Request) ->
+%    {HTTPCode, Headers, JSON} = mod_matrix_gw_c2s:process(ClientPath, Request),
+%    ?DEBUG("resp ~p~n", [JSON]),
+%    {HTTPCode,
+%     [{<<"Content-Type">>, <<"application/json;charset=UTF-8">>} |
+%      ?CORS_HEADERS] ++ Headers,
+%     jiffy:encode(JSON)};
+process(Path, Request) ->
+    ?DEBUG("matrix 404: ~p~n~p~n", [Path, Request]),
     ejabberd_web:error(not_found).
 
 preprocess_federation_request(Request) ->
@@ -494,9 +519,14 @@ init([Host]) ->
     process_flag(trap_exit, true),
     mod_matrix_gw_s2s:create_db(),
     mod_matrix_gw_room:create_db(),
+    %mod_matrix_gw_c2s:create_db(),
     Opts = gen_mod:get_module_opts(Host, ?MODULE),
     MyHost = gen_mod:get_opt(host, Opts),
     register_routes(Host, [MyHost]),
+    gen_iq_handler:add_iq_handler(ejabberd_local, MyHost, ?NS_DISCO_INFO,
+                                  ?MODULE, process_disco_info),
+    gen_iq_handler:add_iq_handler(ejabberd_local, MyHost, ?NS_DISCO_ITEMS,
+                                  ?MODULE, process_disco_items),
     {ok, #state{server_host = Host, host = MyHost}}.
 
 -spec handle_call(term(), {pid(), term()}, state()) ->
@@ -517,7 +547,9 @@ handle_info(Info, State) ->
 
 -spec terminate(term(), state()) -> any().
 terminate(_Reason, #state{host = Host}) ->
-    unregister_routes([Host]).
+    unregister_routes([Host]),
+    gen_iq_handler:remove_iq_handler(ejabberd_local, Host, ?NS_DISCO_INFO),
+    gen_iq_handler:remove_iq_handler(ejabberd_local, Host, ?NS_DISCO_ITEMS).
 
 -spec code_change(term(), state(), term()) -> {ok, state()}.
 code_change(_OldVsn, State, _Extra) -> {ok, State}.
@@ -579,28 +611,40 @@ parse_auth4(<<>>, Key, Val, Ts) ->
 
 prune_event(#{<<"type">> := Type, <<"content">> := Content} = Event,
             RoomVersion) ->
-    Event2 =
+    Keys =
         case RoomVersion#room_version.updated_redaction_rules of
             false ->
-                maps:with(
-                  [<<"event_id">>, <<"type">>, <<"room_id">>, <<"sender">>,
-                   <<"state_key">>, <<"content">>, <<"hashes">>,
-                   <<"signatures">>, <<"depth">>, <<"prev_events">>,
-                   <<"prev_state">>, <<"auth_events">>, <<"origin">>,
-                   <<"origin_server_ts">>, <<"membership">>], Event);
+                [<<"event_id">>, <<"type">>, <<"room_id">>, <<"sender">>,
+                 <<"state_key">>, <<"content">>, <<"hashes">>,
+                 <<"signatures">>, <<"depth">>, <<"prev_events">>,
+                 <<"prev_state">>, <<"auth_events">>, <<"origin">>,
+                 <<"origin_server_ts">>, <<"membership">>];
             true ->
-                maps:with(
-                  [<<"event_id">>, <<"type">>, <<"room_id">>, <<"sender">>,
-                   <<"state_key">>, <<"content">>, <<"hashes">>,
-                   <<"signatures">>, <<"depth">>, <<"prev_events">>,
-                   <<"auth_events">>, <<"origin_server_ts">>], Event)
+                [<<"event_id">>, <<"type">>, <<"room_id">>, <<"sender">>,
+                 <<"state_key">>, <<"content">>, <<"hashes">>,
+                 <<"signatures">>, <<"depth">>, <<"prev_events">>,
+                 <<"auth_events">>, <<"origin_server_ts">>]
         end,
+    Keys2 =
+        case {RoomVersion#room_version.hydra, Type} of
+            {true, <<"m.room.create">>} ->
+                lists:delete(<<"room_id">>, Keys);
+            _ ->
+                Keys
+        end,
+    Event2 = maps:with(Keys2, Event),
     Content2 =
         case Type of
             <<"m.room.member">> ->
-                C3 = maps:with([<<"membership">>,
-                                <<"join_authorised_via_users_server">>],
-                               Content),
+                C3 =
+                    case RoomVersion#room_version.restricted_join_rule_fix of
+                        true ->
+                            maps:with([<<"membership">>,
+                                       <<"join_authorised_via_users_server">>],
+                                      Content);
+                        false ->
+                            maps:with([<<"membership">>], Content)
+                    end,
                 case RoomVersion#room_version.updated_redaction_rules of
                     false ->
                         C3;
@@ -622,7 +666,12 @@ prune_event(#{<<"type">> := Type, <<"content">> := Content} = Event,
                         Content
                 end;
             <<"m.room.join_rules">> ->
-                maps:with([<<"join_rule">>, <<"allow">>], Content);
+                case RoomVersion#room_version.restricted_join_rule of
+                    false ->
+                        maps:with([<<"join_rule">>], Content);
+                    true ->
+                        maps:with([<<"join_rule">>, <<"allow">>], Content)
+                end;
             <<"m.room.power_levels">> ->
                 case RoomVersion#room_version.updated_redaction_rules of
                     false ->
@@ -646,6 +695,8 @@ prune_event(#{<<"type">> := Type, <<"content">> := Content} = Event,
                     true ->
                         maps:with([<<"redacts">>], Content)
                 end;
+            <<"m.room.aliases">> when RoomVersion#room_version.special_case_aliases_auth ->
+                maps:with([<<"aliases">>], Content);
             _ -> #{}
         end,
     Event2#{<<"content">> := Content2}.
@@ -673,7 +724,7 @@ get_pruned_event_id(PrunedEvent) ->
 
 encode_canonical_json(JSON) ->
     JSON2 = sort_json(JSON),
-    misc:json_encode_with_kv_lists(JSON2).
+    misc:json_encode(JSON2).
 
 sort_json(#{} = Map) ->
     Map2 = maps:map(fun(_K, V) ->
@@ -684,6 +735,29 @@ sort_json(List) when is_list(List) ->
     lists:map(fun sort_json/1, List);
 sort_json(JSON) ->
     JSON.
+
+is_canonical_json(N) when is_integer(N),
+                          -16#1FFFFFFFFFFFFF =< N,
+                          N =< 16#1FFFFFFFFFFFFF ->
+    true;
+is_canonical_json(B) when is_binary(B) ->
+    true;
+is_canonical_json(B) when is_boolean(B) ->
+    true;
+is_canonical_json(null) ->
+    true;
+is_canonical_json(Map) when is_map(Map) ->
+    maps:fold(
+      fun(_K, V, true) ->
+              is_canonical_json(V);
+         (_K, _V, false) ->
+              false
+      end, true, Map);
+is_canonical_json(List) when is_list(List) ->
+    lists:all(fun is_canonical_json/1, List);
+is_canonical_json(_) ->
+    false.
+
 
 base64_decode(B) ->
     Fixed =
@@ -780,10 +854,14 @@ send_request(Host, Method, MatrixServer, Path, Query, JSON,
             _ ->
                 {URL, Headers, "application/json;charset=UTF-8", Content}
         end,
-    httpc:request(Method,
-                  Request,
-                  HTTPOptions,
-                  Options).
+    ?DEBUG("httpc request ~p", [{Method, Request, HTTPOptions, Options}]),
+    HTTPRes =
+        httpc:request(Method,
+                      Request,
+                      HTTPOptions,
+                      Options),
+    ?DEBUG("httpc request res ~p", [HTTPRes]),
+    HTTPRes.
 
 make_auth_header(Host, MatrixServer, Method, URI, Content) ->
     Origin = mod_matrix_gw_opt:matrix_domain(Host),
@@ -850,8 +928,45 @@ user_receive_packet({Pkt, C2SState} = Acc) ->
             end
     end.
 
+-spec route(stanza()) -> ok.
+route(#iq{to = #jid{luser = <<"">>, lresource = <<"">>}} = IQ) ->
+    ejabberd_router:process_iq(IQ);
 route(Pkt) ->
     mod_matrix_gw_room:route(Pkt).
+
+-spec process_disco_info(iq()) -> iq().
+process_disco_info(#iq{type = set, lang = Lang} = IQ) ->
+    Txt = ?T("Value 'set' of 'type' attribute is not allowed"),
+    xmpp:make_error(IQ, xmpp:err_not_allowed(Txt, Lang));
+process_disco_info(#iq{type = get,
+		       sub_els = [#disco_info{node = <<"">>}]} = IQ) ->
+    Features = [?NS_DISCO_INFO, ?NS_DISCO_ITEMS, ?NS_MUC],
+    Identity = #identity{category = <<"gateway">>,
+			 type = <<"matrix">>},
+    xmpp:make_iq_result(
+      IQ, #disco_info{features = Features,
+		      identities = [Identity]});
+process_disco_info(#iq{type = get, lang = Lang,
+		       sub_els = [#disco_info{}]} = IQ) ->
+    xmpp:make_error(IQ, xmpp:err_item_not_found(?T("Node not found"), Lang));
+process_disco_info(#iq{lang = Lang} = IQ) ->
+    Txt = ?T("No module is handling this query"),
+    xmpp:make_error(IQ, xmpp:err_service_unavailable(Txt, Lang)).
+
+-spec process_disco_items(iq()) -> iq().
+process_disco_items(#iq{type = set, lang = Lang} = IQ) ->
+    Txt = ?T("Value 'set' of 'type' attribute is not allowed"),
+    xmpp:make_error(IQ, xmpp:err_not_allowed(Txt, Lang));
+process_disco_items(#iq{type = get,
+			sub_els = [#disco_items{node = <<>>}]} = IQ) ->
+    xmpp:make_iq_result(IQ, #disco_items{});
+process_disco_items(#iq{type = get, lang = Lang,
+                        sub_els = [#disco_items{}]} = IQ) ->
+    xmpp:make_error(IQ, xmpp:err_item_not_found(?T("Node not found"), Lang));
+process_disco_items(#iq{lang = Lang} = IQ) ->
+    Txt = ?T("No module is handling this query"),
+    xmpp:make_error(IQ, xmpp:err_service_unavailable(Txt, Lang)).
+
 
 depends(_Host, _Opts) ->
     [].
@@ -870,8 +985,13 @@ mod_opt_type(key) ->
     end;
 mod_opt_type(matrix_id_as_jid) ->
     econf:bool();
-mod_opt_type(persist) ->
-    econf:bool().
+mod_opt_type(notary_servers) ->
+    econf:list(econf:host());
+mod_opt_type(leave_timeout) ->
+    econf:non_neg_int().
+
+-spec mod_options(binary()) -> [{key, {binary(), binary()}} |
+                                {atom(), any()}].
 
 mod_options(Host) ->
     [{matrix_domain, Host},
@@ -879,12 +999,18 @@ mod_options(Host) ->
      {key_name, <<"">>},
      {key, {<<"">>, <<"">>}},
      {matrix_id_as_jid, false},
-     {persist, false}].
+     {notary_servers, []},
+     {leave_timeout, 0}].
 
 mod_doc() ->
     #{desc =>
-          [?T("https://matrix.org/[Matrix] gateway.")],
-      note => "added in 24.02",
+          [?T("https://matrix.org/[Matrix] gateway. "),
+           ?T("Supports room versions 9, 10 and 11 since ejabberd 25.03; "
+              "room versions 4 and higher since ejabberd 25.07; "
+              "room version 12 (hydra rooms) since ejabberd 25.08. "),
+           ?T("Erlang/OTP 25 or higher is required to use this module."),
+           ?T("This module is available since ejabberd 24.02.")],
+      note => "improved in 25.08",
       example =>
 	  ["listen:",
 	   "  -",
@@ -933,7 +1059,15 @@ mod_doc() ->
 		     "Matrix user '@user:matrixdomain.tld', the client must send a message "
 		     "to the JID 'user%matrixdomain.tld@matrix.myxmppdomain.tld', where "
 		     "'matrix.myxmppdomain.tld' is the JID of the gateway service as set by the "
-		     "'host' option. The default is 'false'.")}}
+		     "'host' option. The default is 'false'.")}},
+	   {notary_servers,
+            #{value => "[Server, ...]",
+              desc =>
+                  ?T("A list of notary servers.")}},
+	   {leave_timeout,
+            #{value => "integer()",
+              desc =>
+                  ?T("Delay in seconds between a user leaving a MUC room and sending 'leave' Matrix event.")}}
           ]
      }.
 -endif.

@@ -5,7 +5,7 @@
 %%% Created : 14 Dec 2002 by Alexey Shchepin <alexey@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -38,6 +38,8 @@
 -export([dump/0, dump/1, convert_to_yaml/1, convert_to_yaml/2]).
 -export([callback_modules/1]).
 -export([set_option/2]).
+-export([get_defined_keywords/1, get_predefined_keywords/1, replace_keywords/2, replace_keywords/3]).
+-export([resolve_host_alias/1]).
 
 %% Deprecated functions
 -export([get_option/2]).
@@ -50,7 +52,7 @@
 	     {get_lang, 1}]).
 
 -include("logger.hrl").
--include("ejabberd_stacktrace.hrl").
+
 
 -type option() :: atom() | {atom(), global | binary()}.
 -type error_reason() :: {merge_conflict, atom(), binary()} |
@@ -67,6 +69,10 @@
 -callback doc() -> any().
 
 -optional_callbacks([globals/0]).
+
+-ifndef(OTP_BELOW_28).
+-dialyzer([no_opaque_union]).
+-endif.
 
 %%%===================================================================
 %%% API
@@ -163,14 +169,14 @@ get_option({O, Host} = Opt) ->
 	      T -> T
 	  end,
     try ets:lookup_element(Tab, Opt, 2)
-    catch ?EX_RULE(error, badarg, St) when Host /= global ->
-	    StackTrace = ?EX_STACK(St),
-	    Val = get_option({O, global}),
-	    ?DEBUG("Option '~ts' is not defined for virtual host '~ts'. "
-		   "This is a bug, please report it with the following "
-		   "stacktrace included:~n** ~ts",
-		   [O, Host, misc:format_exception(2, error, badarg, StackTrace)]),
-	    Val
+    catch
+        error:badarg:StackTrace when Host /= global ->
+            Val = get_option({O, global}),
+            ?DEBUG("Option '~ts' is not defined for virtual host '~ts'. "
+                   "This is a bug, please report it with the following "
+                   "stacktrace included:~n** ~ts",
+                   [O, Host, misc:format_exception(2, error, badarg, StackTrace)]),
+            Val
     end.
 
 -spec set_option(option(), term()) -> ok.
@@ -206,7 +212,7 @@ get_lang(Host) ->
 
 -spec get_uri() -> binary().
 get_uri() ->
-    <<"http://www.process-one.net/en/ejabberd/">>.
+    <<"https://www.process-one.net/ejabberd/">>.
 
 -spec get_copyright() -> binary().
 get_copyright() ->
@@ -258,30 +264,31 @@ version() ->
 
 -spec default_db(binary() | global, module()) -> atom().
 default_db(Host, Module) ->
-    default_db(default_db, Host, Module, mnesia).
+    default_db(default_db, db_type, Host, Module, mnesia).
 
 -spec default_db(binary() | global, module(), atom()) -> atom().
 default_db(Host, Module, Default) ->
-    default_db(default_db, Host, Module, Default).
+    default_db(default_db, db_type, Host, Module, Default).
 
 -spec default_ram_db(binary() | global, module()) -> atom().
 default_ram_db(Host, Module) ->
-    default_db(default_ram_db, Host, Module, mnesia).
+    default_db(default_ram_db, ram_db_type, Host, Module, mnesia).
 
 -spec default_ram_db(binary() | global, module(), atom()) -> atom().
 default_ram_db(Host, Module, Default) ->
-    default_db(default_ram_db, Host, Module, Default).
+    default_db(default_ram_db, ram_db_type, Host, Module, Default).
 
--spec default_db(default_db | default_ram_db, binary() | global, module(), atom()) -> atom().
-default_db(Opt, Host, Mod, Default) ->
+-spec default_db(default_db | default_ram_db, db_type | ram_db_type, binary() | global, module(), atom()) -> atom().
+default_db(Opt, ModOpt, Host, Mod, Default) ->
     Type = get_option({Opt, Host}),
     DBMod = list_to_atom(atom_to_list(Mod) ++ "_" ++ atom_to_list(Type)),
     case code:ensure_loaded(DBMod) of
 	{module, _} -> Type;
 	{error, _} ->
 	    ?WARNING_MSG("Module ~ts doesn't support database '~ts' "
-			 "defined in option '~ts', using "
-			 "'~ts' as fallback", [Mod, Type, Opt, Default]),
+			 "defined in toplevel option '~ts': will use the value "
+                         "set in ~ts option '~ts', or '~ts' as fallback",
+                         [Mod, Type, Opt, Mod, ModOpt, Default]),
 	    Default
     end.
 
@@ -300,14 +307,21 @@ beams(external) ->
               end
       end, ExtMods),
     case application:get_env(ejabberd, external_beams) of
-        {ok, Path} ->
-            case lists:member(Path, code:get_path()) of
-                true -> ok;
-                false -> code:add_patha(Path)
-            end,
-            Beams = filelib:wildcard(filename:join(Path, "*\.beam")),
-            CustMods = [list_to_atom(filename:rootname(filename:basename(Beam)))
-                        || Beam <- Beams],
+        {ok, Path0} ->
+	    Paths = case Path0 of
+		[L|_] = V when is_list(L) -> V;
+		L -> [L]
+	    end,
+	    CustMods = lists:foldl(
+		fun(Path, CM) ->
+		    case lists:member(Path, code:get_path()) of
+			true -> ok;
+			false -> code:add_patha(Path)
+		    end,
+		    Beams = filelib:wildcard(filename:join(Path, "*\.beam")),
+		    CM ++ [list_to_atom(filename:rootname(filename:basename(Beam)))
+			   || Beam <- Beams]
+		end, [], Paths),
             CustMods ++ ExtMods;
         _ ->
             ExtMods
@@ -328,7 +342,12 @@ may_hide_data(Data) ->
 -spec env_binary_to_list(atom(), atom()) -> {ok, any()} | undefined.
 env_binary_to_list(Application, Parameter) ->
     %% Application need to be loaded to allow setting parameters
-    application:load(Application),
+    case proplists:is_defined(Application, application:loaded_applications()) of
+        true ->
+            ok;
+        false ->
+            application:load(Application)
+    end,
     case application:get_env(Application, Parameter) of
         {ok, Val} when is_binary(Val) ->
             BVal = binary_to_list(Val),
@@ -338,12 +357,20 @@ env_binary_to_list(Application, Parameter) ->
             Other
     end.
 
+%% ejabberd_options calls this function when parsing options inside host_config
 -spec validators([atom()]) -> {econf:validators(), [atom()]}.
 validators(Disallowed) ->
+    Host = global,
+    DefinedKeywords = get_defined_keywords(Host),
+    validators(Disallowed, DefinedKeywords).
+
+%% validate/1 calls this function when parsing toplevel options
+-spec validators([atom()], [any()]) -> {econf:validators(), [atom()]}.
+validators(Disallowed, DK) ->
     Modules = callback_modules(all),
     Validators = lists:foldl(
 		   fun(M, Vs) ->
-			   maps:merge(Vs, validators(M, Disallowed))
+			   maps:merge(Vs, validators(M, Disallowed, DK))
 		   end, #{}, Modules),
     Required = lists:flatmap(
 		 fun(M) ->
@@ -399,6 +426,145 @@ format_error({error, {exception, Class, Reason, St}}) ->
 	"code, please report the bug with ejabberd configuration "
 	"file attached and the following stacktrace included:~n** ~ts",
 	[misc:format_exception(2, Class, Reason, St)])).
+
+%% @format-begin
+
+replace_keywords(Host, Value) ->
+    Keywords = get_defined_keywords(Host) ++ get_predefined_keywords(Host),
+    replace_keywords(Host, Value, Keywords).
+
+replace_keywords(Host, List, Keywords) when is_list(List) ->
+    [replace_keywords(Host, Element, Keywords) || Element <- List];
+replace_keywords(Host, Atom, Keywords) when is_atom(Atom) ->
+    Str = atom_to_list(Atom),
+    Bin = iolist_to_binary(Str),
+    case Str == string:uppercase(Str) of
+        false ->
+            BinaryReplaced = replace_keywords(Host, Bin, Keywords),
+            binary_to_atom(BinaryReplaced, utf8);
+        true ->
+            case proplists:get_value(Bin, Keywords) of
+                undefined ->
+                    Atom;
+                Replacement ->
+                    Replacement
+            end
+    end;
+replace_keywords(_Host, Binary, Keywords) when is_binary(Binary) ->
+    lists:foldl(fun ({Key, Replacement}, V) when is_binary(Replacement) ->
+                        misc:expand_keyword(<<"@", Key/binary, "@">>, V, Replacement);
+                    ({_, _}, V) ->
+                        V
+                end,
+                Binary,
+                Keywords);
+replace_keywords(Host, {Element1, Element2}, Keywords) ->
+    {Element1, replace_keywords(Host, Element2, Keywords)};
+replace_keywords(_Host, Value, _DK) ->
+    Value.
+
+get_defined_keywords(Host) ->
+    Tab = case get_tmp_config() of
+              undefined ->
+                  ejabberd_options;
+              T ->
+                  T
+          end,
+    get_defined_keywords(Tab, Host).
+
+get_defined_keywords(Tab, Host) ->
+    KeysHost =
+        case ets:lookup(Tab, {define_keyword, Host}) of
+            [{_, List}] ->
+                List;
+            _ ->
+                []
+        end,
+    KeysGlobal =
+        case Host /= global andalso ets:lookup(Tab, {define_keyword, global}) of
+            [{_, ListG}] ->
+                ListG;
+            _ ->
+                []
+        end,
+    %% Trying to get defined keywords in host_config when starting ejabberd,
+    %% the options are not yet stored in ets
+    KeysTemp =
+        case not is_atom(Tab) andalso KeysHost == [] andalso KeysGlobal == [] of
+            true ->
+                get_defined_keywords_yaml_config(ets:lookup_element(Tab, {yaml_config, global}, 2));
+            false ->
+                []
+        end,
+    lists:reverse(KeysTemp ++ KeysGlobal ++ KeysHost).
+
+get_defined_keywords_yaml_config(Y) ->
+    [{erlang:atom_to_binary(KwAtom, latin1), KwValue}
+     || {KwAtom, KwValue} <- proplists:get_value(define_keyword, Y, [])].
+
+get_predefined_keywords(Host) ->
+    HostList =
+        case Host of
+            global ->
+                [];
+            _ ->
+                [{<<"HOST">>, Host}, {<<"HOST_URL_ENCODE">>, misc:url_encode(Host)}]
+        end,
+    Home = misc:get_home(),
+    ConfigDirPath =
+        iolist_to_binary(filename:dirname(
+                             ejabberd_config:path())),
+    LogDirPath =
+        iolist_to_binary(filename:dirname(
+                             ejabberd_logger:get_log_path())),
+    HostList
+    ++ [{<<"HOME">>, list_to_binary(Home)},
+        {<<"CONFIG_PATH">>, ConfigDirPath},
+        {<<"LOG_PATH">>, LogDirPath},
+        {<<"SEMVER">>, ejabberd_option:version()},
+        {<<"VERSION">>,
+         misc:semver_to_xxyy(
+             ejabberd_option:version())}].
+
+resolve_host_alias(Host) ->
+    case lists:member(Host, ejabberd_option:hosts()) of
+        true ->
+            Host;
+        false ->
+            resolve_host_alias2(Host)
+    end.
+
+resolve_host_alias2(Host) ->
+    Result =
+        lists:filter(fun({Alias1, _Vhost}) -> is_glob_match(Host, Alias1) end,
+                     ejabberd_option:hosts_alias()),
+    case Result of
+        [{_, Vhost} | _] when is_binary(Vhost) ->
+            ?DEBUG("(~p) Alias host '~s' resolved into vhost '~s'", [self(), Host, Vhost]),
+            Vhost;
+        [] ->
+            ?DEBUG("(~p) Request sent to host '~s', which isn't a vhost or an alias",
+                   [self(), Host]),
+            Host
+    end.
+
+%% Copied from ejabberd-2.0.0/src/acl.erl
+is_regexp_match(String, RegExp) ->
+    case ejabberd_regexp:run(String, RegExp) of
+        nomatch ->
+            false;
+        match ->
+            true;
+        {error, ErrDesc} ->
+            io:format("Wrong regexp ~p in ACL: ~p", [RegExp, ErrDesc]),
+            false
+    end.
+
+is_glob_match(String, <<"!", Glob/binary>>) ->
+    not is_regexp_match(String, ejabberd_regexp:sh_to_awk(Glob));
+is_glob_match(String, Glob) ->
+    is_regexp_match(String, ejabberd_regexp:sh_to_awk(Glob)).
+%% @format-end
 
 %%%===================================================================
 %%% Internal functions
@@ -466,21 +632,29 @@ callback_modules(external) ->
 	      end
       end, beams(external));
 callback_modules(all) ->
-    callback_modules(local) ++ callback_modules(external).
+    misc:lists_uniq(callback_modules(local) ++ callback_modules(external)).
 
--spec validators(module(), [atom()]) -> econf:validators().
-validators(Mod, Disallowed) ->
+-spec validators(module(), [atom()], [any()]) -> econf:validators().
+validators(Mod, Disallowed, DK) ->
+    Keywords = DK ++ get_predefined_keywords(global),
     maps:from_list(
       lists:filtermap(
 	fun(O) ->
 		case lists:member(O, Disallowed) of
 		    true -> false;
 		    false ->
-			{true,
-			 try {O, Mod:opt_type(O)}
+			Type =
+			 try Mod:opt_type(O)
 			 catch _:_ ->
-				 {O, ejabberd_options:opt_type(O)}
-			 end}
+				 ejabberd_options:opt_type(O)
+			 end,
+                         TypeProcessed =
+                             econf:and_then(
+                                  fun(B) ->
+                                      replace_keywords(global, B, Keywords)
+                                  end,
+                              Type),
+			{true, {O, TypeProcessed}}
 		end
 	end, proplists:get_keys(Mod:options()))).
 
@@ -516,8 +690,23 @@ read_file(File, Opts) ->
 	    Err
     end.
 
+get_additional_macros() ->
+    MacroStrings = lists:foldl(fun([$E, $J, $A, $B, $B, $E, $R, $D, $_, $M, $A, $C, $R, $O, $_ | MacroString], Acc) ->
+                                        [parse_macro_string(MacroString) | Acc];
+                                   (_, Acc) ->
+                                        Acc
+                                end,
+                                [],
+                                os:getenv()),
+    {additional_macros, MacroStrings}.
+
+parse_macro_string(MacroString) ->
+    [NameString, ValueString] = string:split(MacroString, "="),
+    {ok, [ValueDecoded]} = fast_yaml:decode(ValueString),
+    {list_to_atom(NameString), ValueDecoded}.
+
 read_yaml_files(Files, Opts) ->
-    ParseOpts = [plain_as_atom | lists:flatten(Opts)],
+    ParseOpts = [plain_as_atom, get_additional_macros() | lists:flatten(Opts)],
     lists:foldl(
       fun(File, {ok, Y1}) ->
 	      case econf:parse(File, #{'_' => econf:any()}, ParseOpts) of
@@ -558,12 +747,13 @@ validate(Y1) ->
 		{ok, Y3} ->
 		    Hosts = proplists:get_value(hosts, Y3),
 		    Version = proplists:get_value(version, Y3, version()),
+		    DK = get_defined_keywords_yaml_config(Y3),
 		    create_tmp_config(),
 		    set_option(hosts, Hosts),
 		    set_option(host, hd(Hosts)),
 		    set_option(version, Version),
 		    set_option(yaml_config, Y3),
-		    {Validators, Required} = validators([]),
+		    {Validators, Required} = validators([], DK),
 		    Validator = econf:options(Validators,
 					      [{required, Required},
 					       unique]),
@@ -612,8 +802,9 @@ load_file(File) ->
 	    Err ->
 		abort(Err)
 	end
-    catch ?EX_RULE(Class, Reason, St) ->
-	    {error, {exception, Class, Reason, ?EX_STACK(St)}}
+    catch
+        Class:Reason:Stack ->
+            {error, {exception, Class, Reason, Stack}}
     end.
 
 -spec commit() -> ok.

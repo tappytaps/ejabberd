@@ -5,7 +5,7 @@
 %%% Created : 27 Nov 2002 by Alexey Shchepin <alexey@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2024   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -70,7 +70,8 @@
 -include("logger.hrl").
 -include("ejabberd_router.hrl").
 -include_lib("xmpp/include/xmpp.hrl").
--include("ejabberd_stacktrace.hrl").
+
+
 
 -callback init() -> any().
 -callback register_route(binary(), binary(), local_hint(),
@@ -90,11 +91,11 @@ start_link() ->
 -spec route(stanza()) -> ok.
 route(Packet) ->
     try do_route(Packet)
-    catch ?EX_RULE(Class, Reason, St) ->
-	    StackTrace = ?EX_STACK(St),
-	    ?ERROR_MSG("Failed to route packet:~n~ts~n** ~ts",
-		       [xmpp:pp(Packet),
-			misc:format_exception(2, Class, Reason, StackTrace)])
+    catch
+        Class:Reason:StackTrace ->
+            ?ERROR_MSG("Failed to route packet:~n~ts~n** ~ts",
+                       [xmpp:pp(Packet),
+                        misc:format_exception(2, Class, Reason, StackTrace)])
     end.
 
 -spec route(jid(), jid(), xmlel() | stanza()) -> ok.
@@ -380,8 +381,9 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%--------------------------------------------------------------------
 -spec do_route(stanza()) -> ok.
-do_route(OrigPacket) ->
-    ?DEBUG("Route:~n~ts", [xmpp:pp(OrigPacket)]),
+do_route(OrigPacket1) ->
+    ?DEBUG("Route:~n~ts", [xmpp:pp(OrigPacket1)]),
+    OrigPacket = process_privilege_iq(OrigPacket1),
     case ejabberd_hooks:run_fold(filter_packet, OrigPacket, []) of
 	drop ->
 	    ok;
@@ -404,6 +406,22 @@ do_route(OrigPacket) ->
 		    ok
 	    end
     end.
+
+%% @format-begin
+process_privilege_iq(Packet) ->
+    Type = xmpp:get_type(Packet),
+    case xmpp:get_meta(Packet, privilege_iq, none) of
+        {OriginalId, OriginalHost, ReplacedJid} when (Type == result) or (Type == error) ->
+            Privilege = #privilege{forwarded = #forwarded{sub_els = [Packet]}},
+            #iq{type = xmpp:get_type(Packet),
+                id = OriginalId,
+                to = jid:make(OriginalHost),
+                from = ReplacedJid,
+                sub_els = [Privilege]};
+        _ ->
+            Packet
+    end.
+%% @format-end
 
 -spec do_route(stanza(), #route{}) -> any().
 do_route(Pkt, #route{local_hint = LocalHint,

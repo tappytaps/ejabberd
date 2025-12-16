@@ -9,19 +9,19 @@
 {"A description of the node","Una descrizione del nodo"}.
 {"A friendly name for the node","Un nome comodo per il nodo"}.
 {"A password is required to enter this room","Per entrare in questa stanza è necessaria una password"}.
-{"A Web Page","Un Pagina Web"}.
+{"A Web Page","Una pagina web"}.
 {"Accept","Accettare"}.
-{"Access denied by service policy","Accesso impedito dalle politiche del servizio"}.
+{"Access denied by service policy","Accesso negato dalle politiche del servizio"}.
 {"Access model","Modello di accesso"}.
 {"Account doesn't exist","L'account non esiste"}.
 {"Action on user","Azione sull'utente"}.
 {"Add a hat to a user","Aggiungere un cappello a un utente"}.
-{"Add User","Aggiungere un Utente"}.
+{"Add User","Aggiungere un utente"}.
 {"Administration of ","Amministrazione di "}.
 {"Administration","Amministrazione"}.
 {"Administrator privileges required","Sono richiesti privilegi di amministratore"}.
 {"All activity","Tutta l'attività"}.
-{"All Users","Tutti gli Utenti"}.
+{"All Users","Tutti gli utenti"}.
 {"Allow subscription","Consenti iscrizione"}.
 {"Allow this Jabber ID to subscribe to this pubsub node?","Consentire a questo ID Jabber di iscriversi a questo nodo pubsub?"}.
 {"Allow this person to register with the room?","Permettere a questa persona di registrarsi con la stanza?"}.
@@ -168,6 +168,7 @@
 {"has been kicked because of an affiliation change","è stato espulso a causa di un cambiamento di appartenenza"}.
 {"has been kicked because the room has been changed to members-only","è stato espulso per la limitazione della stanza ai soli membri"}.
 {"has been kicked","è stata/o espulsa/o"}.
+{"Hash of the vCard-temp avatar of this room","Hash dell'avatar vCard-temp di questa stanza"}.
 {"Hat title","Titolo del Cappello"}.
 {"Hat URI","URI Cappello"}.
 {"Hats limit exceeded","Limite di cappelli superato"}.
@@ -536,6 +537,7 @@
 {"Too many unacked stanzas","Troppe stanze non riconosciute"}.
 {"Too many users in this conference","Troppi utenti in questa conferenza"}.
 {"Traffic rate limit is exceeded","Limite di traffico superato"}.
+{"~ts's MAM Archive","Archivio MAM di ~ts"}.
 {"~ts's Offline Messages Queue","La Coda dei Messaggi Offline di ~ts"}.
 {"Tuesday","Martedì"}.
 {"Unable to generate a CAPTCHA","Impossibile generare un CAPTCHA"}.
@@ -552,12 +554,14 @@
 {"Update message of the day on all hosts (don't send)","Aggiornare il messaggio del giorno (MOTD) su tutti gli host (non inviarlo)"}.
 {"Update specs to get modules source, then install desired ones.","Aggiorna le specifiche per ottenere il sorgente dei moduli, quindi installa quelli desiderati."}.
 {"Update Specs","Aggiorna Specifiche"}.
+{"Updating the vCard is not supported by the vCard storage backend","L'aggiornamento della vCard non è supportato dal backend di archiviazione vCard"}.
 {"Upgrade","Aggiornamento"}.
 {"URL for Archived Discussion Logs","URL per i Registri delle Discussioni Archiviati"}.
 {"User already exists","L'utente esiste già"}.
 {"User JID","JID utente"}.
 {"User (jid)","Utente (jid)"}.
 {"User Management","Gestione degli utenti"}.
+{"User not allowed to perform an IQ set on another user's vCard.","L'utente non è autorizzato a eseguire un set IQ sulla vCard di un altro utente."}.
 {"User removed","Utente rimosso"}.
 {"User session not found","Sessione utente non trovata"}.
 {"User session terminated","Sessione utente terminata"}.
