@@ -372,7 +372,7 @@ console_template() ->
         andalso
         'Elixir.System':version() >= <<"1.15">> of
         true ->
-            {ok, DC} = logger:get_handler_config(default),
+            {ok, DC} = logger:get_handler_config(get_default_handlerid()),
             MessageFormat = case maps:get(formatter, DC) of
                 %% https://hexdocs.pm/logger/1.17.2/Logger.Formatter.html#module-formatting
                 {'Elixir.Logger.Formatter', _} ->
