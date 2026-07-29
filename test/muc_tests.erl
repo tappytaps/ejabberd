@@ -3,7 +3,7 @@
 %%% Created : 15 Oct 2016 by Evgeny Khramtsov <ekhramtsov@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2026   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -153,7 +153,7 @@ service_features(Config) ->
     RequiredFeatures = sets:from_list(
 			 [?NS_DISCO_INFO, ?NS_DISCO_ITEMS,
 			  ?NS_REGISTER, ?NS_MUC,
-			  ?NS_VCARD, ?NS_MUCSUB, ?NS_MUC_UNIQUE
+			  ?NS_VCARD, ?NS_MUCSUB, ?NS_MUC_UNIQUE, ?NS_OCCUPANT_ID
 			  | MAMFeatures]),
     ct:comment("Checking if all needed disco features are set"),
     true = sets:is_subset(RequiredFeatures, Features),
@@ -305,8 +305,76 @@ master_slave_cases() ->
       master_slave_test(config_voice_request_interval),
       master_slave_test(config_visitor_nickchange),
       master_slave_test(join_conflict),
-      master_slave_test(duplicate_occupantid)
+      master_slave_test(duplicate_occupantid),
+      master_slave_test(hats)
      ]}.
+
+hats_master(Config) ->
+    Room = muc_room_jid(Config),
+    PeerJID = ?config(slave, Config),
+    PeerNick = ?config(slave_nick, Config),
+    PeerNickJID = jid:replace_resource(Room, PeerNick),
+    ok = master_join(Config),
+    CommandCreate =
+	#adhoc_command{action = complete, node = <<"urn:xmpp:hats:commands:create">>, xdata = #xdata{
+	    type = form, fields = [
+		#xdata_field{var = <<"FORM_TYPE">>, values = [<<"urn:xmpp:hats:commands">>]},
+		#xdata_field{var = <<"hats#title">>, values = [<<"Test">>]},
+		#xdata_field{var = <<"hats#uri">>, values = [<<"https://example.com/Test">>]},
+		#xdata_field{var = <<"hats#hue">>, values = [<<"100">>]}
+	    ]}},
+    #iq{type = result,
+	sub_els =
+	[#adhoc_command{status = completed}]} =
+	send_recv(Config,
+		  #iq{type = set,
+		      to = Room,
+		      sub_els = [CommandCreate]}),
+    [104] = recv_only_config_change_message(Config),
+    put_event(Config, post_hat_setup),
+    post_hat_setup = get_event(Config),
+    CommandAssign =
+	#adhoc_command{action = complete, node = <<"urn:xmpp:hats:commands:assign">>, xdata = #xdata{
+	    type = form, fields = [
+		#xdata_field{var = <<"FORM_TYPE">>, values = [<<"urn:xmpp:hats:commands">>]},
+		#xdata_field{var = <<"hats#jid">>, values = [jid:encode(PeerJID)]},
+		#xdata_field{var = <<"hat">>, values = [<<"https://example.com/Test">>]}
+	    ]}},
+    #iq{type = result,
+	sub_els =
+	[#adhoc_command{status = completed}]} =
+	send_recv(Config,
+		  #iq{type = set,
+		      to = Room,
+		      sub_els = [CommandAssign]}),
+    #presence{from = PeerNickJID} = PresHat = recv_presence(Config),
+    ?match(#muc_hats{hats = [#muc_hat{title = <<"Test">>,
+				      uri = <<"https://example.com/Test">>,
+				      hue = <<"100">>}]},
+	   xmpp:get_subtag(PresHat, #muc_hats{})),
+    put_event(Config, post_hat_assign),
+    post_hat_assign = get_event(Config),
+    recv_muc_presence(Config, PeerNickJID, unavailable),
+    ok = leave(Config),
+    disconnect(Config).
+
+hats_slave(Config) ->
+    Room = muc_room_jid(Config),
+    MyNick = ?config(nick, Config),
+    MyNickJID = jid:replace_resource(Room, MyNick),
+    {[], _, _} = slave_join(Config),
+    [104] = recv_only_config_change_message(Config),
+    post_hat_setup = get_event(Config),
+    put_event(Config, post_hat_setup),
+    #presence{from = MyNickJID} = PresHat = recv_presence(Config),
+    ?match(#muc_hats{hats = [#muc_hat{title = <<"Test">>,
+				      uri = <<"https://example.com/Test">>,
+				      hue = <<"100">>}]},
+	   xmpp:get_subtag(PresHat, #muc_hats{})),
+    post_hat_assign = get_event(Config),
+    put_event(Config, post_hat_assign),
+    ok = leave(Config),
+    disconnect(Config).
 
 duplicate_occupantid_master(Config) ->
     Room = muc_room_jid(Config),
@@ -314,6 +382,7 @@ duplicate_occupantid_master(Config) ->
     PeerNick = ?config(slave_nick, Config),
     PeerNickJID = jid:replace_resource(Room, PeerNick),
     ok = join_new(Config),
+	?match(true, lists:member(?NS_OCCUPANT_ID, get_features(Config, Room))),
     wait_for_slave(Config),
     Pres = ?match(#presence{from = PeerNickJID, type = available} = Pres,
 		  recv_presence(Config), Pres),
@@ -1950,6 +2019,11 @@ recv_config_change_message(Config) ->
     ct:comment("Receiving configuration change notification message"),
     Room = muc_room_jid(Config),
     #presence{from = Room, type = available} = recv_presence(Config),
+    recv_only_config_change_message(Config).
+
+recv_only_config_change_message(Config) ->
+    ct:comment("Receiving configuration change notification message"),
+    Room = muc_room_jid(Config),
     #message{type = groupchat, from = Room} = Msg = recv_message(Config),
     #muc_user{status_codes = Codes} = xmpp:get_subtag(Msg, #muc_user{}),
     lists:sort(Codes).

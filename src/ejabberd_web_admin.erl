@@ -5,7 +5,7 @@
 %%% Created :  9 Apr 2004 by Alexey Shchepin <alexey@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2026   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -32,6 +32,8 @@
 -export([process/2, pretty_print_xml/1,
          make_command/2, make_command/4, make_command_raw_value/3,
          make_table/2, make_table/4,
+         make_menu_system/4, make_menu_system_el/4,
+         nice_this/1,
          term_to_id/1, id_to_term/1]).
 
 %% Internal commands
@@ -304,7 +306,7 @@ make_xhtml(Els, Host, Node, Request, JID, Level) ->
 make_xhtml(Els, Host, Node, Username, #request{lang = Lang} = R, JID, Level) ->
     Base = get_base_path_sum(0, 0, Level),
     MenuItems = make_navigation(Host, Node, Username, Lang, JID, Level)
-    ++ make_login_items(R, Level),
+    ++ make_login_items(R, Level, JID),
     {200, [html],
      #xmlel{name = <<"html">>,
 	    attrs =
@@ -369,7 +371,7 @@ make_xhtml(Els, Host, Node, Username, #request{lang = Lang} = R, JID, Level) ->
 				 [?XE(<<"p">>,
 				  [?AC(<<"https://www.ejabberd.im/">>, <<"ejabberd">>),
 				   ?C(<<" ">>), ?C(ejabberd_option:version()),
-				   ?C(<<" (c) 2002-2025 ">>),
+				   ?C(<<" (c) 2002-2026 ">>),
 				   ?AC(<<"https://www.process-one.net/">>, <<"ProcessOne, leader in messaging and push solutions">>)]
                                  )])])])]}}.
 
@@ -1644,7 +1646,7 @@ any_rules_allowed(Host, Access, Entity) ->
 
 %%% @format-begin
 
-make_login_items(#request{us = {Username, Host}} = R, Level) ->
+make_login_items(#request{us = {Username, Host}} = R, Level, JID) ->
     UserBin =
         jid:encode(
             jid:make(Username, Host, <<"">>)),
@@ -1660,8 +1662,8 @@ make_login_items(#request{us = {Username, Host}} = R, Level) ->
             _ ->
                 UserEl
         end,
-    MenuPost =
-        case ejabberd_hooks:run_fold(webadmin_menu_system_post, [], [R]) of
+    MenuPost1 =
+        case ejabberd_hooks:run_fold(webadmin_menu_system_post, [], [R, Level]) of
             [] ->
                 [];
             PostElements ->
@@ -1669,6 +1671,14 @@ make_login_items(#request{us = {Username, Host}} = R, Level) ->
                   <<"div">>,
                   [{<<"id">>, <<"navitemlogin">>}],
                   [?XE(<<"ul">>, PostElements)]}]
+        end,
+    MenuInside1 = ejabberd_hooks:run_fold(webadmin_menu_system_inside, [], [R, Level]),
+    {MenuInside, MenuPost} =
+        case list_vhosts_allowed(JID) of
+            [] ->
+                {[], []};
+            [_ | _] ->
+                {MenuInside1, MenuPost1}
         end,
     [{xmlel,
       <<"li">>,
@@ -1684,11 +1694,40 @@ make_login_items(#request{us = {Username, Host}} = R, Level) ->
                                 [{<<"sentence">>, misc:atom_to_binary(node())}],
                                 [{only, value},
                                  {result_links, [{sentence, node, Level, <<"">>}]}])])]
-             ++ ejabberd_hooks:run_fold(webadmin_menu_system_inside, [], [R])
+             ++ MenuInside
              ++ [?LI([?C(unicode:characters_to_binary("📤")),
                       ?AC(<<(binary:copy(<<"../">>, Level))/binary, "logout/">>,
                           <<"Logout">>)])])]}]
       ++ MenuPost}].
+
+%%%==================================
+%%%% menu_system
+
+-spec make_menu_system(atom(), string(), string(), string()) -> [xmlel()].
+make_menu_system(Module, Icon, Text, Append) ->
+    [make_menu_system_el(Icon, Text, Append, UrlTuple) || UrlTuple <- get_urls(Module)].
+
+get_urls(Module) ->
+    Urls = ejabberd_http:get_auto_urls(any, Module),
+    Host = ejabberd_config:get_myname(),
+    [{Tls, misc:expand_keyword(<<"@HOST@">>, Url, Host)} || {Tls, Url} <- Urls].
+
+-spec make_menu_system_el(string(), string(), string(), {boolean(), binary()}) -> xmlel().
+make_menu_system_el(Icon, Text, Append, {ThisTls, Url}) ->
+    LockBinary =
+        case ThisTls of
+            true ->
+                unicode:characters_to_binary("🔒");
+            false ->
+                unicode:characters_to_binary("❗")
+        end,
+    AppendBin = iolist_to_binary(Append),
+    {ok, _Scheme, _UserInfo, _Host, _Port, Path, _Query} = misc:uri_parse(Url),
+    TextParsed = string:replace(Text, "{URLPATH}", Path),
+    ?LI([?C(<<(unicode:characters_to_binary(Icon))/binary, LockBinary/binary>>),
+         ?XAE(<<"a">>,
+              [{<<"href">>, <<Url/binary, AppendBin/binary>>}, {<<"target">>, <<"_blank">>}],
+              [?C(unicode:characters_to_binary(TextParsed))])]).
 
 %%%==================================
 
@@ -1972,14 +2011,14 @@ nice_this(This, integer) ->
 nice_this(This, _Format) ->
     nice_this(This).
 
--spec nice_this(This :: atom() | string() | [byte()]) -> NiceThis :: binary().
+-spec nice_this(This :: atom() | string() | binary()) -> NiceThis :: binary().
 nice_this(This) when is_atom(This) ->
     nice_this(atom_to_list(This));
 nice_this(This) when is_binary(This) ->
     nice_this(binary_to_list(This));
 nice_this(This) when is_list(This) ->
-    list_to_binary(lists:flatten([string:titlecase(Word)
-                                  || Word <- string:replace(This, "_", " ", all)])).
+    list_to_binary(lists:append([string:titlecase(Word)
+                                 || Word <- string:replace(This, "_", " ", all)])).
 
 -spec long_this(These :: [This :: atom()]) -> Long :: binary().
 long_this(These) ->

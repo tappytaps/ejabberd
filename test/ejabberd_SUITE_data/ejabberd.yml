@@ -68,6 +68,8 @@ access_rules:
     allow: local
   register:
     allow: all
+  account_invite:
+    allow: all
 
 acl:
   local:
@@ -96,6 +98,7 @@ listen:
       "/api": mod_http_api
       "/upload": mod_http_upload
       "/captcha": ejabberd_captcha
+      "/random/test/prefix/invites": mod_invites
   -
     port: STUN_PORT
     module: ejabberd_stun
@@ -123,7 +126,6 @@ modules:
     vcard: VCARD
   mod_muc:
     vcard: VCARD
-  mod_muc_occupantid: []
   mod_muc_admin: []
   mod_carboncopy: []
   mod_jidprep: []
@@ -154,6 +156,7 @@ Welcome to this XMPP server."
     get_url: GET_URL
     max_size: 10000
     vcard: VCARD
+  mod_auth_fast: []
 registration_timeout: infinity
 s2s_use_starttls: false
 ca_file: CAFILE

@@ -1,6 +1,6 @@
 #' Define default build variables
-ARG OTP_VSN='27.3.4.3'
-ARG ELIXIR_VSN='1.18.4'
+ARG OTP_VSN='28.4.2.0'
+ARG ELIXIR_VSN='1.19.5'
 ARG UID='9000'
 ARG USER='ejabberd'
 ARG HOME="opt/$USER"
@@ -19,6 +19,7 @@ RUN go install -v \
 FROM docker.io/erlang:${OTP_VSN}-alpine AS ejabberd
 
 RUN apk -U add --no-cache \
+        ca-certificates \
         autoconf \
         automake \
         bash \
@@ -32,6 +33,7 @@ RUN apk -U add --no-cache \
         libpng-dev \
         libwebp-dev \
         linux-pam-dev \
+        npm \
         openssl-dev \
         sqlite-dev \
         yaml-dev \
@@ -52,12 +54,13 @@ ARG BUILD_DIR
 COPY / $BUILD_DIR/
 
 WORKDIR $BUILD_DIR
+
 RUN mv .github/container/ejabberdctl.template . \
     && mv .github/container/ejabberd.yml.example . \
     && ./autogen.sh \
     && ./configure --with-rebar=mix --enable-all \
     && make deps \
-    && make rel
+    && make prod
 
 WORKDIR /rootfs
 ARG VERSION
@@ -165,11 +168,10 @@ RUN apk -U upgrade --available --no-cache \
     && apk add --no-cache \
         $(cat /tmp/runDeps) \
         so:libcap.so.2 \
-        so:libtdsodbc.so.0 \
+        so:libtdsodbc.so \
         curl \
         tini \
-    && rm /tmp/runDeps \
-    && ln -fs /usr/lib/libtdsodbc.so.0 /usr/lib/libtdsodbc.so
+    && rm /tmp/runDeps
 
 ARG USER
 ARG UID
@@ -200,7 +202,7 @@ HEALTHCHECK \
 WORKDIR /$HOME
 USER $USER
 VOLUME ["/$HOME"]
-EXPOSE 1880 1883 4369-4399 5210 5222 5269 5280 5443
+EXPOSE 1880 1883 4369-4399 5210 5222 5269 5280 5443 5478 7777 50000-50099
 
 ENTRYPOINT ["/sbin/tini","--","ejabberdctl"]
 CMD ["foreground"]

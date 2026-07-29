@@ -6,7 +6,7 @@
 %%% Created :  2 Nov 2007 by Mickael Remond <mremond@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2026   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -45,7 +45,10 @@ select_opts_values(Opts) ->
     maps:fold(
       fun(Opt, Val, Acc) when Opt == access;
 			      Opt == shaper;
-			      Opt == max_stanza_size ->
+			      Opt == max_stanza_size;
+			      Opt == max_stanza_elements;
+			      Opt == pre_auth_max_stanza_size;
+			      Opt == pre_auth_max_stanza_elements ->
 	      [{Opt, Val}|Acc];
 	 (_, _, Acc) ->
 	      Acc

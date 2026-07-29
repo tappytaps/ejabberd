@@ -1,6 +1,6 @@
 %%%----------------------------------------------------------------------
 %%%
-%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2026   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -65,7 +65,7 @@
     captcha_whitelist                    = (?SETS):empty() :: gb_sets:set(),
     mam                                  = false :: boolean(),
     pubsub                               = <<"">> :: binary(),
-    enable_hats                          = false :: boolean(),
+    enable_hats                          = true :: boolean(),
     lang                                 = ejabberd_option:language() :: binary()
 }).
 
@@ -81,7 +81,8 @@
     role :: role(),
     %%is_subscriber = false :: boolean(),
     %%subscriptions = [] :: [binary()],
-    last_presence :: presence() | undefined
+    last_presence :: presence() | undefined,
+    occupant_id :: binary()
 }).
 
 -record(subscriber, {jid :: jid(),
@@ -132,7 +133,8 @@
     activity                = treap:empty() :: treap:treap(),
     room_shaper             = none :: ejabberd_shaper:shaper(),
     room_queue              :: p1_queue:queue({message | presence, jid()}) | undefined,
-    hibernate_timer         = none :: reference() | none | hibernating
+    hibernate_timer         = none :: reference() | none | hibernating,
+    salt                    = <<>> :: binary()
 }).
 
 -type users() :: #{ljid() => #user{}}.

@@ -5,7 +5,7 @@
 %%% Created : 20 Mar 2015 by Alexey Shchepin <alexey@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2026   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -55,6 +55,7 @@
          oauth_remove_client/1]).
 
 -export([web_menu_main/2, web_page_main/2]).
+-export([web_menu_system/3]).
 
 -include_lib("xmpp/include/xmpp.hrl").
 -include("logger.hrl").
@@ -171,12 +172,17 @@ oauth_issue_token(Jid, TTLSeconds, Scopes) ->
     end.
 
 oauth_list_tokens() ->
+    oauth_list_tokens(get_db_backend()).
+
+oauth_list_tokens(ejabberd_oauth_mnesia) ->
     Tokens = mnesia:dirty_match_object(#oauth_token{_ = '_'}),
     {MegaSecs, Secs, _MiniSecs} = os:timestamp(),
     TS = 1000000 * MegaSecs + Secs,
     [{Token, jid:encode(jid:make(U,S)), Scope, integer_to_list(Expires - TS) ++ " seconds"} ||
-        #oauth_token{token=Token, scope=Scope, us= {U,S},expire=Expires} <- Tokens].
-
+        #oauth_token{token=Token, scope=Scope, us= {U,S},expire=Expires} <- Tokens];
+oauth_list_tokens(DBMod) ->
+    ?ERROR_MSG("Command oauth_list_tokens not implemented for database backend ~p", [DBMod]),
+    [].
 
 oauth_revoke_token(Token) ->
     DBMod = get_db_backend(),
@@ -234,6 +240,7 @@ init([]) ->
     ejabberd_commands:register_commands(get_commands_spec()),
     ejabberd_hooks:add(webadmin_menu_main, ?MODULE, web_menu_main, 50),
     ejabberd_hooks:add(webadmin_page_main, ?MODULE, web_page_main, 50),
+    ejabberd_hooks:add(webadmin_menu_system_post, ?MODULE, web_menu_system, 889),
     ejabberd_hooks:add(config_reloaded, ?MODULE, config_reloaded, 50),
     erlang:send_after(expire(), self(), clean),
     {ok, ok}.
@@ -261,6 +268,7 @@ handle_info(Info, State) ->
 terminate(_Reason, _State) ->
     ejabberd_hooks:delete(webadmin_menu_main, ?MODULE, web_menu_main, 50),
     ejabberd_hooks:delete(webadmin_page_main, ?MODULE, web_page_main, 50),
+    ejabberd_hooks:delete(webadmin_menu_system_post, ?MODULE, web_menu_system, 889),
     ejabberd_hooks:delete(config_reloaded, ?MODULE, config_reloaded, 50).
 
 code_change(_OldVsn, State, _Extra) -> {ok, State}.
@@ -842,3 +850,7 @@ web_page_main(_, #request{path = [<<"oauth">>]} = R) ->
     {stop, Head ++ Set};
 web_page_main(Acc, _) ->
     Acc.
+
+web_menu_system(Result, _Request, _Level) ->
+    Els = ejabberd_web_admin:make_menu_system(?MODULE, "⚫", "OAuth", "authorization_token"),
+    Els ++ Result.

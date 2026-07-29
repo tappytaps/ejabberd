@@ -1,6 +1,6 @@
 %%%-------------------------------------------------------------------
 %%% @author Evgeny Khramtsov <ekhramtsov@process-one.net>
-%%% @copyright (C) 2002-2025 ProcessOne, SARL. All Rights Reserved.
+%%% @copyright (C) 2002-2026 ProcessOne, SARL. All Rights Reserved.
 %%%
 %%% Licensed under the Apache License, Version 2.0 (the "License");
 %%% you may not use this file except in compliance with the License.
@@ -18,12 +18,16 @@
 -module(mod_mqtt_mnesia).
 -behaviour(mod_mqtt).
 
-%% API
+%% Disk backend
 -export([init/2, publish/6, delete_published/2, lookup_published/2]).
 -export([list_topics/1, use_cache/1]).
+
+%% RAM backend
 -export([init/0]).
--export([subscribe/4, unsubscribe/2, find_subscriber/2, mqtree_match/1]).
+-export([subscribe/4, unsubscribe/2, find_subscriber/2]).
 -export([open_session/1, close_session/1, lookup_session/1, get_sessions/2]).
+
+-export([mqtree_match/1]).
 
 -include("logger.hrl").
 -include("mqtt.hrl").

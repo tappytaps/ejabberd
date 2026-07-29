@@ -5,7 +5,7 @@
 %%% Created : 15 Aug 2023 by Alexey Shchepin <alexey@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2026   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -526,7 +526,10 @@ format_column_def(SchemaInfo, Column) ->
     [<<"    ">>,
      escape_name(SchemaInfo, Column#sql_column.name), <<" ">>,
      format_type(SchemaInfo, Column),
-     <<" NOT NULL">>,
+     case Column#sql_column.nullable of
+         false -> <<" NOT NULL">>;
+         true -> []
+     end,
      case Column#sql_column.default of
          false -> [];
          true ->
@@ -738,7 +741,9 @@ create_table(Host, SchemaInfo, Table) ->
 
 create_table_t(SchemaInfo, Table) ->
     SQLs = format_create_table(SchemaInfo, Table),
-    ?INFO_MSG("Creating table ~s:~n~s~n",
+    ?INFO_MSG("Creating ~p table ~s", [SchemaInfo#sql_schema_info.db_type,
+                                       Table#sql_table.name]),
+    ?DEBUG("Creating table ~s:~n~s~n",
         [Table#sql_table.name, SQLs]),
     lists:foreach(
         fun(SQL) -> ejabberd_sql:sql_query_t(SQL) end, SQLs),

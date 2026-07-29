@@ -2,7 +2,7 @@
 %%% Created : 12 Dec 2016 by Evgeny Khramtsov <ekhramtsov@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2026   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -51,11 +51,11 @@
 %%% API
 %%%===================================================================
 start(SockMod, Socket, Opts) ->
-    xmpp_stream_in:start(?MODULE, [{SockMod, Socket}, Opts],
+    xmpp_stream_in:start(?MODULE, [{SockMod, Socket}, Opts ++ pre_auth_limits()],
 			 ejabberd_config:fsm_limit_opts(Opts)).
 
 start_link(SockMod, Socket, Opts) ->
-    xmpp_stream_in:start_link(?MODULE, [{SockMod, Socket}, Opts],
+    xmpp_stream_in:start_link(?MODULE, [{SockMod, Socket}, Opts ++ pre_auth_limits()],
 			      ejabberd_config:fsm_limit_opts(Opts)).
 
 close(Ref) ->
@@ -285,8 +285,12 @@ terminate(Reason, #{auth_domains := AuthDomains,
 		    socket := Socket} = State) ->
     case maps:get(stop_reason, State, undefined) of
 	{tls, _} = Err ->
-	    ?WARNING_MSG("(~ts) Failed to secure inbound s2s connection: ~ts",
-			 [xmpp_socket:pp(Socket), xmpp_stream_in:format_error(Err)]);
+            RServer = case State of
+                         #{remote_server := RS} -> RS;
+                         _ -> <<"unknown">>
+                     end,
+	    ?WARNING_MSG("(~ts) Failed to secure inbound s2s connection to ~ts: ~ts",
+			 [xmpp_socket:pp(Socket), RServer, xmpp_stream_in:format_error(Err)]);
 	_ ->
 	    ok
     end,
@@ -342,6 +346,10 @@ change_shaper(#{shaper := ShaperName, server_host := ServerHost} = State,
     Shaper = ejabberd_shaper:match(ServerHost, ShaperName, jid:make(RServer)),
     xmpp_stream_in:change_shaper(State, ejabberd_shaper:new(Shaper)).
 
+pre_auth_limits() ->
+    [{pre_auth_max_stanza_size, 8192},
+     {pre_auth_max_stanza_elements, 32}].
+
 listen_options() ->
     [{shaper, none},
      {ciphers, undefined},
@@ -351,4 +359,5 @@ listen_options() ->
      {tls, false},
      {tls_compression, false},
      {max_stanza_size, infinity},
-     {max_fsm_queue, 10000}].
+     {max_stanza_elements, infinity},
+     {max_fsm_queue, 10000}] ++ pre_auth_limits().

@@ -4,7 +4,7 @@
 %%% Created : 14 Apr 2016 by Evgeny Khramtsov <ekhramtsov@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2026   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -26,6 +26,7 @@
 
 
 -behaviour(mod_roster).
+-behaviour(ejabberd_db_serialize).
 
 %% API
 -export([init/2, read_roster_version/2, write_roster_version/4,
@@ -35,11 +36,13 @@
 	 process_rosteritems/5,
 	 import/3, export/1, raw_to_record/2]).
 -export([sql_schemas/0]).
+-export([serialize/3, deserialize_start/1, deserialize/2]).
 
 -include("mod_roster.hrl").
 -include("ejabberd_sql_pt.hrl").
 -include("logger.hrl").
 -include_lib("xmpp/include/jid.hrl").
+-include("ejabberd_db_serialize.hrl").
 
 %%%===================================================================
 %%% API
@@ -50,6 +53,51 @@ init(Host, _Opts) ->
 
 sql_schemas() ->
     [#sql_schema{
+        version = 2,
+        tables =
+            [#sql_table{
+                name = <<"rosterusers">>,
+                columns =
+                    [#sql_column{name = <<"username">>, type = text},
+                     #sql_column{name = <<"server_host">>, type = text},
+                     #sql_column{name = <<"jid">>, type = text},
+                     #sql_column{name = <<"nick">>, type = text},
+                     #sql_column{name = <<"subscription">>, type = {char, 1}},
+                     #sql_column{name = <<"approved">>, type = boolean},
+                     #sql_column{name = <<"ask">>, type = {char, 1}},
+                     #sql_column{name = <<"askmessage">>, type = text},
+                     #sql_column{name = <<"server">>, type = {char, 1}},
+                     #sql_column{name = <<"subscribe">>, type = text},
+                     #sql_column{name = <<"type">>, type = text},
+                     #sql_column{name = <<"created_at">>, type = timestamp,
+                                 default = true}],
+                indices = [#sql_index{
+                              columns = [<<"server_host">>, <<"username">>,
+                                         <<"jid">>],
+                              unique = true},
+                           #sql_index{
+                              columns = [<<"server_host">>, <<"jid">>]}]},
+             #sql_table{
+                name = <<"rostergroups">>,
+                columns =
+                    [#sql_column{name = <<"username">>, type = text},
+                     #sql_column{name = <<"server_host">>, type = text},
+                     #sql_column{name = <<"jid">>, type = text},
+                     #sql_column{name = <<"grp">>, type = text}],
+                indices = [#sql_index{
+                              columns = [<<"server_host">>, <<"username">>,
+                                         <<"jid">>]}]},
+             #sql_table{
+                name = <<"roster_version">>,
+                columns =
+                    [#sql_column{name = <<"username">>, type = text},
+                     #sql_column{name = <<"server_host">>, type = text},
+                     #sql_column{name = <<"version">>, type = text}],
+                indices = [#sql_index{
+                              columns = [<<"server_host">>, <<"username">>],
+                              unique = true}]}],
+       update = [{add_column, <<"rosterusers">>, <<"approved">>}]},
+     #sql_schema{
         version = 1,
         tables =
             [#sql_table{
@@ -115,7 +163,7 @@ write_roster_version(LUser, LServer, InTransaction, Ver) ->
 get_roster(LUser, LServer) ->
     case ejabberd_sql:sql_query(
 	   LServer,
-	   ?SQL("select @(username)s, @(jid)s, @(nick)s, @(subscription)s, "
+	   ?SQL("select @(username)s, @(jid)s, @(nick)s, @(subscription)s, @(approved)b, "
 		"@(ask)s, @(askmessage)s, @(server)s, @(subscribe)s, "
 		"@(type)s from rosterusers "
                 "where username=%(LUser)s and %(LServer)H")) of
@@ -278,7 +326,7 @@ get_roster_groups(LServer, LUser, SJID) ->
       ?SQL("select @(grp)s from rostergroups"
            " where username=%(LUser)s and %(LServer)H and jid=%(SJID)s")).
 
-roster_subscribe({LUser, LServer, SJID, Name, SSubscription, SAsk, AskMessage}) ->
+roster_subscribe({LUser, LServer, SJID, Name, SSubscription, BApproved, SAsk, AskMessage}) ->
     ?SQL_UPSERT_T(
        "rosterusers",
        ["!username=%(LUser)s",
@@ -286,6 +334,7 @@ roster_subscribe({LUser, LServer, SJID, Name, SSubscription, SAsk, AskMessage}) 
         "!jid=%(SJID)s",
         "nick=%(Name)s",
         "subscription=%(SSubscription)s",
+        "approved=%(BApproved)b",
         "ask=%(SAsk)s",
         "askmessage=%(AskMessage)s",
         "server='N'",
@@ -294,7 +343,7 @@ roster_subscribe({LUser, LServer, SJID, Name, SSubscription, SAsk, AskMessage}) 
 
 get_roster_by_jid(LServer, LUser, SJID) ->
     ejabberd_sql:sql_query_t(
-      ?SQL("select @(username)s, @(jid)s, @(nick)s, @(subscription)s,"
+      ?SQL("select @(username)s, @(jid)s, @(nick)s, @(subscription)s, @(approved)b, "
            " @(ask)s, @(askmessage)s, @(server)s, @(subscribe)s,"
            " @(type)s from rosterusers"
            " where username=%(LUser)s and %(LServer)H and jid=%(SJID)s")).
@@ -311,7 +360,7 @@ get_subscription(LServer, LUser, SJID) ->
       ?SQL("select @(subscription)s, @(ask)s from rosterusers "
            "where username=%(LUser)s and %(LServer)H and jid=%(SJID)s")).
 
-update_roster_sql({LUser, LServer, SJID, Name, SSubscription, SAsk, AskMessage},
+update_roster_sql({LUser, LServer, SJID, Name, SSubscription, BApproved, SAsk, AskMessage},
 		  ItemGroups) ->
     [?SQL("delete from rosterusers where"
           " username=%(LUser)s and %(LServer)H and jid=%(SJID)s;"),
@@ -322,6 +371,7 @@ update_roster_sql({LUser, LServer, SJID, Name, SSubscription, SAsk, AskMessage},
          "jid=%(SJID)s",
          "nick=%(Name)s",
          "subscription=%(SSubscription)s",
+         "approved=CAST(%(BApproved)b as boolean)",
          "ask=%(SAsk)s",
          "askmessage=%(AskMessage)s",
          "server='N'",
@@ -339,19 +389,19 @@ update_roster_sql({LUser, LServer, SJID, Name, SSubscription, SAsk, AskMessage},
        || ItemGroup <- ItemGroups].
 
 raw_to_record(LServer,
-	      [User, LServer, SJID, Nick, SSubscription, SAsk, SAskMessage,
+	      [User, LServer, SJID, Nick, SSubscription, BApproved, SAsk, SAskMessage,
 	       SServer, SSubscribe, SType]) ->
     raw_to_record(LServer,
-                  {User, LServer, SJID, Nick, SSubscription, SAsk, SAskMessage,
+                  {User, LServer, SJID, Nick, SSubscription, BApproved, SAsk, SAskMessage,
                    SServer, SSubscribe, SType});
 raw_to_record(LServer,
-	      {User, SJID, Nick, SSubscription, SAsk, SAskMessage,
+	      {User, SJID, Nick, SSubscription, BApproved, SAsk, SAskMessage,
 	       SServer, SSubscribe, SType}) ->
     raw_to_record(LServer,
-                  {User, LServer, SJID, Nick, SSubscription, SAsk, SAskMessage,
+                  {User, LServer, SJID, Nick, SSubscription, BApproved, SAsk, SAskMessage,
                    SServer, SSubscribe, SType});
 raw_to_record(LServer,
-	      {User, LServer, SJID, Nick, SSubscription, SAsk, SAskMessage,
+	      {User, LServer, SJID, Nick, SSubscription, BApproved, SAsk, SAskMessage,
 	       _SServer, _SSubscribe, _SType}) ->
     try jid:decode(SJID) of
       JID ->
@@ -360,7 +410,7 @@ raw_to_record(LServer,
 	  Ask = decode_ask(User, LServer, SAsk),
 	  #roster{usj = {User, LServer, LJID},
 		  us = {User, LServer}, jid = LJID, name = Nick,
-		  subscription = Subscription, ask = Ask,
+		  subscription = Subscription, approved = BApproved, ask = Ask,
 		  askmessage = SAskMessage}
     catch _:{bad_jid, _} ->
 	    ?ERROR_MSG("~ts", [format_row_error(User, LServer, {jid, SJID})]),
@@ -370,23 +420,40 @@ raw_to_record(LServer,
 record_to_row(
   #roster{us = {LUser, LServer},
           jid = JID, name = Name, subscription = Subscription,
-          ask = Ask, askmessage = AskMessage}) ->
+          approved = Approved, ask = Ask, askmessage = AskMessage}) ->
     SJID = jid:encode(jid:tolower(JID)),
-    SSubscription = case Subscription of
-		      both -> <<"B">>;
-		      to -> <<"T">>;
-		      from -> <<"F">>;
-		      none -> <<"N">>
-		    end,
-    SAsk = case Ask of
-	     subscribe -> <<"S">>;
-	     unsubscribe -> <<"U">>;
-	     both -> <<"B">>;
-	     out -> <<"O">>;
-	     in -> <<"I">>;
-	     none -> <<"N">>
-	   end,
-    {LUser, LServer, SJID, Name, SSubscription, SAsk, AskMessage}.
+    {LUser,
+     LServer,
+     SJID,
+     Name,
+     encode_subscription(Subscription),
+     Approved,
+     encode_ask(Ask),
+     AskMessage}.
+
+
+encode_subscription(Subscription) ->
+    case Subscription of
+        any -> <<"_">>;
+        both -> <<"B">>;
+        to -> <<"T">>;
+        from -> <<"F">>;
+        none -> <<"N">>
+    end.
+
+
+encode_ask(Ask) ->
+    case Ask of
+        any -> <<"_">>;
+        subscribe -> <<"S">>;
+        unsubscribe -> <<"U">>;
+        both -> <<"B">>;
+        out -> <<"O">>;
+        in -> <<"I">>;
+        none -> <<"N">>
+    end.
+
+
 
 decode_subscription(User, Server, S) ->
     case S of
@@ -428,22 +495,8 @@ process_rosteritems(ActionS, SubsS, AsksS, UsersS, ContactsS) ->
 
 process_rosteritems_sql(ActionS, Subscription, Ask, SLocalJID, SJID) ->
     [LUser, LServer] = binary:split(SLocalJID, <<"@">>),
-    SSubscription = case Subscription of
-		      any -> <<"_">>;
-		      both -> <<"B">>;
-		      to -> <<"T">>;
-		      from -> <<"F">>;
-		      none -> <<"N">>
-		    end,
-    SAsk = case Ask of
-	     any -> <<"_">>;
-	     subscribe -> <<"S">>;
-	     unsubscribe -> <<"U">>;
-	     both -> <<"B">>;
-	     out -> <<"O">>;
-	     in -> <<"I">>;
-	     none -> <<"N">>
-	   end,
+    SSubscription = encode_subscription(Subscription),
+    SAsk = encode_ask(Ask),
     {selected, List} = ejabberd_sql:sql_query(
       LServer,
       ?SQL("select @(username)s, @(jid)s from rosterusers "
@@ -457,3 +510,118 @@ process_rosteritems_sql(ActionS, Subscription, Ask, SLocalJID, SJID) ->
 	"list" -> ok
     end,
     List.
+
+
+serialize(LServer, BatchSize, Last) ->
+    Offset = case Last of
+                 undefined -> 0;
+                 _ -> Last
+             end,
+    case ejabberd_sql:sql_query(
+           LServer,
+           ?SQL("select distinct @(username)s from rosterusers "
+                "where %(LServer)H "
+                "order by username "
+                "limit %(BatchSize)d offset %(Offset)d")) of
+        {selected, Rows} ->
+            Data = lists:foldl(
+                     fun(_, {error, _} = Err) ->
+                             Err;
+                        ({Username}, Res) ->
+                             case get_roster(Username, LServer) of
+                                 error ->
+                                     {error, io_lib:format("Error when retrieving roster for ~s@~s", [Username, LServer])};
+                                 {ok, Items} ->
+                                     Entries = lists:map(
+                                                 fun(#roster{jid = Jid, name = Name, groups = Groups, ask = Ask, subscription = Sub, askmessage = AskMsg}) ->
+                                                         {jid:encode(Jid), Name, Groups, Sub, Ask, AskMsg}
+                                                 end,
+                                                 Items),
+                                     case read_roster_version(Username, LServer) of
+                                         error ->
+                                             [#serialize_roster_v1{
+                                                serverhost = LServer,
+                                                username = Username,
+                                                entries = Entries
+                                               } | Res];
+                                         {ok, Ver} ->
+                                             [#serialize_roster_v1{
+                                                serverhost = LServer,
+                                                username = Username,
+                                                version = Ver,
+                                                entries = Entries
+                                               } | Res];
+                                         _ ->
+                                             {error, io_lib:format("Error when retrieving roster version for ~s@~s",
+                                                                   [Username, LServer])}
+                                     end
+                             end
+                     end,
+                     [],
+                     Rows),
+            {ok, Data, Offset + length(Rows)};
+        _ ->
+            {error, io_lib:format("Error when retrieving list of users rosters", [])}
+    end.
+
+
+deserialize_start(LServer) ->
+    ejabberd_sql:sql_query(
+      LServer,
+      ?SQL("delete from rosterusers where %(LServer)H")),
+    ejabberd_sql:sql_query(
+      LServer,
+      ?SQL("delete from rostergroups where %(LServer)H")),
+    ejabberd_sql:sql_query(
+      LServer,
+      ?SQL("delete from roster_version where %(LServer)H")).
+
+
+deserialize(LServer, Batch) ->
+    F = fun() ->
+                lists:foreach(
+                  fun(#serialize_roster_v1{username = Username, version = Version, entries = Entries}) ->
+                          lists:foreach(
+                            fun({Jid, Name, Groups, Sub, Ask, AskMsg}) ->
+                                    SSubscription = encode_subscription(Sub),
+                                    SAsk = encode_ask(Ask),
+                                    ejabberd_sql:sql_query_t(?SQL_INSERT(
+                                                               "rosterusers",
+                                                               ["username=%(Username)s",
+                                                                "server_host=%(LServer)s",
+                                                                "jid=%(Jid)s",
+                                                                "nick=%(Name)s",
+                                                                "subscription=%(SSubscription)s",
+                                                                "ask=%(SAsk)s",
+                                                                "askmessage=%(AskMsg)s",
+                                                                "server='N'",
+                                                                "subscribe=''",
+                                                                "type='item'"])),
+                                    lists:foreach(
+                                      fun(Group) ->
+                                              ejabberd_sql:sql_query_t(?SQL_INSERT(
+                                                                         "rostergroups",
+                                                                         ["username=%(Username)s",
+                                                                          "server_host=%(LServer)s",
+                                                                          "jid=%(Jid)s",
+                                                                          "grp=%(Group)s"]))
+                                      end,
+                                      Groups)
+                            end,
+                            Entries),
+                          case Version of
+                              undefined -> ok;
+                              _ ->
+                                  ejabberd_sql:sql_query_t(?SQL_INSERT(
+                                                             "roster_version",
+                                                             ["username=%(Username)s",
+                                                              "server_host=%(LServer)s",
+                                                              "version=%(Version)s"]))
+                          end
+                  end,
+                  Batch)
+        end,
+    case ejabberd_sql:sql_transaction(LServer, F) of
+        {atomic, _} -> ok;
+        _ -> {error, io_lib:format("Error when writing roster data", [])}
+    end.

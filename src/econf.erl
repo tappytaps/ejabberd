@@ -3,7 +3,7 @@
 %%% Purpose : Validator for ejabberd configuration options
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2026   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -106,7 +106,9 @@ format_error({bad_module, Mod}, Ctx)
 			 _ -> false
 		     end
 	     end, ejabberd_config:beams(all)),
-    format("~ts: unknown ~ts: ~ts. Did you mean ~ts?",
+    format("~ts: unknown ~ts: ~ts. Did you mean ~ts? "
+           "If it's an external module that should get installed, "
+           "use toplevel option: install_contrib_modules",
 	   [yconf:format_ctx(Ctx),
 	    format_module_type(Ctx),
 	    format_module(Mod),

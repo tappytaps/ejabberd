@@ -5,7 +5,7 @@
 %%% Created :  7 May 2006 by Mickael Remond <mremond@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2026   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -311,11 +311,9 @@ get_commands_spec() ->
      #ejabberd_commands{name = leave_cluster, tags = [cluster],
 			desc = "Remove and shutdown Node from the running cluster",
 			longdesc = "This command can be run from any running "
-			"node of the cluster, even the node to be removed. "
-			"In the removed node, this command works only when "
-			"using ejabberdctl, not _`mod_http_api`_ or other code that "
-			"runs inside the same ejabberd node that will leave.",
+			"node of the cluster, even the node to be removed.",
 			module = ?MODULE, function = leave_cluster,
+			note = "improved in 26.04",
 			args_desc = ["Nodename of the node to kick from the cluster"],
 			args_example = [<<"ejabberd1@machine8">>],
 			args = [{node, binary}],
@@ -455,6 +453,70 @@ get_commands_spec() ->
 			args = [{host, binary}],
 			result = {status, string},
 			result_desc = "Status text",
+			result_example = "Operation aborted"},
+
+     #ejabberd_commands{name = export_db, tags = [db],
+			desc = "Export database records for host to files",
+			note = "added in 26.01",
+			module = ejabberd_db_serialize, function = export,
+			args_desc = ["Name of host that should be exported",
+				     "Directory name where exported files should be created"],
+			args_example = [<<"localhost">>, <<"/home/ejabberd/export">>],
+			args = [{host, binary}, {dir, binary}],
+			result = {res, restuple},
+			result_desc = "Result tuple",
+			result_example = {ok, <<"Export started">>}},
+     #ejabberd_commands{name = export_db_status, tags = [db],
+			desc = "Return current status of export operation",
+			note = "added in 26.01",
+			module = ejabberd_db_serialize, function = export_status,
+			args_desc = ["Name of host where export is performed"],
+			args_example = [<<"localhost">>],
+			args = [{host, binary}],
+			result = {status, string},
+			result_desc = "Current operation status",
+			result_example = "Operation in progress: 'Exporting mod_mam', exported 5000 records so far"},
+     #ejabberd_commands{name = export_db_abort, tags = [db],
+			desc = "Abort currently running export peration",
+			note = "added in 26.01",
+			module = ejabberd_db_serialize, function = export_abort,
+			args_desc = ["Name of host where export is performed"],
+			args_example = [<<"localhost">>],
+			args = [{host, binary}],
+			result = {status, string},
+			result_desc = "Operation status",
+			result_example = "Operation aborted"},
+
+     #ejabberd_commands{name = import_db, tags = [db],
+			desc = "Import database records for host to files",
+			note = "added in 26.01",
+			module = ejabberd_db_serialize, function = import,
+			args_desc = ["Name of host that should be imported",
+				     "Directory name where imported files should be created"],
+			args_example = [<<"localhost">>, <<"/home/ejabberd/export">>],
+			args = [{host, binary}, {dir, binary}],
+			result = {res, restuple},
+			result_desc = "Result tuple",
+			result_example = {ok, <<"Import started">>}},
+     #ejabberd_commands{name = import_db_status, tags = [db],
+			desc = "Return current status of import operation",
+			note = "added in 26.01",
+			module = ejabberd_db_serialize, function = import_status,
+			args_desc = ["Name of host where import is performed"],
+			args_example = [<<"localhost">>],
+			args = [{host, binary}],
+			result = {status, string},
+			result_desc = "Current operation status",
+			result_example = "Operation in progress: 'Importing mod_mam', imported 5000 records so far"},
+     #ejabberd_commands{name = import_db_abort, tags = [db],
+			desc = "Abort currently running import peration",
+			note = "added in 26.01",
+			module = ejabberd_db_serialize, function = import_abort,
+			args_desc = ["Name of host where import is performed"],
+			args_example = [<<"localhost">>],
+			args = [{host, binary}],
+			result = {status, string},
+			result_desc = "Operation status",
 			result_example = "Operation aborted"},
 
      #ejabberd_commands{name = export2sql, tags = [mnesia],
@@ -1027,13 +1089,13 @@ delete_old_messages_batch(Server, Days, BatchSize, Rate) ->
 					      {true, _} ->
 						  case Mod:remove_old_messages_batch(L, Da, B) of
 						      {ok, Count} ->
-							  {ok, S, Count};
+							  {ok, S, Count, undefined};
 						      {error, _} = E ->
 							  E
 						  end;
 					      {_, true} ->
 						  case Mod:remove_old_messages_batch(L, Da, B, IS) of
-						      {ok, IS2, Count} ->
+						      {ok, IS2, Count, undefined} ->
 							  {ok, {L, Da, B, IS2}, Count};
 						      {error, _} = E ->
 							  E
@@ -1056,13 +1118,13 @@ delete_old_messages_status(Server) ->
 	      {failed, Steps, Error} ->
 		  io_lib:format("Operation failed after deleting ~p messages with error ~p",
 				[Steps, misc:format_val(Error)]);
-	      {aborted, Steps} ->
+	      {aborted, Steps, _} ->
 		  io_lib:format("Operation was aborted after deleting ~p messages",
 				[Steps]);
-	      {working, Steps} ->
+	      {working, Steps, _} ->
 		  io_lib:format("Operation in progress, deleted ~p messages",
 				[Steps]);
-	      {completed, Steps} ->
+	      {completed, Steps, _} ->
 		  io_lib:format("Operation was completed after deleting ~p messages",
 				[Steps])
 	  end,
@@ -1455,13 +1517,21 @@ web_menu_node(Acc, _Node, _Lang) ->
         {<<"logs">>, <<"Logs">>},
         {<<"stop">>, <<"Stop Node">>}].
 
+get_nodes_hint() ->
+    maybe
+        {ok, Names} ?= net_adm:names(),
+        NodeNames = lists:join(", ", [Name || {Name, _Port} <- Names]),
+        io_lib:format("Hint: Erlang nodes found in this machine that may be running ejabberd: ~s",
+                      [NodeNames])
+    else
+        {error, address} ->
+            io_lib:format("Hint: When EPMD is running, I can show here the Erlang nodes running in this machine.",
+                          [])
+    end.
+
 web_page_node(_, Node, #request{path = [<<"cluster">>]} = R) ->
-    {ok, Names} = net_adm:names(),
-    NodeNames = lists:join(", ", [Name || {Name, _Port} <- Names]),
-    Hint =
-        list_to_binary(io_lib:format("Hint: Erlang nodes found in this machine that may be running ejabberd: ~s",
-                                     [NodeNames])),
     Head = ?H1GLraw(<<"Clustering">>, <<"admin/guide/clustering/">>, <<"Clustering">>),
+    Hint = list_to_binary(get_nodes_hint()),
     Set1 =
         [ejabberd_cluster:call(Node,
                                ejabberd_web_admin,

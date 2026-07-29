@@ -3,7 +3,7 @@
 %%% Created : 14 Nov 2016 by Evgeny Khramtsov <ekhramtsov@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2026   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -280,9 +280,9 @@ muc_master(Config) ->
     true = is_feature_advertised(Config, ?NS_MAM_1, Room),
     true = is_feature_advertised(Config, ?NS_MAM_2, Room),
     %% We now sending some messages again
-    send_messages_to_room(Config, lists:seq(1, 5)),
+    send_messages_to_room(Config, lists:seq(101, 105)),
     %% And retrieve them via MAM again.
-    recv_messages_from_room(Config, lists:seq(1, 5)),
+    recv_messages_from_room(Config, lists:seq(101, 105)),
     put_event(Config, disconnect),
     muc_tests:leave(Config),
     clean(disconnect(Config)).
@@ -556,7 +556,9 @@ recv_messages_from_room(Config, Range) ->
 				 sub_els = [El]}]}]} = recv_message(Config),
 	      #message{from = MyNickJID,
 		       type = groupchat,
-		       body = Body} = xmpp:decode(El)
+		       body = Body} = Nested = xmpp:decode(El),
+	      ct:comment("Verify that there is just single stanza-id", []),
+	      ?match([#stanza_id{}], xmpp:get_subtags(Nested, #stanza_id{}))
       end, Range),
     #iq{from = Room, id = I, type = result,
 	sub_els = [#mam_fin{xmlns = ?NS_MAM_2,

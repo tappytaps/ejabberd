@@ -1,5 +1,5 @@
 %%%----------------------------------------------------------------------
-%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2026   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -342,6 +342,8 @@ opt_type(registration_timeout) ->
     econf:timeout(second, infinity);
 opt_type(resource_conflict) ->
     econf:enum([setresource, closeold, closenew, acceptnew]);
+opt_type(replaced_connection_timeout) ->
+    econf:timeout(second, infinity);
 opt_type(rest_proxy) ->
     econf:domain();
 opt_type(rest_proxy_port) ->
@@ -670,6 +672,7 @@ options() ->
       fun(Host) -> ejabberd_config:get_option({queue_type, Host}) end},
      {redis_server, "localhost"},
      {registration_timeout, timer:seconds(600)},
+     {replaced_connection_timeout, timer:seconds(1)},
      {resource_conflict, acceptnew},
      {rest_proxy, <<>>},
      {rest_proxy_port, 0},

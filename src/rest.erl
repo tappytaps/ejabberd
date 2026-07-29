@@ -5,7 +5,7 @@
 %%% Created : 16 Oct 2014 by Christophe Romain <christophe.romain@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2026   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -37,6 +37,8 @@
 
 start(Host) ->
     application:start(inets),
+    Profile = profile(Host),
+    inets:start(httpc, [{profile, Profile}]),
     Size = ejabberd_option:ext_api_http_pool_size(Host),
     Proxy = case {ejabberd_option:rest_proxy(Host),
                   ejabberd_option:rest_proxy_port(Host)} of
@@ -45,7 +47,7 @@ start(Host) ->
                 {Host, Port} ->
                     [{proxy, {{binary_to_list(Host), Port}, []}}]
             end,
-    httpc:set_options([{max_sessions, Size}] ++ Proxy).
+    httpc:set_options([{max_sessions, Size}] ++ Proxy, Profile).
 
 stop(_Host) ->
     ok.
@@ -115,7 +117,7 @@ request(Server, Method, Path, Params, Mime, Data) ->
           end,
     Begin = os:timestamp(),
     ejabberd_hooks:run(backend_api_call, Server, [Server, Method, Path]),
-    Result = try httpc:request(Method, Req, HttpOpts, [{body_format, binary}]) of
+    Result = try httpc:request(Method, Req, HttpOpts, [{body_format, binary}], profile(Server)) of
         {ok, {{_, Code, _}, RetHdrs, Body}} ->
             try decode_json(Body) of
                 JSon ->
@@ -154,6 +156,9 @@ request(Server, Method, Path, Params, Mime, Data) ->
 %%%----------------------------------------------------------------------
 %%% HTTP helpers
 %%%----------------------------------------------------------------------
+
+profile(Host) ->
+binary_to_atom(<<"rest_", Host/binary>>, latin1).
 
 to_list(V) when is_binary(V) ->
     binary_to_list(V);
@@ -205,26 +210,13 @@ base_url(Server, Path) ->
         _ -> Url
     end.
 
--ifdef(HAVE_URI_STRING).
-uri_hack(Str) ->
-    case uri_string:normalize("%25") of
-        "%" -> % This hack around bug in httpc >21 <23.2
-            binary:replace(Str, <<"%25">>, <<"%2525">>, [global]);
-        _ -> Str
-    end.
--else.
-uri_hack(Str) ->
-    Str.
--endif.
-
 url(Url, []) ->
     Url;
 url(Url, Params) ->
     L = [<<"&", (iolist_to_binary(Key))/binary, "=",
           (misc:url_encode(Value))/binary>>
             || {Key, Value} <- Params],
-    <<$&, Encoded0/binary>> = iolist_to_binary(L),
-    Encoded = uri_hack(Encoded0),
+    <<$&, Encoded/binary>> = iolist_to_binary(L),
     <<Url/binary, $?, Encoded/binary>>.
 url(Server, Path, Params) ->
     case binary:split(base_url(Server, Path), <<"?">>) of

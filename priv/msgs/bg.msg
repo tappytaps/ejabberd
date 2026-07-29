@@ -4,22 +4,34 @@
 %%   https://docs.ejabberd.im/developer/extending-ejabberd/localization/
 
 {" (Add * to the end of field to match substring)"," (Добавете * в края на полето, за да съответства на подниза)"}.
+{"{{ app_name }} already installed?","{{ app_name }} инсталиран ли е?"}.
 {" has set the subject to: "," е задал темата на: "}.
+{"{{ inviter }} has invited you to connect!","{{ inviter }} ви покани да се свържете!"}.
 {"# participants","# участници"}.
 {"A description of the node","Описание на нода"}.
 {"A friendly name for the node","Удобно име на нода"}.
+{"A fully-featured desktop chat client for Windows and Linux.","Пълнофункционален чат клиент за Windows и Linux."}.
+{"A lean Jabber/XMPP client for Android. It aims at usability, low overhead and security, and works on low-end Android devices starting with Android 4.0.","Изчистен Jabber/XMPP клиент за Android. Насочен е към функционалност, лек и сигурен. Работи на устройства с Android от нисък клас, започвайки с Android 4.0."}.
+{"A lightweight and powerful XMPP client for iPhone and iPad. It provides an easy way to talk and share moments with your friends.","Лек и мощен XMPP клиент за iPhone и iPad. Предоставя лесен начин да говорите и споделяте моменти с приятелите си."}.
+{"A modern open-source chat client for iPhone and iPad. It is easy to use and has a clean user interface.","Модерен чат клиент с отворен код за iPhone и iPad. Лесен за използване, с изчистен потребителски интерфейс."}.
+{"A modern open-source chat client for Mac. It is easy to use and has a clean user interface.","Модерен чат клиент с отворен код за Mac. Лесен за използване, с изчистен потребителски интерфейс."}.
+{"A modern open-source chat client for the desktop. It focuses on providing a clean and reliable Jabber/XMPP experience while having your privacy in mind.","Модерен клиент за чат с отворен код за настолни компютри. Фокусира се върху предоставянето на чисто и надеждно Jabber/XMPP изживяване, като същевременно се грижи за вашата поверителност."}.
 {"A password is required to enter this room","Необходима е парола за влизане в тази стая"}.
 {"A Web Page","Уеб страница"}.
+{"Accept invite using {{ app_name }}","Приемете поканата, използвайки {{ app_name }}"}.
 {"Accept","Приемам"}.
 {"Access denied by service policy","Достъпът е отказан спрямо политиката на услугата"}.
 {"Access model","Модел на достъп"}.
 {"Account doesn't exist","Профилът не съществува"}.
 {"Action on user","Действие върху потребител"}.
-{"Add a hat to a user","Добави шапка към потребител"}.
+{"Add {{ inviter }} to your contact list","Добавете {{ inviter }} към вашия списък с контакти"}.
+{"Add Contact","Добавете контакти"}.
 {"Add User","Добави потребител"}.
 {"Administration of ","Администриране на "}.
 {"Administration","Администриране"}.
 {"Administrator privileges required","Изискватт се администраторски права"}.
+{"After clicking the button you will be taken to {{ app_name }} to finish setting up your new {{ site_name }} account.","След като щракнете върху бутона, ще бъдете пренасочени към {{ app_name }}, за да завършите настройката на новия вашия нов {{ site_name }} профил."}.
+{"After successfully installing {{ app_name }}, come back to this page and <strong>continue with Step 2</strong>.","След като инсталирате успешно {{ app_name }}, върнете се на тази страница и <strong>продължете със стъпка 2</strong>."}.
 {"All activity","Цялата статистика"}.
 {"All Users","Всички потребители"}.
 {"Allow subscription","Разреши абониране"}.
@@ -46,8 +58,13 @@
 {"Anyone with a presence subscription of both or from may subscribe and retrieve items","Всеки, който има абонамент за присъствие на двете или от: може да се абонира и да извлича елементи"}.
 {"Anyone with Voice","Всеки, с възможност за гласово обаждане"}.
 {"Anyone","Всеки"}.
+{"API Commands","API Команди"}.
+{"Apple Store Logo","Apple Store лого"}.
 {"April","Април"}.
-{"Attribute 'channel' is required for this request","Атрибутът 'канал' е задължителен за тази заявка"}.
+{"Arguments","Аргументи"}.
+{"As a final reminder, your account details are shown below:","Като последно напомняне, данните за вашия профил са показани по-долу:"}.
+{"Assign a hat to a user","Присвои шапка към потребител"}.
+{"Attribute 'channel' is required for this request","Изисква се атрибут 'канал' за тази заявка"}.
 {"Attribute 'id' is mandatory for MIX messages","Атрибутът 'id' е задължителен за MIX съобщения"}.
 {"Attribute 'jid' is not allowed here","Атрибутът 'jid' не е разрешен тук"}.
 {"Attribute 'node' is not allowed here","Атрибутът 'нод' не е разрешен тук"}.
@@ -59,6 +76,9 @@
 {"Backup to File at ","Архивиране във файл на "}.
 {"Backup","Резервно копие"}.
 {"Bad format","Лош формат"}.
+{"BAD REQUEST","BAD REQUEST"}.
+{"Beagle IM by Tigase, Inc. is a lightweight and powerful XMPP client for macOS.","Beagle IM от Tigase, Inc. е лек и мощен XMPP клиент за macOS."}.
+{"Beagle IM Logo","Beagle IM лого"}.
 {"Birthday","Рожден ден"}.
 {"Both the username and the resource are required","Изискват се потребителското име и ресурсът"}.
 {"Bytestream already activated","Bytestream вече е активиран"}.
@@ -75,6 +95,7 @@
 {"Channel JID","JID на канал"}.
 {"Channels","Канали"}.
 {"Characters not allowed:","Неразрешени символи:"}.
+{"Chat address (JID)","Чат адрес (JID)"}.
 {"Chatroom configuration modified","Конфигурацията на стаята за чат е променена"}.
 {"Chatroom is created","Стаята за чат е създадена"}.
 {"Chatroom is destroyed","Стаята за чат е унищожена"}.
@@ -82,16 +103,29 @@
 {"Chatroom is stopped","Стаята за чат е спряна"}.
 {"Chatrooms","Чат стаи"}.
 {"Choose a username and password to register with this server","Изберете потребителско име и парола, за да се регистрирате на този сървър"}.
+{"Choose a username, this will become the first part of your new chat address.","Изберете потребителско име, то ще стане първата част от новия ви чат адрес."}.
 {"Choose storage type of tables","Изберете тип за съхранение на таблици"}.
 {"Choose whether to approve this entity's subscription.","Изберете дали да одобрите абонамента на този субект."}.
 {"City","Град"}.
+{"Click the button to open the Dino website where you can download and install it on your PC.","Щракнете върху бутона, за да отворите уебсайта на Dino, където можете да го изтеглите и инсталирате на вашия компютър."}.
 {"Client acknowledged more stanzas than sent by server","Клиентът потвърди повече строфи от изпратените от сървъра"}.
+{"Close","Затвори"}.
+{"Clustering","Клъстеризация"}.
 {"Commands","Команди"}.
 {"Conference room does not exist","Конферентната стая не съществува"}.
 {"Configuration of room ~s","Конфигурация на стая ~s"}.
 {"Configuration","Конфигурация"}.
+{"Congratulations!","Поздравления!"}.
 {"Contact Addresses (normally, room owner or owners)","Адреси за контакт (обикновено собственик или собственици на стая)"}.
+{"Contacts","Контакти"}.
+{"Conversations is a Jabber/XMPP client for Android 6.0+ smartphones that has been optimized to provide a unique mobile experience.","Conversations е Jabber/XMPP клиент за смартфони с Android 6.0+, оптимизиран да осигури уникално мобилно изживяване."}.
+{"Conversations Logo","Conversations лого"}.
 {"Country","Държава"}.
+{"Create a Hat","Създай Шапка"}.
+{"Create Account","Създай профил"}.
+{"Create an account","Създайте профил"}.
+{"Creating an account will allow to communicate with other people on <strong>{{ site_name }}</strong> and other services on the XMPP network.","Създаването на профил, ще Ви позволи да комуникирате с други хора в <strong>{{ site_name }}</strong> и други услуги в мрежата XMPP."}.
+{"Creating an account will allow to communicate with <strong>{{ inviter }}</strong> and other people on <strong>{{ site_name }}</strong> and other services on the XMPP network.","Създаването на профил, ще ви позволи да комуникирате с <strong>{{ inviter }}</strong>, други хора в <strong>{{ site_name }}</strong> и други услуги в мрежата XMPP."}.
 {"Current Discussion Topic","Текуща тема на дискусита"}.
 {"Database failure","Грешка в базата данни"}.
 {"Database Tables Configuration at ","Конфигурация на таблиците в базата данни при "}.
@@ -103,8 +137,16 @@
 {"Delete User","Изтрий потребителя"}.
 {"Deliver event notifications","Достави известията за събития"}.
 {"Deliver payloads with event notifications","Достави прикачените обекти с известията за събития"}.
+{"Destroy a Hat","Разруши Шапка"}.
+{"Dino Logo","Dino лого"}.
+{"Disable User","Деактивирай потребителя"}.
 {"Disc only copy","Копие само на диска"}.
 {"Don't tell your password to anybody, not even the administrators of the XMPP server.","Не казвайте паролата си на никого, дори на администраторите на XMPP сървъра."}.
+{"Download and install {{ app_name }} below:","Изтеглете и инсталирайте {{ app_name }} по-долу:"}.
+{"Download Dino for Linux","Свалете Dino за Linux"}.
+{"Download from Mac App Store","Изтегляне от Mac App Store"}.
+{"Download Gajim","Свалете Gajim"}.
+{"Download Renga for Haiku","Свалете Renga за Haiku"}.
 {"Dump Backup to Text File at ","Архивиране в текстов файл при "}.
 {"Dump to Text File","Архивиране в текстов файл"}.
 {"Duplicated groups are not allowed by RFC6121","Дублирани групи не са разрешени от RFC6121"}.
@@ -126,6 +168,7 @@
 {"Enable message archiving","Активирай архивиране на съобщенията"}.
 {"Enabling push without 'node' attribute is not supported","Активиране на известията без атрибут 'нод' не се поддържа"}.
 {"End User Session","Прекрати сесията на потребителя"}.
+{"Enter a secure password that you do not use anywhere else.","Въведете сигурна парола, която не използвате на друго място."}.
 {"Enter nickname you want to register","Въведете псевдонима, който желаете да регистрирате"}.
 {"Enter path to backup file","Въведете пътя към архивния файл"}.
 {"Enter path to jabberd14 spool dir","Въведете пътя към jabberd14 spool директорията"}.
@@ -146,6 +189,7 @@
 {"Failed to process option '~s'","Неуспешо обработена опция '~s'"}.
 {"Family Name","Фамилно име"}.
 {"FAQ Entry","Въвеждане на ЧЗВ"}.
+{"F-Droid Store Logo","F-Droid Store лого"}.
 {"February","Февруари"}.
 {"File larger than ~w bytes","Файлът е по-голям от ~w байта"}.
 {"Fill in the form to search for any matching XMPP User","Попълнете формата, за да търсите съвпадащ XMPP потребител"}.
@@ -154,27 +198,44 @@
 {"Full List of Room Admins","Пълен списък на администраторите на стаята"}.
 {"Full List of Room Owners","Пълен списък на собствениците на стаята"}.
 {"Full Name","Пълно име"}.
-{"Get List of Online Users","Списък на онлайн потребителите"}.
+{"Gajim Logo","Gajim лого"}.
+{"Get List of Active Users","Списък с активни потребители"}.
+{"Get List of Disabled Users","Списък на деактивираните потребители"}.
+{"Get List of Idle Users","Списък на неактивните потребители"}.
+{"Get List of Online Users","Списък на онлайн потребители"}.
 {"Get List of Registered Users","Списък на регистрираните потребители"}.
+{"Get Number of Active Users","Брой на активните потребители"}.
+{"Get Number of Disabled Users","Брой на деактивираните потребители"}.
+{"Get Number of Idle Users","Брой на неактивните потребители"}.
 {"Get Number of Online Users","Брой на онлайн потребителите"}.
 {"Get Number of Registered Users","Брой на регистрираните потребители"}.
 {"Get Pending","Виж чакащи"}.
+{"Get started","Започнете"}.
 {"Get User Last Login Time","Покажи времето, когато потребителят е влязъл за последно"}.
+{"Get User Roster","Списък с потребители"}.
 {"Get User Statistics","Покажи статистика за потребителя"}.
 {"Given Name","Наименование"}.
+{"Google Play Store Logo","Google Play Store лого"}.
 {"Grant voice to this person?","Предоставяне на глас за потребителя?"}.
 {"has been banned","е със забранен достъп"}.
 {"has been kicked because of a system shutdown","е отстранен поради изключване на системата"}.
 {"has been kicked because of an affiliation change","е отстранен поради промяна на принадлежността"}.
 {"has been kicked because the room has been changed to members-only","е изгонен, защото стаята е променена и е само за членове"}.
 {"has been kicked","е отстранен"}.
+{"Hash computed from the list of hats available in a room","Хеш стойност на листа от шапки налични в стаята"}.
 {"Hash of the vCard-temp avatar of this room","Хеш на временния vCard аватар на тази стая"}.
+{"Hat hue","Цвят на шапката"}.
 {"Hat title","Заглавие на шапката"}.
 {"Hat URI","URI адрес за шапка"}.
 {"Hats limit exceeded","Превишен е лимитът за шапка"}.
+{"Hide","Скрий"}.
+{"Hint","Подсказка"}.
 {"Host unknown","Неизвестен хост"}.
+{"Hostname invalid","Невалидно име за хост"}.
 {"HTTP File Upload","Качване на файл по HTTP"}.
 {"Idle connection","Неактивна връзка"}.
+{"If you already have {{ app_name }} installed, we recommend that you continue the account creation process using the app by clicking on the button below:","Ако вече сте инсталирали {{ app_name }}, препоръчваме Ви да продължите процеса на създаване на профил, използвайки приложението, като кликнете върху бутона по-долу:"}.
+{"If you don't have an XMPP client installed yet, here's a list of suitable clients for your platform.","Ако все още нямате инсталиран XMPP клиент, ето списък с подходящи клиенти за вашата платформа."}.
 {"If you don't see the CAPTCHA image here, visit the web page.","Ако не виждате CAPTCHA изображението, посетете уеб страницата."}.
 {"Import Directory","Импорт на директория"}.
 {"Import File","Импорт на файл"}.
@@ -193,6 +254,7 @@
 {"Incorrect value of 'action' in data form","Неправилна стойност на 'action' във формата за данни"}.
 {"Incorrect value of 'path' in data form","Неправилна стойност на 'path' във формата за данни"}.
 {"Installed Modules:","Инсталирани модули:"}.
+{"Installed ok? Great! <strong>Click or tap the button below</strong> to accept your invite and continue with your account setup:","Инсталира ли се нормално? Чудесно! <strong>Кликнете или докоснете бутона по-долу</strong>, за да приемете поканата си и да продължите с настройката на вашия профил:"}.
 {"Install","Инсталирай"}.
 {"Insufficient privilege","Недостатъчни права"}.
 {"Internal server error","Вътрешна сървърна грешка"}.
@@ -200,6 +262,11 @@
 {"Invalid node name","Невалидно име на нода"}.
 {"Invalid 'previd' value","Невалидна стойност на 'previd'"}.
 {"Invitations are not allowed in this conference","Поканите не са разрешени в тази конференция"}.
+{"Invite Expired","Изтекла покана"}.
+{"Invite expired","Поканата е изтекла"}.
+{"Invite to {{ site_name }}","Покани в {{ site_name }}"}.
+{"Invite User","Покани потребител"}.
+{"Invite","Покани"}.
 {"IP addresses","IP адреси"}.
 {"is now known as","е известен като"}.
 {"It is not allowed to send error messages to the room. The participant (~s) has sent an error message (~s) and got kicked from the room","Не е позволено да изпращате съобщения за грешки в стаята. Участникът (~s) е изпратил съобщение за грешка (~s) и е бил отстранен от стаята"}.
@@ -209,6 +276,7 @@
 {"January","Януари"}.
 {"JID normalization denied by service policy","Политиката на услугата не допуска нормализирането на JID"}.
 {"JID normalization failed","Нормализирането на JID е неуспешно"}.
+{"Join {{ site_name }} with {{ app_name }}","Присъединете се към {{ site_name }} с {{ app_name }}"}.
 {"Joined MIX channels of ~ts","Свързани MIX канали на ~ts"}.
 {"Joined MIX channels:","Свързани MIX канали:"}.
 {"joins the room","се присъединява към стаята"}.
@@ -220,10 +288,13 @@
 {"Last message","Последно съобщение"}.
 {"Last month","Миналия месец"}.
 {"Last year","Миналата година"}.
+{"Launch {{ app_name }} and sign in using your account credentials.","Стартирайте {{ app_name }} и влезте, използвайки данни за вашия профил."}.
+{"Launch Beagle IM, and select \\'Yes\\' to add a new account. Click the \\'+\\' button under the empty account list and then enter your credentials.","Стартирайте Beagle IM и изберете \\'Да\\', за да добавите нов профил. Кликнете върху бутона \\'+\\' под празния списък с профили и след това въведете вашите идентификационни данни."}.
 {"Least significant bits of SHA-256 hash of text should equal hexadecimal label","Най-малко значимите битове SHA-256 хеш на текст трябва да са равни на шестнайсетичния етикет"}.
 {"leaves the room","напуска стаята"}.
-{"List of users with hats","Списък на потребителите с шапки"}.
+{"List of Hats","Списък с шапки"}.
 {"List users with hats","Избройте потребителите с шапки"}.
+{"Log in via web","Влезте през уеб"}.
 {"Logged Out","Излязъл"}.
 {"Logging","Регистриране на събития"}.
 {"Make participants list public","Направи списъка с участниците публичен"}.
@@ -240,9 +311,11 @@
 {"Max payload size in bytes","Максимален размер на прикачения обект в байтове"}.
 {"Maximum file size","Максимален размер на файла"}.
 {"Maximum Number of History Messages Returned by Room","Максимален брой съобщения от хронологията, върнати от стая"}.
+{"Maximum number of invites reached","Максималният брой покани е достигнат"}.
 {"Maximum number of items to persist","Максимален брой елементи за запазване"}.
 {"Maximum Number of Occupants","Максимален брой участници"}.
 {"May","Май"}.
+{"Members are allowed to invite others","Участниците могат да канят други"}.
 {"Membership is required to enter this room","Изисква се членство, за вход в тази стая"}.
 {"Memorize your password, or write it in a paper placed in a safe place. In XMPP there isn't an automated way to recover your password if you forget it.","Запомнете паролата си или я запишете на лист хартия, поставен на сигурно място. В XMPP няма автоматичен начин за възстановяване на паролата в случай, че я забравите."}.
 {"Mere Availability in XMPP (No Show Value)","Наличност в XMPP (Не показвай стойност)"}.
@@ -257,6 +330,7 @@
 {"Moderators Only","Само модератори"}.
 {"Moderator","Модератор"}.
 {"Module failed to handle the query","Модулът не успя да обработи заявката"}.
+{"Monal Logo","Monal лого"}.
 {"Monday","Понеделник"}.
 {"Multicast","Мултикаст"}.
 {"Multiple <item/> elements are not allowed by RFC6121","Повече от един <item/> елемента не се разрешават от RFC6121"}.
@@ -310,19 +384,22 @@
 {"Node","Нод"}.
 {"None","Нито един"}.
 {"Not allowed","Не е разрешено"}.
+{"NOT FOUND","NOT FOUND"}.
 {"Not Found","Не е намерен"}.
 {"Not subscribed","Няма абонамент"}.
 {"Notify subscribers when items are removed from the node","Уведоми абонатите, когато елементите бъдат премахнати от нода"}.
 {"Notify subscribers when the node configuration changes","Уведоми абонатите, когато конфигурацията на нода се промени"}.
 {"Notify subscribers when the node is deleted","Уведоми абонатите, когато нодът бъде изтрит"}.
 {"November","Ноември"}.
+{"Number of active users","Брой активни потребители"}.
 {"Number of answers required","Брой на необходимите отговори"}.
+{"Number of disabled users","Брой деактивирани потребители"}.
+{"Number of idle users","Брой неактивни потребители"}.
 {"Number of occupants","Брой участници"}.
 {"Number of Offline Messages","Брой офлайн съобщения"}.
 {"Number of online users","Брой онлайн потребители"}.
 {"Number of registered users","Брой регистрирани потребители"}.
 {"Number of seconds after which to automatically purge items, or `max` for no specific limit other than a server imposed maximum","Брой секунди, след които автоматично да се изчистят елементите, или `max` за липса на конкретно ограничение, различно от наложения от сървъра максимум"}.
-{"Occupants are allowed to invite others","На участниците е позволено да канят други"}.
 {"Occupants are allowed to query others","Участниците могат да отправят заявки към други лица"}.
 {"Occupants May Change the Subject","Участниците могат да променят темата"}.
 {"October","Октомври"}.
@@ -345,12 +422,15 @@
 {"Only service administrators are allowed to send service messages","Само администраторите на услуги имат право да изпращат системни съобщения"}.
 {"Only those on a whitelist may associate leaf nodes with the collection","Само тези от списъка с позволени могат да свързват листови нодове с колекцията"}.
 {"Only those on a whitelist may subscribe and retrieve items","Само тези от списъка с позволени могат да се абонират и да извличат елементи"}.
+{"Open the app","Отворете приложението"}.
 {"Organization Name","Име на организацията"}.
 {"Organization Unit","Отдел"}.
 {"Other Modules Available:","Други налични модули:"}.
+{"Other software","Друг софтуер"}.
 {"Outgoing s2s Connections","Изходящи s2s връзки"}.
 {"Owner privileges required","Изискват се привилегии на собственик"}.
 {"Packet relay is denied by service policy","Предаването на пакети е отказано от политиката на услугата"}.
+{"Page navigation","Навигация по страниците"}.
 {"Participant ID","ID на участник"}.
 {"Participant","Участник"}.
 {"Password Verification","Проверка на паролата"}.
@@ -366,6 +446,8 @@
 {"Ping query is incorrect","Заявката за пинг е неправилна"}.
 {"Ping","Пинг"}.
 {"Please note that these options will only backup the builtin Mnesia database. If you are using the ODBC module, you also need to backup your SQL database separately.","Обърнете внимание, че тези опции ще направят резервно копие само на вградената (Mnesia) база данни. Ако използвате модула ODBC, трябва да направите резервно копие на SQL базата данни отделно."}.
+{"Please provide a password! Minimum length: {{ password_min_length }}","Моля, въведете парола! Минимална дължина: {{ password_min_length }}"}.
+{"Please provide a valid username!","Моля, въведете валидно потребителско име!"}.
 {"Please, wait for a while before sending new voice request","Моля, изчакайте известно време, преди да изпратите нова заявка за гласова връзка"}.
 {"Pong","Понг"}.
 {"Possessing 'ask' attribute is not allowed by RFC6121","Притежаването на атрибут 'ask' не е разрешено от RFC6121"}.
@@ -375,6 +457,7 @@
 {"Previous session PID has exited","Предишният PID на сесията е излязъл"}.
 {"Previous session PID is dead","PID от предишната сесия не съществува"}.
 {"Previous session timed out","Времето на предишната сесия изтече"}.
+{"Previous","Предишен"}.
 {"private, ","частна, "}.
 {"Public","Публичен"}.
 {"Publish model","Модел за публикуване"}.
@@ -392,11 +475,18 @@
 {"Receive notification of new items only","Получаване на известия само за нови елементи"}.
 {"Receive notification of new nodes only","Получаване на известия само за нови нодове"}.
 {"Recipient is not in the conference room","Получателят не е в конферентната стая"}.
-{"Register an XMPP account","Регистрирай XMPP акаунт"}.
+{"Re-Enable User","Активиране на потребител"}.
+{"Register an XMPP account","Регистрирай XMPP профил"}.
+{"Register on {{ site_name }}","Регистрирайте се на {{ site_name }}"}.
 {"Register","Регистрирай"}.
+{"Registration Error","Грешка при регистрация"}.
+{"Registration error","Грешка при регистриране"}.
+{"Registration Form","Форма за регистрация"}.
+{"Registration Success","Успешна регистрация"}.
 {"Remote copy","Отдалечено копие"}.
 {"Remove a hat from a user","Премахни шапка от потребител"}.
 {"Remove User","Премахни потребител"}.
+{"Renga Logo","Renga лого"}.
 {"Replaced by new connection","Заменен от нова връзка"}.
 {"Request has timed out","Времето за заявка изтече"}.
 {"Request is ignored","Заявката е игнорирано"}.
@@ -408,6 +498,7 @@
 {"Restore binary backup immediately:","Възстанови незабавно двоично копие:"}.
 {"Restore plain text backup immediately:","Възстановете незабавно копие от обикновен текст:"}.
 {"Restore","Възстанови"}.
+{"Result","Резултат"}.
 {"Roles and Affiliations that May Retrieve Member List","Роли и принадлежности, които могат да извличат списък с членове"}.
 {"Roles for which Presence is Broadcasted","Роли, за които се излъчва присъствие"}.
 {"Roles that May Send Private Messages","Роли, които могат да изпращат лични съобщения"}.
@@ -421,16 +512,21 @@
 {"Roster size","Размер на списъка с контакти"}.
 {"Running Nodes","Работещи нодове"}.
 {"~s invites you to the room ~s","~s ви кани в стая ~s"}.
+{"Sad person holding empty box","Тъжен човек, държащ празна кутия"}.
 {"Saturday","Събота"}.
+{"Scan invite code","Сканирайте код за покана"}.
+{"Scan with mobile device","Сканиране с мобилно устройство"}.
 {"Search from the date","Търси от дата"}.
 {"Search Results for ","Резултати от търсенето за "}.
 {"Search the text","Търси текста"}.
 {"Search until the date","Търси до дата"}.
 {"Search users in ","Търси потребители в "}.
+{"Select","Избери"}.
 {"Send announcement to all online users on all hosts","Изпрати съобщение до всички онлайн потребители на всички хостове"}.
 {"Send announcement to all online users","Изпрати съобщение до всички онлайн потребители"}.
 {"Send announcement to all users on all hosts","Изпрати съобщение до всички потребители на всички хостове"}.
 {"Send announcement to all users","Изпрати съобщение до всички потребители"}.
+{"Send this invite to your device","Изпратете тази покана до вашето устройство"}.
 {"September","Септември"}.
 {"Server:","Сървър:"}.
 {"Service list retrieval timed out","Времето за изчакване на извличането на списъка с услуги изтече"}.
@@ -441,9 +537,14 @@
 {"Show Integral Table","Покажи интегрална таблица"}.
 {"Show Occupants Join/Leave","Покажи участници Влязъл/Напускнал"}.
 {"Show Ordinary Table","Покажи обикновена таблица"}.
+{"Showing apps for <span class='platform-name'>your current platform</span> only. You may also <a href='#' id='show-all-clients-button' tabindex=\"{{ tabidx }}\">view all apps.</a>","Показват се приложения само за <span class='platform-name'>текущата ви платформа</span>. Можете също да <a href='#' id='show-all-clients-button' tabindex=\"{{ tabidx }}\">прегледате всички приложения.</a>"}.
+{"Show","Покажи"}.
 {"Shut Down Service","Изключи услугата"}.
+{"Siskin IM Logo","Siskin IM лого"}.
 {"SOCKS5 Bytestreams","SOCKS5 байтови потоци"}.
 {"Some XMPP clients can store your password in the computer, but you should do this only in your personal computer for safety reasons.","Някои XMPP клиенти могат да съхраняват паролата Ви в компютъра, но от съображения за сигурност трябва да го правите само на личния си компютър."}.
+{"Sorry, it looks like this invite code has expired!","Съжалявам, изглежда, че този код за покана е изтекъл!"}.
+{"Sorry, there was a problem registering your account.","За съжаление, възникна проблем с регистрацията на вашия профил."}.
 {"Sources Specs:","Спецификации на източниците:"}.
 {"Specify the access model","Задай модела за достъп"}.
 {"Specify the event message type","Задай типа на съобщението за събитие"}.
@@ -451,13 +552,22 @@
 {"Stanza id is not valid","Невалидно ID на строфата"}.
 {"Stanza ID","ID на строфа"}.
 {"Statically specify a replyto of the node owner(s)","Статично задаване на replyto на собственика(ците) на нода"}.
+{"Step 1: Download and install {{ app_name }}","Стъпка 1: Изтеглете и инсталирайте {{ app_name }}"}.
+{"Step 1: Install {{ app_name }}","Стъпка 1: Инсталирайте {{ app_name }}"}.
+{"Step 2: Activate your account","Стъпка 2: Активирайте профила си"}.
+{"Step 2: Connect {{ app_name }} to your new account","Стъпка 2: Свържете {{ app_name }} с новия си профил"}.
 {"Stopped Nodes","Спрени нодове"}.
 {"Store binary backup:","Запази бинарен архив:"}.
 {"Store plain text backup:","Запази архив като обикновен текст:"}.
 {"Stream management is already enabled","Управлението на потока вече е активирано"}.
 {"Stream management is not enabled","Управлението на потока не е активирано"}.
+{"<strong>{{ site_name }}</strong> is part of XMPP, a secure and decentralized messaging network. To begin chatting using <strong>{{ app_name }}</strong> you need to first register an account.","<strong>{{ site_name }}</strong> е част от XMPP, сигурна и децентрализирана мрежа за съобщения. За да започнете да чатите, използвайки <strong>{{ app_name }}</strong>, първо трябва да регистрирате профил."}.
+{"<strong>{{ site_name }}</strong> is part of XMPP, a secure and decentralized messaging network. To begin chatting you need to first register an account.","<strong>{{ site_name }}</strong> е част от XMPP, сигурна и децентрализирана мрежа за съобщения. За да започнете да чатите, първо трябва да регистрирате профил."}.
+{"<strong>No suitable software installed right now?</strong> You can also log in to your account through our online web chat!","<strong>В момента нямате инсталиран подходящ софтуер?</strong> Можете, също да влезете в профила си чрез нашия онлайн уеб чат!"}.
+{"<strong>Tip:</strong> You can open this invite on your mobile device by scanning a barcode with your camera.","<strong>Съвет:</strong> Можете да отворите тази покана на мобилното си устройство, като сканирате баркод с камерата."}.
 {"Subject","Тема"}.
 {"Submitted","Изпратено"}.
+{"Submit","Изпрати"}.
 {"Subscriber Address","Адрес на абоната"}.
 {"Subscribers may publish","Абонатите могат да публикуват"}.
 {"Subscription requests must be approved and only subscribers may retrieve items","Заявките за абонамент трябва да бъдат одобрени и само абонатите могат да извличат елементи"}.
@@ -485,6 +595,9 @@
 {"The JIDs of those to contact with questions","JID на лицата, с които да се свържете при въпроси"}.
 {"The JIDs of those with an affiliation of owner","JID на лицата с принадлежност на собственик"}.
 {"The JIDs of those with an affiliation of publisher","JID-та на лица с принадлежност към публикуващи"}.
+{"The list of all active users","Списъкът на всички активни потребители"}.
+{"The list of all disabled users","Списък на всички деактвирани потребители"}.
+{"The list of all idle users","Списък на всички неактивни потребители"}.
 {"The list of all online users","Списък на всички онлайн потребители"}.
 {"The list of all users","Списък на всички потребители"}.
 {"The list of JIDs that may associate leaf nodes with a collection","Списъкът с JID, които могат да асоциират листови нодове с колекция"}.
@@ -506,16 +619,20 @@
 {"The presence states for which an entity wants to receive notifications","Състояния на присъствие, за които даден субект желае да получава известия"}.
 {"The query is only allowed from local users","Заявката е разрешена само за локални потребители"}.
 {"The query must not contain <item/> elements","Заявката не може да съдържа елементи <item/>"}.
+{"The role","Ролята"}.
 {"The room subject can be modified by participants","Темата на стаята може да бъде променяна от участниците"}.
 {"The semantic type information of data in the node, usually specified by the namespace of the payload (if any)","Информацията за семантичния тип данни на нода, обикновено зададена от пространството на имената на прикачените данни (ако има такива)"}.
 {"The sender of the last received message","Подателят на последното получено съобщение"}.
 {"The stanza MUST contain only one <active/> element, one <default/> element, or one <list/> element","Строфата ТРЯБВА да съдържа само един <active/> елемент, един <default/> елемент или един <list/> елемент"}.
 {"The subscription identifier associated with the subscription request","Идентификаторът на абонамента, свързан със заявката за абонамент"}.
+{"The token provided is either invalid or expired.","Предоставеният токен код е невалиден или изтекъл."}.
 {"The URL of an XSL transformation which can be applied to payloads in order to generate an appropriate message body element.","URL адрес на XSL трансформацията, която може да се приложи към прикачените данни, за да се генерира подходящ елемент от тялото на съобщението."}.
 {"The URL of an XSL transformation which can be applied to the payload format in order to generate a valid Data Forms result that the client could display using a generic Data Forms rendering engine","URL адрес на XSL трансформацията, която може да се приложи към формата на прикачените данни, за да се генерира валиден резултат от Data Forms, който клиентът може да покаже с помощта на общ механизъм за визуализация на Data Forms"}.
 {"There was an error changing the password: ","Възникна грешка при промяна на паролата: "}.
 {"There was an error creating the account: ","Възникна грешка при създаването на профила: "}.
 {"There was an error deleting the account: ","Възникна грешка при изтриването на профила: "}.
+{"This button works only if you have the app installed already!","Този бутон работи, само ако вече имате инсталирано приложението!"}.
+{"This is an invite from <strong>{{ inviter }}</strong> to connect and chat on the XMPP network. If you already have an XMPP client installed just press the button below!","Това е покана от <strong>{{ inviter }}</strong> за свързване и чат в XMPP мрежата. Ако вече имате инсталиран XMPP клиент, просто натиснете бутона по-долу!"}.
 {"This is case insensitive: macbeth is the same that MacBeth and Macbeth.","Не е чувствително към регистъра (главни и малки букви): \"macbeth\"е същото като \"MacBeth\"и \"Macbeth\"."}.
 {"This page allows to register an XMPP account in this XMPP server. Your JID (Jabber ID) will be of the form: username@server. Please read carefully the instructions to fill correctly the fields.","Тази страница позволява регистриране на XMPP профил на този сървър. Вашият JID (Jabber ID) ще бъде във формата: username@server. Моля, прочетете внимателно инструкциите, за да попълните правилно полетата."}.
 {"This page allows to unregister an XMPP account in this XMPP server.","Тази страница позволява премахване на XMPP профил от този сървър."}.
@@ -524,7 +641,9 @@
 {"Thursday","Четвъртък"}.
 {"Time delay","Закъснение"}.
 {"Timed out waiting for stream resumption","Времето за изчакване за възобновяване на потока изтече"}.
+{"To get started, you need to install an app for your platform:","За да започнете, трябва да инсталирате приложение за вашата платформа:"}.
 {"To register, visit ~s","За да се регистрирате, посетете ~s"}.
+{"To start chatting, you need to enter your new account credentials into your chosen XMPP software.","За да започнете чат, трябва да въведете новите си идентификационни данни в избрания от вас XMPP софтуер."}.
 {"To ~ts","До ~ts"}.
 {"Token TTL","Токен TTL"}.
 {"Too many active bytestreams","Твърде много активни \"bytestreams\" потоци"}.
@@ -557,6 +676,7 @@
 {"Updating the vCard is not supported by the vCard storage backend","Актуализирането на vCard не се поддържа от настройката за съхранение на vCard"}.
 {"Upgrade","Обнови"}.
 {"URL for Archived Discussion Logs","URL адрес за дневници на архивирани дискусии"}.
+{"Use a <em>QR code</em> scanner on your mobile device to scan the code below:","Използвайте скенер за <em>QR код</em> на вашето мобилно устройство, за да сканирате кода по-долу:"}.
 {"User already exists","Потребителят вече съществува"}.
 {"User (jid)","Потребител (jid)"}.
 {"User JID","Потребител JID"}.
@@ -566,6 +686,9 @@
 {"User session not found","Потребителската сесия не е намерена"}.
 {"User session terminated","Потребителската сесия е прекратена"}.
 {"User ~ts","Потребител ~ts"}.
+{"Username invalid","Невалидно потребителско име"}.
+{"Username is reserved","Потребителското име е резервирано"}.
+{"Username","Потребителско име"}.
 {"Username:","Потребителско име:"}.
 {"Users are not allowed to register accounts so quickly","Не е разрешено потребителите да регистрират профили толкова бързо"}.
 {"Users Last Activity","Последна активност на потребителите"}.
@@ -584,6 +707,7 @@
 {"Visitor","Посетител"}.
 {"Voice requests are disabled in this conference","Гласовите обаждания са деактивирани в тази конференция"}.
 {"Voice request","Заявка за гласово обаждане"}.
+{"Web client which allows to join the room anonymously","Уеб клиентът, който позволява анонимно свързване със стаята"}.
 {"Wednesday","Сряда"}.
 {"When a new subscription is processed and whenever a subscriber comes online","Когато се обработва нов абонамент и всеки път, когато абонат се появи онлайн"}.
 {"When a new subscription is processed","Когато се обработва нов абонамент"}.
@@ -601,6 +725,7 @@
 {"Wrong parameters in the web formulary","Грешни параметри в уеб формуляра"}.
 {"Wrong xmlns","Грешен xmlns"}.
 {"XMPP Account Registration","Регистриране на XMPP профил"}.
+{"XMPP client for Haiku","XMPP клиент за Haiku"}.
 {"XMPP Domains","XMPP домейни"}.
 {"XMPP Show Value of Away","XMPP покажи стойност на Отсъства"}.
 {"XMPP Show Value of Chat","XMPP покажи стойност на Чат"}.
@@ -610,8 +735,17 @@
 {"You are being removed from the room because of a system shutdown","Премахнати сте от стаята поради изключване на системата"}.
 {"You are not allowed to send private messages","Нямате право да изпращате лични съобщения"}.
 {"You are not joined to the channel","Не сте присъединени към канала"}.
+{"You can connect to {{ site_name }} using any XMPP-compatible software. If your preferred software is not listed above, you may still <a href=\"{{ registration_url }}\" tabindex='{{ tabidx }}'>register an account manually</a>.","Можете да се свържете с {{ site_name }}, използвайки всеки XMPP-съвместим софтуер. Ако предпочитаният от вас софтуер не е посочен по-горе, все още можете <a href=\"{{ registration_url }}\" tabindex='{{ tabidx }}'>да регистрирате акаунт ръчно</a>."}.
 {"You can later change your password using an XMPP client.","По-късно можете да промените паролата си с помощта на XMPP клиент."}.
+{"You can now set up {{ app_name }} and connect it to your new account.","Вече можете да настроите {{ app_name }} и да го свържете с вашия нов профил."}.
+{"You can start chatting right away with {{ app_name }}. Let's get started!","Можете да започнете да чатите веднага с {{ app_name }}. Да започваме!"}.
+{"You can transfer this invite to your mobile device by scanning a code with your camera.","Можете да прехвърлите тази покана на мобилното си устройство, като сканирате код с камерата на вашето устройство."}.
 {"You have been banned from this room","Достъпът ви до тази стая е забранен"}.
+{"You have been invited to chat on {{ site_name }}, part of the XMPP secure and decentralized messaging network.","Поканени сте да чатите в {{ site_name }}, част от защитената и децентрализирана мрежа за съобщения XMPP."}.
+{"You have been invited to chat on <strong>{{ site_name }}</strong>, part of the XMPP secure and decentralized messaging network.","Поканени сте да чатите в <strong>{{ site_name }}</strong>, част от защитената и децентрализирана мрежа за съобщения XMPP."}.
+{"You have been invited to chat with <strong>{{ inviter }}</strong> on {{ site_name }}, part of the XMPP secure and decentralized messaging network.","Поканени сте да чатите с <strong>{{ inviter }}</strong> на {{ site_name }}, част от защитената и децентрализирана мрежа за съобщения XMPP."}.
+{"You have been invited to chat with <strong>{{ inviter }}</strong> on <strong>{{ site_name }}</strong>, part of the XMPP secure and decentralized messaging network.","Поканени сте да чатите с <strong>{{ inviter }}</strong>на <strong>{{ site_name }}</strong>, част от защитената и децентрализирана мрежа за съобщения XMPP."}.
+{"You have created an account on <strong>{{ site_name }}</strong>.","Създадохте профил в <strong>{{ site_name }}</strong>."}.
 {"You have joined too many conferences","Присъединили сте се към твърде много конференции"}.
 {"You must fill in field \"Nickname\" in the form","Трябва да попълните полето \"Псевдоним\" във формата"}.
 {"You need a client that supports x:data and CAPTCHA to register","За да се регистрирате Ви е нужен клиент, който поддържа x:data и CAPTCHA"}.
@@ -619,7 +753,8 @@
 {"You need an x:data capable client to search","За да търсите, Ви е нужен клиент, който поддържа x:data"}.
 {"Your active privacy list has denied the routing of this stanza.","Вашият активен списък за поверителност отказа маршрутизирането на тази строфа."}.
 {"Your contact offline message queue is full. The message has been discarded.","Достигнат е максималният брой офлайн съобщения за вашия контакт. Съобщението е отхвърлено."}.
+{"Your password is stored encrypted on the server and will not be accessible after you close this page. Keep it safe and never share it with anyone.","Вашата парола се съхранява криптирана на сървъра и няма да бъде достъпна, след като затворите тази страница. Пазете я в безопасност и не я споделяйте с никого."}.
 {"Your subscription request and/or messages to ~s have been blocked. To unblock your subscription request, visit ~s","Вашата заявка за абонамент и/или съобщения до ~s са блокирани. За да отблокирате заявката си за абонамент, посетете ~s"}.
-{"Your XMPP account was successfully registered.","Вашият XMPP акаунт, беше регистриран успешно."}.
-{"Your XMPP account was successfully unregistered.","Вашият XMPP акаунт, беше успешно дерегистриран."}.
+{"Your XMPP account was successfully registered.","Вашият XMPP профил, беше регистриран успешно."}.
+{"Your XMPP account was successfully unregistered.","Вашият XMPP профил, беше успешно премахнат."}.
 {"You're not allowed to create nodes","Нямате право да създавате нодове"}.

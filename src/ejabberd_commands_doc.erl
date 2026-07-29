@@ -5,7 +5,7 @@
 %%% Created : 20 May 2008 by Badlop <badlop@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2026   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -454,7 +454,7 @@ get_version_mark(Note) ->
     XXYY = string:join([XX, YY], "."),
     case string:find(Note, XXYY) of
         nomatch -> "";
-        _ -> " 🟤"
+        _ -> " 🟠"
     end.
 
 make_command_name(Name, Note) ->
@@ -520,7 +520,7 @@ generate_md_output(File, RegExp, Languages, Cmds) ->
     Version = binary_to_list(ejabberd_config:version()),
     Header = ["# API Reference\n\n"
             "This section describes API commands of ejabberd ", Version, ". "
-            "The commands that changed in this version are marked with 🟤.\n\n"],
+            "The commands that changed in this version are marked with 🟠.\n\n"],
     Out = lists:map(fun(C) -> gen_doc(C, false, Langs) end, Cmds4),
     {ok, Fh} = file:open(File, [write, {encoding, utf8}]),
     io:format(Fh, "~ts~ts", [Header, Out]),

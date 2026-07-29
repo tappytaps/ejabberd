@@ -1,6 +1,6 @@
 %%%----------------------------------------------------------------------
 %%%
-%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2026   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -29,27 +29,21 @@
 -define(SQL_INSERT_MARK, sql_insert__mark_).
 -define(SQL_INSERT(Table, Fields), ?SQL_INSERT_MARK(Table, Fields)).
 
--ifdef(COMPILER_REPORTS_ONLY_LINES).
--record(sql_query, {hash :: binary(),
-		    format_query :: fun(),
-		    format_res :: fun(),
-		    args :: fun(),
-		    flags :: non_neg_integer(),
-		    loc :: {module(), pos_integer()}}).
--else.
 -record(sql_query, {hash :: binary(),
 		    format_query :: fun(),
 		    format_res :: fun(),
 		    args :: fun(),
 		    flags :: non_neg_integer(),
 		    loc :: {module(), {pos_integer(), pos_integer()}}}).
--endif.
 
--record(sql_escape, {string :: fun((binary()) -> binary()),
-		     integer :: fun((integer()) -> binary()),
-		     boolean :: fun((boolean()) -> binary()),
-		     in_array_string :: fun((binary()) -> binary()),
-		     like_escape :: fun(() -> binary())}).
+-record(sql_escape, {
+          string :: fun((binary()) -> binary() | atom()),
+          integer :: fun((integer()) -> binary() | atom()),
+          boolean :: fun((boolean()) -> binary() | atom()),
+          timestamp :: fun((calendar:datetime()) -> binary() | atom()),
+          in_array_string :: fun((binary()) -> binary() | atom()),
+          like_escape :: fun(() -> binary() | atom())
+         }).
 
 
 -record(sql_index, {columns,
@@ -57,6 +51,7 @@
                     meta = #{}}).
 -record(sql_column, {name :: binary(),
                      type,
+                     nullable = false,
                      default = false,
                      opts = []}).
 -record(sql_table, {name :: binary(),

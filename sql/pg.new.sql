@@ -1,5 +1,5 @@
 --
--- ejabberd, Copyright (C) 2002-2025   ProcessOne
+-- ejabberd, Copyright (C) 2002-2026   ProcessOne
 --
 -- This program is free software; you can redistribute it and/or
 -- modify it under the terms of the GNU General Public License as
@@ -201,6 +201,7 @@ CREATE TABLE rosterusers (
     jid text NOT NULL,
     nick text NOT NULL,
     subscription character(1) NOT NULL,
+    approved boolean NOT NULL,
     ask character(1) NOT NULL,
     askmessage text NOT NULL,
     server character(1) NOT NULL,
@@ -662,3 +663,17 @@ CREATE TABLE mqtt_pub (
 );
 
 CREATE UNIQUE INDEX i_mqtt_topic_server ON mqtt_pub (topic, server_host);
+
+CREATE TABLE invite_token (
+    token text NOT NULL,
+    username text NOT NULL,
+    server_host text NOT NULL,
+    invitee text NOT NULL DEFAULT '',
+    created_at timestamp NOT NULL DEFAULT now(),
+    expires timestamp NOT NULL DEFAULT now(),
+    "type" character(1) NOT NULL,
+    account_name text NOT NULL,
+    PRIMARY KEY (token)
+);
+CREATE INDEX i_invite_token_username_server_host ON invite_token USING btree (username, server_host);
+CREATE INDEX i_invite_token_invitee ON invite_token USING btree (invitee);

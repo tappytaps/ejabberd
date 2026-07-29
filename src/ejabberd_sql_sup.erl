@@ -5,7 +5,7 @@
 %%% Created : 22 Dec 2004 by Alexey Shchepin <alexey@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2026   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -191,7 +191,8 @@ check_sqlite_db(Host) ->
                     ok
             end;
         {error, Reason} ->
-            ?WARNING_MSG("Failed open sqlite database, reason ~p", [Reason])
+            ?WARNING_MSG("Failed open sqlite database file ~s: ~p",
+                         [File, Reason])
     end.
 
 create_sqlite_tables(DB) ->
@@ -208,8 +209,8 @@ create_sqlite_tables(DB) ->
             [ok = sqlite3:sql_exec(DB, Q) || Q <- Qs],
             ok = sqlite3:sql_exec(DB, "commit");
         {error, Reason} ->
-            ?WARNING_MSG("Failed to read SQLite schema file: ~ts",
-			 [file:format_error(Reason)])
+            ?WARNING_MSG("Failed to read SQLite schema file ~s: ~ts",
+			 [File, file:format_error(Reason)])
     end.
 
 read_lines(Fd, File, Acc) ->

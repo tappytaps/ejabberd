@@ -12,18 +12,15 @@ jobs:
     runs-on: ubuntu-24.04-arm
     strategy:
       matrix:
-        otp: ['25', '26', '27', '28']
+        otp: ['25', '26', '27', '28', '29.0-rc1']
 
     steps:
 
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v6
 
     - uses: erlef/setup-beam@v1
       with:
         otp-version: ${{ matrix.otp }}
-        hexpm-mirrors: |
-          https://cdn.jsdelivr.net/hex
-          https://builds.hex.pm
 
     - uses: awalsh128/cache-apt-pkgs-action@latest
       with:
@@ -31,16 +28,12 @@ jobs:
                   libsqlite3-dev libwebp-dev libyaml-dev
 
     - name: Compile
-      run: |
-        ./autogen.sh
-        ./configure --with-rebar=./rebar3 \
-                    --prefix=/tmp/ejabberd \
-                    --enable-all \
-                    --disable-elixir \
-                    --disable-mssql \
-                    --disable-odbc
-        sed -i 's|, syntax_tools||g' src/ejabberd.app.src.script
-        make
+      uses: ./.github/actions/manage-ejabberd
+      with:
+        for: prod
+        do: compile
+        tool: rebar3
+        configure: --disable-elixir --disable-mssql
 
   ########################################################## Static Tests #####
 
@@ -62,7 +55,7 @@ jobs:
     - run: make options
     - run: make xref
     - run: make dialyzer
-    - run: make test-eunit
+    - run: make testeunit
     - run: make elvis
       if: matrix.otp > '25'
 
@@ -121,6 +114,7 @@ jobs:
       run: make test
 
     - name: Send to coveralls
+      continue-on-error: true
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
@@ -158,7 +152,7 @@ jobs:
 
     - name: Upload CT logs
       if: failure()
-      uses: actions/upload-artifact@v5
+      uses: actions/upload-artifact@v6
       with:
         name: ct-logs-${{ matrix.otp }}
         path: _build/test/logs

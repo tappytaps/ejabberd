@@ -2,7 +2,7 @@
 %%% File    : ejabberd_doc.erl
 %%% Purpose : Options documentation generator
 %%%
-%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2026   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -80,7 +80,7 @@ man(Lang) ->
         ["TOP LEVEL OPTIONS",
          "-----------------",
          "This section describes top level options of ejabberd " ++ Version ++ ".",
-         "The options that changed in this version are marked with 🟤.",
+         "The options that changed in this version are marked with 🟠.",
          io_lib:nl()] ++
         lists:flatmap(
           fun(Opt) ->
@@ -101,7 +101,7 @@ man(Lang) ->
          "-------",
          "[[modules]]",
          "This section describes modules options of ejabberd " ++ Version ++ ".",
-         "The modules that changed in this version are marked with 🟤.",
+         "The modules that changed in this version are marked with 🟠.",
          io_lib:nl()] ++
         lists:flatmap(
           fun({M, Descr, DocOpts, Backends, Example}) ->
@@ -176,7 +176,7 @@ get_version_mark(#{note := Note}) ->
     XXYY = string:join([XX, YY], "."),
     case string:find(Note, XXYY) of
         nomatch -> "";
-        _ -> " 🟤"
+        _ -> " 🟠"
     end;
 get_version_mark(_) ->
     "".
@@ -199,7 +199,7 @@ get_module_apitags(M) ->
     Tags = [C#ejabberd_commands.tags || C <- AllCommands, C#ejabberd_commands.module == M],
     TagsClean =
         lists:sort(
-            misc:lists_uniq(
+            lists:uniq(
                 lists:flatten(Tags))),
     TagsStrings = [atom_to_list(C) || C <- TagsClean],
     TagFiltering =

@@ -5,7 +5,7 @@
 %%% Created :  4 May 2008 by Badlop <badlop@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2026   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -31,6 +31,7 @@
 
 -export([start/2, stop/1, reload/3, process/2, mod_options/1, depends/2]).
 -export([mod_doc/0]).
+-export([web_menu_system/3]).
 
 -include("logger.hrl").
 
@@ -48,7 +49,7 @@
 
 start(_Host, _Opts) ->
     %% case mod_register_web_opt:docroot(Opts, fun(A) -> A end, undefined) of
-    ok.
+    {ok, [{hook, webadmin_menu_system_post, web_menu_system, 1000-$r, global}]}.
 
 stop(_Host) -> ok.
 
@@ -606,6 +607,18 @@ get_error_text({error, wrong_parameters}) ->
 get_error_text({error, Why}) ->
     mod_register:format_error(Why).
 
+%%----------------------------------------------------------------------
+%% WebAdmin
+%%----------------------------------------------------------------------
+
+web_menu_system(Result, _Request, _Level) ->
+    Els = ejabberd_web_admin:make_menu_system(?MODULE, "🪪", "Register Web", ""),
+    Els ++ Result.
+
+%%----------------------------------------------------------------------
+%%
+%%----------------------------------------------------------------------
+
 mod_options(_) ->
     [].
 
@@ -625,8 +638,9 @@ mod_doc() ->
 	      "important to include the last / character in the URL, "
 	      "otherwise the subpages URL will be incorrect."), "",
            ?T("This module is enabled in 'listen' -> 'ejabberd_http' -> "
-              "_`listen-options.md#request_handlers|request_handlers`_, "
-              "no need to enable in 'modules'."),
+              "_`listen-options.md#request_handlers|request_handlers`_."), "",
+           ?T("There is no need to enable this module in 'modules', "
+              "but it adds a link to the register page in WebAdmin menu."),
            ?T("The module depends on _`mod_register`_ where all the "
               "configuration is performed.")],
      example =>

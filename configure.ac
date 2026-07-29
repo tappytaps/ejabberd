@@ -2,7 +2,7 @@
 # Process this file with autoconf to produce a configure script.
 
 AC_PREREQ(2.59)
-AC_INIT(ejabberd, m4_esyscmd([echo `git describe --tags 2>/dev/null || echo 25.10` | sed 's/-g.*//;s/-/./' | tr -d '\012']), [ejabberd@process-one.net], [ejabberd])
+AC_INIT(ejabberd, m4_esyscmd([echo `git describe --tags 2>/dev/null || echo 26.04` | sed 's/-g.*//;s/-/./' | tr -d '\012']), [ejabberd@process-one.net], [ejabberd])
 
 AC_ARG_WITH(min-erlang,
 	AS_HELP_STRING([--with-min-erlang=version],[set minimal required erlang version, default to OTP25]),
@@ -109,6 +109,14 @@ AC_ARG_ENABLE(all,
   no) odbc=false mssql=false mysql=false pgsql=false sqlite=false pam=false zlib=false redis=false elixir=false stun=false sip=false debug=false lua=false tools=false ;;
   *) AC_MSG_ERROR(bad value ${enableval} for --enable-all) ;;
 esac],[])
+
+AC_ARG_ENABLE(bootstrap,
+[AS_HELP_STRING([--enable-bootstrap],[include bootstrap dependencies for mod_invites (default: yes)])],
+[case "${enableval}" in
+  yes) bootstrap=true ;;
+  no)  bootstrap=false ;;
+  *) AC_MSG_ERROR(bad value ${enableval} for --enable-bootstrap) ;;
+esac],[if test "x$bootstrap" = "x"; then bootstrap=true; fi])
 
 AC_ARG_ENABLE(debug,
 [AS_HELP_STRING([--enable-debug],[enable debug information (default: yes)])],
@@ -348,6 +356,7 @@ AC_SUBST(system_deps)
 AC_SUBST(CFLAGS)
 AC_SUBST(CPPFLAGS)
 AC_SUBST(LDFLAGS)
+AC_SUBST(bootstrap)
 
 AC_OUTPUT
 
@@ -367,9 +376,7 @@ AS_CASE([$rebar],
     $rebar unlock "$deps"])
   deps=""
   ERLANG_VERSION=m4_esyscmd([erl -noinput -noshell -eval 'erlang:display(list_to_integer(erlang:system_info(otp_release))), halt().'])
-  AS_IF([test "$ERLANG_VERSION" -lt "21"], [deps="luerl,$deps"])
-  AS_IF([test "$ERLANG_VERSION" -lt "22"], [deps="lager,$deps"])
-  AS_IF([test "$ERLANG_VERSION" -le "23"], [deps="jose,$deps"])
+  AS_IF([test "$ERLANG_VERSION" -le "26"], [deps="jose,$deps"])
   AS_IF([test "$ERLANG_VERSION" -ge "27"], [deps="jiffy,$deps"])
   AS_IF([test "x$deps" = "x"], [],
    [AC_MSG_NOTICE([unlocking rebar3 dependencies for old Erlang/OTP: $deps])

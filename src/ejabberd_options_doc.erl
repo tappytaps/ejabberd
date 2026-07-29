@@ -1,5 +1,5 @@
 %%%----------------------------------------------------------------------
-%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2026   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -313,7 +313,7 @@ doc() ->
       #{value => "true | false",
         desc =>
             ?T("Whether to allow installation of third-party modules or not. "
-               "See _`../../admin/guide/modules.md#ejabberd-contrib|ejabberd-contrib`_ "
+               "See _`../../admin/guide/modules.md#ejabberd-modules|ejabberd-modules`_ "
                "documentation section. "
                "The default value is 'true'.")}},
      {allow_multiple_connections,
@@ -771,10 +771,16 @@ doc() ->
       #{value => "[Module, ...]",
         note => "added in 23.10",
         desc =>
-            ?T("Modules to install from "
-               "_`../../admin/guide/modules.md#ejabberd-contrib|ejabberd-contrib`_ "
-               "at start time. "
-               "The default value is an empty list of modules: '[]'.")}},
+            ?T("Modules from "
+               "_`../../admin/guide/modules.md#ejabberd-modules|ejabberd-modules`_ "
+               "to install automatically at start time. "
+               "The default value is an empty list of modules: '[]'."),
+        example =>
+            ["install_contrib_modules:",
+             "  - mod_tombstones",
+             "",
+             "modules:",
+             "  mod_tombstones: {}"]}},
      {jwt_auth_only_rule,
       #{value => ?T("AccessName"),
         desc =>
@@ -796,9 +802,13 @@ doc() ->
      {jwt_key,
       #{value => ?T("FilePath"),
         desc =>
-            ?T("Path to the file that contains the "
-               "_`authentication.md#jwt-authentication|JWT`_ key. "
-               "The default value is 'undefined'.")}},
+            [?T("Path to the file that contains the "
+                "_`authentication.md#jwt-authentication|JWT`_ key."), "",
+            ?T("Supported file formats:"), "",
+            ?T("* *PEM format* - Standard PEM-encoded keys (RSA, EC, EdDSA, etc.)"), "",
+            ?T("* *JWK (JSON Web Key)* - JSON format"), "",
+            ?T("* *JWK Set* - JSON with a `\"keys\"` array (but must contain exactly one key)"), "",
+            ?T("By default there is no path defined, that is: 'undefined'."), ""]}},
      {language,
       #{value => ?T("Language"),
         desc =>
@@ -997,7 +1007,7 @@ doc() ->
         note => "renamed in 25.10",
         desc =>
             {?T("Whether to use the "
-                "_`database.md#default-and-new-schemas|multihost SQL schema`_. "
+                "_`database.md#singlehost-or-multihost|multihost SQL schema`_. "
                 "All schemas are located "
                 "at <https://github.com/processone/ejabberd/tree/~s/sql>. "
                 "There are two schemas available. The legacy 'singlehost' schema "
@@ -1007,7 +1017,8 @@ doc() ->
                 "serving several XMPP domains and/or changing domains from "
                 "time to time. This avoid need to manage several databases and "
                 "handle complex configuration changes. The default depends on "
-                "configuration flag '--enable-sql-schema-multihost' which is set "
+                "_`../../admin/install/source.md#configure|./configure`_ "
+                "flag '--enable-sql-schema-multihost' which is set "
                 "at compile time."),
              [binary:part(ejabberd_config:version(), {0,5})]}}},
      {new_sql_schema,
@@ -1235,6 +1246,13 @@ doc() ->
                "uses old Jabber Non-SASL authentication (XEP-0078), "
                "then this option is not respected, and the action performed "
                "is 'closeold'.")}},
+     {replaced_connection_timeout,
+      #{value => "timeout()",
+        note => "added in 26.01",
+        desc => ?T("Maximum time that new session will wait for termination of "
+                   "session that it's replacing. This allows old session to "
+                   "properly sends its unavailable presences, and helps with "
+                   "potetnial race conditions between old and new sessions presences.")}},
      {rest_proxy,
       #{value => "Host",
         note => "added in 25.07",
@@ -1458,10 +1476,14 @@ doc() ->
             ?T("A time to wait for connection to an SQL server to be "
                "established. The default value is '5' seconds.")}},
      {sql_database,
-      #{value => ?T("Database"),
+      #{value => ?T("DatabaseName | PathSqliteFile"),
+        note => "improved in 26.04",
         desc =>
-            ?T("An SQL database name. For SQLite this must be a full "
-               "path to a database file. The default value is 'ejabberd'.")}},
+            ?T("An SQL database name, being the default value 'ejabberd'. "
+               "If option _`sql_type`_ is set to 'sqlite', "
+                "this must be a full path to a database file, "
+                "being the default value: '\"@DATABASE_PATH@/sqlite/@HOST@.sqlite\"")
+       }},
      {sql_keepalive_interval,
       #{value => "timeout()",
         desc =>

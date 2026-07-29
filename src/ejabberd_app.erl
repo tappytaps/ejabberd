@@ -5,7 +5,7 @@
 %%% Created : 31 Jan 2003 by Alexey Shchepin <alexey@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2026   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -50,6 +50,7 @@ start(normal, _Args) ->
 	case ejabberd_config:load() of
 	    ok ->
 		ejabberd_mnesia:start(),
+		delete_unused_tables(),
 		file_queue_init(),
 		maybe_add_nameservers(),
 		case ejabberd_sup:start_link() of
@@ -68,6 +69,7 @@ start(normal, _Args) ->
 			maybe_print_elixir_version(),
 			?INFO_MSG("~ts",
 				  [erlang:system_info(system_version)]),
+			print_distribution_listening(),
 			{ok, SupPid};
 		    Err ->
 			?CRITICAL_MSG("Failed to start ejabberd application: ~p", [Err]),
@@ -165,6 +167,9 @@ delete_pid_file() ->
 	    file:delete(PidFilename)
     end.
 
+delete_unused_tables() ->
+    mnesia:delete_table(muc_occupant_id).
+
 file_queue_init() ->
     QueueDir = case ejabberd_option:queue_dir() of
 		   undefined ->
@@ -224,3 +229,20 @@ start_elixir_application() -> ok.
 maybe_start_exsync() -> ok.
 maybe_print_elixir_version() -> ok.
 -endif.
+
+print_distribution_listening() ->
+    Links = case erlang:whereis(net_kernel) of
+        undefined ->
+            [];
+        P ->
+            {links, L} = erlang:process_info(P, links),
+            L
+    end,
+    {Addr, Port} = lists:foldl(
+          fun(Link, Acc) ->
+                  case catch inet:sockname(Link) of
+                      {ok, {A1, P1}} -> {misc:ip_to_list(A1), P1};
+                      _ -> Acc
+                  end
+          end, {"UnknownAddress", "UnknownPort"}, Links),
+    ?INFO_MSG("Start accepting TCP connections at ~ts:~p for erlang distribution", [Addr, Port]).

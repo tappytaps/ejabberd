@@ -5,7 +5,7 @@
 %%% Created : 7 Oct 2015 by Christophe Romain <christophe.romain@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2026   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -90,14 +90,15 @@ leave(Node) ->
 leave([], Node) ->
     {error, {no_cluster, Node}};
 leave([Master|_], Node) ->
-    application:stop(ejabberd),
+    MasterPid = rpc:call(Master, erlang, whereis, [ejabberd_cluster]),
+    mnesia:delete_schema([node()]),
+    %% application:stop(ejabberd),
     application:stop(mnesia),
-    spawn(fun() ->
-              rpc:call(Master, mnesia, del_table_copy, [schema, Node]),
-              mnesia:delete_schema([node()]),
-              erlang:halt(0)
-          end),
-    ok.
+    LeaveFun = fun() ->
+        mnesia:del_table_copy(schema, Node)
+    end,
+    erlang:send(MasterPid, {node_down, Node, LeaveFun}),
+    erlang:halt(0).
 
 -spec node_id() -> binary().
 node_id() ->

@@ -5,7 +5,7 @@
 %%% Created :
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2026   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -41,12 +41,16 @@
 -export([process/2]).
 
 %% utility for other http modules
--export([content_type/3]).
+-export([content_type/3, build_list_content_types/1]).
 
 -export([reopen_log/0, mod_opt_type/1, mod_options/1, depends/2, mod_doc/0]).
 
+-export([web_menu_system/3]).
+
+-include_lib("xmpp/include/xmpp.hrl").
 -include("logger.hrl").
 -include("ejabberd_http.hrl").
+-include("ejabberd_web_admin.hrl").
 -include_lib("kernel/include/file.hrl").
 -include("translate.hrl").
 
@@ -70,28 +74,54 @@
 	{-1, 410, [], <<"Host unknown">>}).
 
 -define(DEFAULT_CONTENT_TYPES,
-	[{<<".css">>, <<"text/css">>},
+	[{<<".avi">>, <<"video/avi">>},
+	 {<<".bmp">>, <<"image/bmp">>},
+	 {<<".bz2">>, <<"application/x-bzip2">>},
+	 {<<".css">>, <<"text/css">>},
 	 {<<".gif">>, <<"image/gif">>},
+	 {<<".gz">>, <<"application/x-gzip">>},
 	 {<<".html">>, <<"text/html">>},
+	 {<<".ico">>, <<"image/vnd.microsoft.icon">>},
 	 {<<".jar">>, <<"application/java-archive">>},
 	 {<<".jpeg">>, <<"image/jpeg">>},
 	 {<<".jpg">>, <<"image/jpeg">>},
 	 {<<".js">>, <<"text/javascript">>},
+	 {<<".json">>, <<"application/json">>},
+	 {<<".m4a">>, <<"audio/mp4">>},
+	 {<<".map">>, <<"application/json">>},
+	 {<<".mp3">>, <<"audio/mpeg">>},
+	 {<<".mp4">>, <<"video/mp4">>},
+	 {<<".mpeg">>, <<"video/mpeg">>},
+	 {<<".mpg">>, <<"video/mpeg">>},
+	 {<<".ogg">>, <<"application/ogg">>},
+	 {<<".pdf">>, <<"application/pdf">>},
 	 {<<".png">>, <<"image/png">>},
+	 {<<".rtf">>, <<"application/rtf">>},
 	 {<<".svg">>, <<"image/svg+xml">>},
+	 {<<".tiff">>, <<"image/tiff">>},
+	 {<<".ttf">>, <<"font/ttf">>},
 	 {<<".txt">>, <<"text/plain">>},
+	 {<<".wav">>, <<"audio/wav">>},
+	 {<<".webp">>, <<"image/webp">>},
+	 {<<".woff">>, <<"font/woff">>},
+	 {<<".woff2">>, <<"font/woff2">>},
 	 {<<".xml">>, <<"application/xml">>},
 	 {<<".xpi">>, <<"application/x-xpinstall">>},
-	 {<<".xul">>, <<"application/vnd.mozilla.xul+xml">>}]).
+	 {<<".xul">>, <<"application/vnd.mozilla.xul+xml">>},
+	 {<<".xz">>, <<"application/x-xz">>},
+	 {<<".zip">>, <<"application/zip">>}]).
 
 %%====================================================================
 %% gen_mod callbacks
 %%====================================================================
 
 start(Host, Opts) ->
+    %% 1000-$f = 898
+    ejabberd_hooks:add(webadmin_menu_system_post, global, ?MODULE, web_menu_system, 898),
     gen_mod:start_child(?MODULE, Host, Opts).
 
 stop(Host) ->
+    ejabberd_hooks:delete(webadmin_menu_system_post, global, ?MODULE, web_menu_system, 898),
     gen_mod:stop_child(?MODULE, Host).
 
 reload(Host, NewOpts, OldOpts) ->
@@ -136,8 +166,7 @@ initialize(Host, Opts) ->
 			 maps:from_list(UserAccess0)
 		 end,
     ContentTypes = build_list_content_types(
-                     mod_http_fileserver_opt:content_types(Opts),
-                     ?DEFAULT_CONTENT_TYPES),
+                     mod_http_fileserver_opt:content_types(Opts)),
     ?DEBUG("Known content types: ~ts",
 	   [str:join([[$*, K, " -> ", V] || {K, V} <- ContentTypes],
 		     <<", ">>)]),
@@ -150,6 +179,9 @@ initialize(Host, Opts) ->
 	   default_content_type = DefaultContentType,
 	   content_types = ContentTypes,
 	   user_access = UserAccess}.
+
+build_list_content_types(AdminCTs) ->
+    build_list_content_types(AdminCTs, ?DEFAULT_CONTENT_TYPES).
 
 -spec build_list_content_types(AdminCTs::[{binary(), binary()|undefined}],
                                Default::[{binary(), binary()|undefined}]) ->
@@ -190,14 +222,15 @@ try_open_log(FN, _Host) ->
 %%                                      {stop, Reason, State}
 %% Description: Handling call messages
 %%--------------------------------------------------------------------
-handle_call({serve, LocalPath, Auth, RHeaders}, _From, State) ->
+handle_call({serve, RawPath, LocalPath, Auth, RHeaders}, _From, State) ->
     IfModifiedSince = case find_header('If-Modified-Since', RHeaders, bad_date) of
 			  bad_date ->
 			      bad_date;
 			  Val ->
 			      httpd_util:convert_request_date(binary_to_list(Val))
 		      end,
-    Reply = serve(LocalPath, Auth, State#state.docroot, State#state.directory_indices,
+    DocRootBased = pick_docroot_based(RawPath, State#state.docroot),
+    Reply = serve(LocalPath, Auth, DocRootBased, State#state.directory_indices,
 		  State#state.custom_headers,
 		  State#state.default_content_type, State#state.content_types,
 		  State#state.user_access, IfModifiedSince),
@@ -205,6 +238,15 @@ handle_call({serve, LocalPath, Auth, RHeaders}, _From, State) ->
 handle_call(Request, From, State) ->
     ?WARNING_MSG("Unexpected call from ~p: ~p", [From, Request]),
     {noreply, State}.
+
+pick_docroot_based(RawPath, DocRootList) when is_list(DocRootList) ->
+    [{_, PathDir} | _] = lists:dropwhile(fun({Dr, _PathDir}) ->
+                                     nomatch == binary:match(RawPath, Dr)
+                             end,
+                             DocRootList),
+    PathDir;
+pick_docroot_based(_RawPath, DocRoot) ->
+    DocRoot.
 
 %%--------------------------------------------------------------------
 %% Function: handle_cast(Msg, State) -> {noreply, State} |
@@ -272,13 +314,13 @@ code_change(_OldVsn, State, _Extra) ->
 %% @doc Handle an HTTP request.
 %% LocalPath is the part of the requested URL path that is "local to the module".
 %% Returns the page to be sent back to the client and/or HTTP status code.
-process(LocalPath, #request{host = Host, auth = Auth, headers = RHeaders} = Request) ->
+process(LocalPath, #request{host = Host, auth = Auth, headers = RHeaders, raw_path = RawPath} = Request) ->
     ?DEBUG("Requested ~p", [LocalPath]),
     try
 	VHost = ejabberd_router:host_of_route(Host),
 	{FileSize, Code, Headers, Contents} =
 	    gen_server:call(get_proc_name(VHost),
-			    {serve, LocalPath, Auth, RHeaders}),
+			    {serve, RawPath, LocalPath, Auth, RHeaders}),
 	add_to_log(FileSize, Code, Request#request{host = VHost}),
 	{Code, Headers, Contents}
     catch _:{Why, _} when Why == noproc; Why == invalid_domain; Why == unregistered_route ->
@@ -473,6 +515,16 @@ ip_to_string(Address) when size(Address) == 8 ->
     Parts = lists:map(fun (Int) -> io_lib:format("~.16B", [Int]) end, tuple_to_list(Address)),
     string:to_lower(lists:flatten(join(Parts, ":"))).
 
+%%----------------------------------------------------------------------
+%% WebAdmin
+%%----------------------------------------------------------------------
+
+web_menu_system(Result, _Request, _Level) ->
+    Els = ejabberd_web_admin:make_menu_system(?MODULE, "📁", "Fileserver: {URLPATH}", ""),
+    Els ++ Result.
+
+%%----------------------------------------------------------------------
+
 mod_opt_type(accesslog) ->
     econf:file(write);
 mod_opt_type(content_types) ->
@@ -484,7 +536,10 @@ mod_opt_type(default_content_type) ->
 mod_opt_type(directory_indices) ->
     econf:list(econf:binary());
 mod_opt_type(docroot) ->
-    econf:directory(write);
+    econf:either(
+      econf:directory(write),
+      econf:map(econf:binary(), econf:binary())
+    );
 mod_opt_type(must_authenticate_with) ->
     econf:list(
       econf:and_then(
@@ -508,6 +563,7 @@ mod_options(_) ->
 mod_doc() ->
     #{desc =>
           ?T("This simple module serves files from the local disk over HTTP."),
+      note => "improved 'docroot' in 26.01",
       opts =>
           [{accesslog,
             #{value => ?T("Path"),
@@ -515,10 +571,29 @@ mod_doc() ->
                   ?T("File to log accesses using an Apache-like format. "
                      "No log will be recorded if this option is not specified.")}},
            {docroot,
-            #{value => ?T("Path"),
+            #{value => ?T("PathDir | {PathURL, PathDir}"),
+              note => "improved in 26.01",
               desc =>
-                  ?T("Directory to serve the files from. "
-                     "This is a mandatory option.")}},
+                  ?T("Directory to serve the files from, "
+                     "or a map with several URL path "
+                     "(as specified in _`listen-options.md#request_handlers|request_handlers`_) "
+                     "and their corresponding directory. "
+                     "This is a mandatory option."),
+              example =>
+                   ["listen:",
+                   "  -",
+                   "    port: 5280",
+                   "    module: ejabberd_http",
+                   "    request_handlers:",
+                   "      /pub/content: mod_http_fileserver",
+                   "      /share: mod_http_fileserver",
+                   "      /: mod_http_fileserver",
+                   "modules:",
+                   "  mod_http_fileserver:",
+                   "    docroot:",
+                   "      /pub/content: /var/service/www",
+                   "      /share: /usr/share/javascript",
+                   "      /: /var/www"]}},
            {content_types,
             #{value => "{Extension: Type}",
               desc =>

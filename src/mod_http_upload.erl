@@ -5,7 +5,7 @@
 %%% Created : 20 Aug 2015 by Holger Weiss <holger@zedat.fu-berlin.de>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2015-2025   ProcessOne
+%%% ejabberd, Copyright (C) 2015-2026   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -33,30 +33,6 @@
 -define(CALL_TIMEOUT, 60000). % 1 minute.
 -define(SLOT_TIMEOUT, timer:hours(5)).
 -define(DEFAULT_CONTENT_TYPE, <<"application/octet-stream">>).
--define(CONTENT_TYPES,
-	[{<<".avi">>, <<"video/avi">>},
-	 {<<".bmp">>, <<"image/bmp">>},
-	 {<<".bz2">>, <<"application/x-bzip2">>},
-	 {<<".gif">>, <<"image/gif">>},
-	 {<<".gz">>, <<"application/x-gzip">>},
-	 {<<".jpeg">>, <<"image/jpeg">>},
-	 {<<".jpg">>, <<"image/jpeg">>},
-	 {<<".m4a">>, <<"audio/mp4">>},
-	 {<<".mp3">>, <<"audio/mpeg">>},
-	 {<<".mp4">>, <<"video/mp4">>},
-	 {<<".mpeg">>, <<"video/mpeg">>},
-	 {<<".mpg">>, <<"video/mpeg">>},
-	 {<<".ogg">>, <<"application/ogg">>},
-	 {<<".pdf">>, <<"application/pdf">>},
-	 {<<".png">>, <<"image/png">>},
-	 {<<".rtf">>, <<"application/rtf">>},
-	 {<<".svg">>, <<"image/svg+xml">>},
-	 {<<".tiff">>, <<"image/tiff">>},
-	 {<<".txt">>, <<"text/plain">>},
-	 {<<".wav">>, <<"audio/wav">>},
-	 {<<".webp">>, <<"image/webp">>},
-	 {<<".xz">>, <<"application/x-xz">>},
-	 {<<".zip">>, <<"application/zip">>}]).
 
 %% gen_mod/supervisor callbacks.
 -export([start/2,
@@ -178,6 +154,8 @@ mod_opt_type(get_url) ->
     econf:url();
 mod_opt_type(service_url) ->
     econf:url();
+mod_opt_type(content_types) ->
+    econf:map(econf:binary(), econf:binary());
 mod_opt_type(custom_headers) ->
     econf:map(econf:binary(), econf:binary());
 mod_opt_type(rm_on_unregister) ->
@@ -220,6 +198,7 @@ mod_options(Host) ->
      {get_url, undefined},
      {service_url, undefined},
      {external_secret, <<"">>},
+     {content_types, []},
      {custom_headers, []},
      {rm_on_unregister, true},
      {thumbnail, false}].
@@ -235,6 +214,7 @@ mod_doc() ->
            ?T("In order to use this module, it must be enabled "
               "in 'listen' -> 'ejabberd_http' -> "
               "_`listen-options.md#request_handlers|request_handlers`_.")],
+      note => "added 'content_types' in 26.01",
       opts =>
           [{host,
             #{desc => ?T("Deprecated. Use 'hosts' instead.")}},
@@ -338,6 +318,12 @@ mod_doc() ->
                      "is used to serve the uploaded files.")}},
            {service_url,
             #{desc => ?T("Deprecated.")}},
+           {content_types,
+            #{value => "{Extension: Type}",
+              note => "added in 26.01",
+              desc =>
+                  ?T("Specify mappings of extension to content type, similarly to "
+                     "the option `content_types` of _`mod_http_fileserver`_.")}},
            {custom_headers,
             #{value => "{Name: Value}",
               desc =>
@@ -448,8 +434,9 @@ handle_call({use_slot, Slot, Size}, _From,
     end;
 handle_call(get_conf, _From,
 	    #state{docroot = DocRoot,
+	           server_host = ServerHost,
 	           custom_headers = CustomHeaders} = State) ->
-    {reply, {ok, DocRoot, CustomHeaders}, State};
+    {reply, {ok, DocRoot, ServerHost, CustomHeaders}, State};
 handle_call(Request, From, State) ->
     ?WARNING_MSG("Unexpected call from ~p: ~p", [From, Request]),
     {noreply, State}.
@@ -574,19 +561,19 @@ process(_LocalPath, #request{method = 'PUT', host = Host, ip = IP,
 		       [encode_addr(IP), Host, Error]),
 	    http_response(500)
     end;
-process(_LocalPath, #request{method = Method, host = Host, ip = IP} = Request0)
+process(_LocalPath, #request{method = Method, host = Host, ip = IP, headers = ReqHeaders} = Request0)
     when Method == 'GET';
 	 Method == 'HEAD' ->
     Request = Request0#request{host = redecode_url(Host)},
     {Proc, [_UserDir, _RandDir, FileName] = Slot} = parse_http_request(Request),
     try gen_server:call(Proc, get_conf, ?CALL_TIMEOUT) of
-	{ok, DocRoot, CustomHeaders} ->
+	{ok, DocRoot, ServerHost, CustomHeaders} ->
 	    Path = str:join([DocRoot | Slot], <<$/>>),
 	    case file:open(Path, [read]) of
 		{ok, Fd} ->
 		    file:close(Fd),
 		    ?INFO_MSG("Serving ~ts to ~ts", [Path, encode_addr(IP)]),
-		    ContentType = guess_content_type(FileName),
+		    ContentType = get_content_type(ServerHost, FileName),
 		    Headers1 = case ContentType of
 				 <<"image/", _SubType/binary>> -> [];
 				 <<"text/", _SubType/binary>> -> [];
@@ -597,7 +584,7 @@ process(_LocalPath, #request{method = Method, host = Host, ip = IP} = Request0)
 			       end,
 		    Headers2 = [{<<"Content-Type">>, ContentType} | Headers1],
 		    Headers3 = ejabberd_http:apply_custom_headers(Headers2, CustomHeaders),
-		    http_response(200, Headers3, {file, Path});
+		    http_response(200, Headers3, {file, Path, ReqHeaders});
 		{error, eacces} ->
 		    ?WARNING_MSG("Cannot serve ~ts to ~ts: Permission denied",
 			      [Path, encode_addr(IP)]),
@@ -632,7 +619,7 @@ process(_LocalPath, #request{method = 'OPTIONS', host = Host,
 	   [encode_addr(IP), Host]),
     {Proc, _Slot} = parse_http_request(Request),
     try gen_server:call(Proc, get_conf, ?CALL_TIMEOUT) of
-	{ok, _DocRoot, CustomHeaders} ->
+	{ok, _DocRoot, _ServerHost, CustomHeaders} ->
 	    AllowHeader = {<<"Allow">>, <<"OPTIONS, HEAD, GET, PUT">>},
 	    http_response(200, ejabberd_http:apply_custom_headers([AllowHeader], CustomHeaders))
     catch
@@ -922,14 +909,14 @@ mk_slot(PutURL, GetURL, XMLNS, Query) ->
 
 reencode_url(UrlString) ->
     {ok, _, _, Host, _, _, _} = yconf:parse_uri(misc:url_encode(UrlString)),
-    HostDecoded = misc:uri_decode(Host),
-    HostIdna = idna:encode(HostDecoded),
-    re:replace(UrlString, Host, HostIdna, [{return, binary}]).
+    HostDecoded = uri_string:percent_decode(Host),
+    HostIdna = idna:encode(uri_string:percent_decode(HostDecoded)),
+    re:replace(UrlString, HostDecoded, HostIdna, [{return, binary}]).
 
 redecode_url(UrlString) ->
     {ok, _, _, HostIdna, _, _, _} = yconf:parse_uri(<<"http://", UrlString/binary>>),
     HostDecoded = idna:decode(HostIdna),
-    Host = misc:uri_quote(HostDecoded),
+    Host = uri_string:quote(HostDecoded),
     re:replace(UrlString, HostIdna, Host, [{return, binary}]).
 
 -spec make_user_string(jid(), sha1 | node) -> binary().
@@ -947,7 +934,7 @@ make_query_string(Slot, Size, #state{external_secret = Key}) when Key /= <<>> ->
     UrlPath = str:join(Slot, <<$/>>),
     SizeStr = integer_to_binary(Size),
     Data = <<UrlPath/binary, " ", SizeStr/binary>>,
-    HMAC = str:to_hexlist(misc:crypto_hmac(sha256, Key, Data)),
+    HMAC = str:to_hexlist(crypto:mac(hmac, sha256, Key, Data)),
     <<"?v=", HMAC/binary>>;
 make_query_string(_Slot, _Size, _State) ->
     <<>>.
@@ -1064,11 +1051,13 @@ do_store_file(Path, Request, FileMode, DirMode) ->
 	    {error, Error}
     end.
 
--spec guess_content_type(binary()) -> binary().
-guess_content_type(FileName) ->
+-spec get_content_type(binary(), binary()) -> binary().
+get_content_type(Host, FileName) ->
+    OptionCTs = mod_http_upload_opt:content_types(Host),
+    ContentTypes = mod_http_fileserver:build_list_content_types(OptionCTs),
     mod_http_fileserver:content_type(FileName,
 				     ?DEFAULT_CONTENT_TYPE,
-				     ?CONTENT_TYPES).
+				     ContentTypes).
 
 -spec http_response(100..599)
       -> {pos_integer(), [{binary(), binary()}], binary()}.
@@ -1081,7 +1070,8 @@ http_response(Code, ExtraHeaders) ->
     Message = <<(code_to_message(Code))/binary, $\n>>,
     http_response(Code, ExtraHeaders, Message).
 
--type http_body() :: binary() | {file, file:filename_all()}.
+-type http_body() :: binary() | {file, file:filename_all()} |
+	{file, file:filename_all(), [{binary(), binary()}]}.
 -spec http_response(100..599, [{binary(), binary()}], http_body())
       -> {pos_integer(), [{binary(), binary()}], http_body()}.
 http_response(Code, ExtraHeaders, Body) ->

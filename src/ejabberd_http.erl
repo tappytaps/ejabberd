@@ -5,7 +5,7 @@
 %%% Created : 27 Feb 2004 by Alexey Shchepin <alexey@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2026   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -33,8 +33,10 @@
 	 accept/1, receive_headers/1, recv_file/2,
 	 listen_opt_type/1, listen_options/0,
 	 apply_custom_headers/2]).
-
+-export([get_url/4, get_auto_url/2, get_auto_urls/2, find_handler_port_path/2, url_decode_q_split_normalize/1]).
 -export([init/3]).
+
+-deprecate({get_auto_url, 2}).
 
 -include("logger.hrl").
 -include_lib("xmpp/include/xmpp.hrl").
@@ -126,10 +128,13 @@ init(SockMod, Socket, Opts) ->
 			     true -> {SockMod, Socket}
 			  end,
     SockPeer =  proplists:get_value(sock_peer_name, Opts, none),
-    RequestHandlers = proplists:get_value(request_handlers, Opts, []),
+    RequestHandlers0 = proplists:get_value(request_handlers, Opts, []),
+    RequestHandlers = ejabberd_hooks:run_fold(http_request_handlers_init,
+                                              RequestHandlers0,
+                                              [Opts]),
     ?DEBUG("S: ~p~n", [RequestHandlers]),
 
-    {ok, RE} = re:compile(<<"^(?:\\[(.*?)\\]|(.*?))(?::(\\d+))?$">>),
+    {ok, RE} = re:compile(<<"^(?:\\[(.*?)\\]|(.*?))(?::(\\d+))?\s*$">>),
 
     CustomHeaders = proplists:get_value(custom_headers, Opts, []),
 
@@ -390,16 +395,15 @@ extract_path_query(#state{request_method = Method,
     when Method =:= 'GET' orelse
 	   Method =:= 'HEAD' orelse
 	     Method =:= 'DELETE' orelse Method =:= 'OPTIONS' ->
-    case catch url_decode_q_split_normalize(Path) of
-	{'EXIT', Error} ->
-	    ?DEBUG("Error decoding URL '~p': ~p", [Path, Error]),
-	    {State, false};
+    try url_decode_q_split_normalize(Path) of
 	{LPath, Query} ->
-	    LQuery = case catch parse_urlencoded(Query) of
-			 {'EXIT', _Reason} -> [];
-			 LQ -> LQ
+	    LQuery = try parse_urlencoded(Query)
+		     catch _:_ -> []
 		     end,
 	    {State, {LPath, LQuery, <<"">>, Path}}
+    catch _:Error ->
+	?DEBUG("Error decoding URL '~p': ~p", [Path, Error]),
+	{State, false}
     end;
 extract_path_query(#state{request_method = Method,
 			  request_path = {abs_path, Path},
@@ -408,10 +412,7 @@ extract_path_query(#state{request_method = Method,
 			  sockmod = _SockMod,
 			  socket = _Socket} = State)
   when (Method =:= 'POST' orelse Method =:= 'PUT') andalso Len>0 ->
-    case catch url_decode_q_split_normalize(Path) of
-	{'EXIT', Error} ->
-	    ?DEBUG("Error decoding URL '~p': ~p", [Path, Error]),
-	    {State, false};
+    try url_decode_q_split_normalize(Path) of
         {LPath, _Query} ->
 	    case Method of
 		'PUT' ->
@@ -419,15 +420,17 @@ extract_path_query(#state{request_method = Method,
 		'POST' ->
 		    case recv_data(State) of
 			{ok, Data} ->
-			    LQuery = case catch parse_urlencoded(Data) of
-					 {'EXIT', _Reason} -> [];
-					 LQ -> LQ
+			    LQuery = try parse_urlencoded(Data)
+				     catch _:_ -> []
 				     end,
 			    {State, {LPath, LQuery, Data, Path}};
 			error ->
 			    {State, false}
 		    end
 	    end
+    catch _:Error ->
+	?DEBUG("Error decoding URL '~p': ~p", [Path, Error]),
+	{State, false}
     end;
 extract_path_query(State) ->
     {State, false}.
@@ -514,7 +517,9 @@ process_request(#state{request_method = Method,
 			  make_text_output(State, Status,
 					   apply_custom_headers(Headers, CustomHeaders), Output);
 		      {Status, Headers, {file, FileName}} ->
-			  make_file_output(State, Status, Headers, FileName);
+			  make_file_output(State, Status, Headers, FileName, []);
+		      {Status, Headers, {file, FileName, ReqHeaders}} ->
+			  make_file_output(State, Status, Headers, FileName, ReqHeaders);
 		      {Status, Reason, Headers, Output}
 			when is_binary(Output) or is_list(Output) ->
 			  make_text_output(State, Status, Reason,
@@ -680,22 +685,107 @@ make_text_output(State, Status, Reason, Headers, Text) ->
     EncodedHdrs = make_headers(State, Status, Reason, Headers, Data2),
     [EncodedHdrs, Data2].
 
-make_file_output(State, Status, Headers, FileName) ->
+parse_etags(Etags, WeakIgnore) ->
+    lists:filtermap(
+	fun(Value) ->
+	    case string:trim(Value) of
+		<<"W/\"", _Rest/binary>> when WeakIgnore ->
+		    false;
+		<<"W/\"", Rest/binary>> ->
+		    case string:split(Rest, <<"\"">>, trailing) of
+			[Etag, _] -> {true, Etag};
+			_ -> false
+		    end;
+		<<"\"", Rest/binary>> ->
+		    case string:split(Rest, <<"\"">>, trailing) of
+			[Etag, _] -> {true, Etag};
+			_ -> false
+		    end;
+		<<"*">> -> true;
+		_ -> false
+	    end
+	end,
+	string:split(Etags, <<",">>, all)).
+
+
+process_etags(Etag, RequestHeaders) ->
+    process_etags(Etag, RequestHeaders, if_match).
+
+process_etags(Etag, RequestHeaders, if_match) ->
+    case lists:keyfind('If-Match', 1, RequestHeaders) of
+	{_, Header} ->
+	    Etags = parse_etags(Header, true),
+	    case lists:any(fun(V) -> V == <<"*">> orelse V == Etag end, Etags) of
+		true -> process_etags(Etag, RequestHeaders, if_none_match);
+		_ -> {true, 412}
+	    end;
+	_ ->
+	    process_etags(Etag, RequestHeaders, if_none_match)
+    end;
+process_etags(Etag, RequestHeaders, if_none_match) ->
+    case lists:keyfind('If-None-Match', 1, RequestHeaders) of
+	{_, Header} ->
+	    Etags = parse_etags(Header, false),
+	    case lists:any(fun(V) -> V == <<"*">> orelse V == Etag end, Etags) of
+		true -> {true, 304};
+		_ -> false
+	    end;
+	_ ->
+	    false
+    end.
+
+process_if_modified_since(MTime, RequestHeaders) ->
+    case lists:keyfind('If-Modified-Since', 1, RequestHeaders) of
+	{_, Header} ->
+	    case httpd_util:convert_request_date(binary_to_list(Header)) of
+		bad_date ->
+		    false;
+		LM ->
+		    T1 = calendar:datetime_to_gregorian_seconds(
+			calendar:universal_time_to_local_time(LM)),
+		    T2 = calendar:datetime_to_gregorian_seconds(MTime),
+		    case T1 >= T2 of
+			true ->
+			    {true, 304};
+			_-> false
+		    end
+	    end;
+	_ ->
+	    false
+    end.
+
+make_file_output(State, Status, Headers, FileName, RequestHeaders) ->
     case file:read_file_info(FileName) of
-	{ok, #file_info{size = Size}} when State#state.request_method == 'HEAD' ->
-	    make_headers(State, Status, <<"">>, Headers, Size);
-	{ok, #file_info{size = Size}} ->
-	    case file:open(FileName, [raw, read]) of
-		{ok, Fd} ->
-		    EncodedHdrs = make_headers(State, Status, <<"">>, Headers, Size),
-		    send_text(State, EncodedHdrs),
-		    send_file(State, Fd, Size, FileName),
-		    file:close(Fd),
-		    none;
-		{error, Why} ->
-		    Reason = file_format_error(Why),
-		    ?ERROR_MSG("Failed to open ~ts: ~ts", [FileName, Reason]),
-		    make_text_output(State, 404, Reason, [], <<>>)
+	{ok, #file_info{size = Size, mtime = MTime} = FI} ->
+	    Etag = list_to_binary(httpd_util:create_etag(FI)),
+	    ExtraHeaders = [{<<"Last-Modified">>, httpd_util:rfc1123_date(MTime)},
+			    {<<"ETag">>, Etag}],
+	    case process_etags(Etag, RequestHeaders) of
+		false ->
+		    case process_if_modified_since(MTime, RequestHeaders) of
+			false ->
+			    if
+				State#state.request_method == 'HEAD' ->
+				    make_headers(State, Status, <<"">>, ExtraHeaders ++ Headers, Size);
+				true ->
+				    case file:open(FileName, [raw, read]) of
+					{ok, Fd} ->
+					    EncodedHdrs = make_headers(State, Status, <<"">>, ExtraHeaders ++ Headers, Size),
+					    send_text(State, EncodedHdrs),
+					    send_file(State, Fd, Size, FileName),
+					    file:close(Fd),
+					    none;
+					{error, Why} ->
+					    Reason = file_format_error(Why),
+					    ?ERROR_MSG("Failed to open ~ts: ~ts", [FileName, Reason]),
+					    make_text_output(State, 404, Reason, [], <<>>)
+				    end
+			    end;
+			{_, NewStatus} ->
+			    make_headers(State, NewStatus, <<"">>, ExtraHeaders ++ Headers, 0)
+		    end;
+		{_, NewStatus} ->
+		    make_headers(State, NewStatus, <<"">>, ExtraHeaders ++ Headers, 0)
 	    end;
 	{error, Why} ->
 	    Reason = file_format_error(Why),
@@ -718,7 +808,7 @@ file_format_error(Reason) ->
 url_decode_q_split_normalize(Path) ->
     {NPath, Query} = url_decode_q_split(Path),
     LPath = normalize_path([NPE
-		    || NPE <- str:tokens(misc:uri_decode(NPath), <<"/">>)]),
+		    || NPE <- str:tokens(uri_string:percent_decode(NPath), <<"/">>)]),
     {LPath, Query}.
 
 % Code below is taken (with some modifications) from the yaws webserver, which
@@ -856,8 +946,7 @@ parse_urlencoded(<<$=, Tail/binary>>, _Last, Cur, key) ->
 parse_urlencoded(<<H, Tail/binary>>, Last, Cur, State) ->
     parse_urlencoded(Tail, Last, <<Cur/binary, H>>, State);
 parse_urlencoded(<<>>, Last, Cur, _State) ->
-    [{Last, Cur}];
-parse_urlencoded(undefined, _, _, _) -> [].
+    [{Last, Cur}].
 
 apply_custom_headers(Headers, CustomHeaders) ->
     {Doctype, Headers2} = case Headers -- [html] of
@@ -867,6 +956,78 @@ apply_custom_headers(Headers, CustomHeaders) ->
     M = maps:merge(maps:from_list(Headers2),
 		   maps:from_list(CustomHeaders)),
     Doctype ++ maps:to_list(M).
+
+%%%--------------------------------
+%%%-export([get_url/4, get_auto_url/2]).
+
+get_url(M, bosh, Tls, Host) ->
+    get_url(M, Tls, Host, bosh_service_url, mod_bosh);
+get_url(M, websocket, Tls, Host) ->
+    get_url(M, Tls, Host, websocket_url, ejabberd_http_ws);
+get_url(M, Option, Tls, Host) ->
+    get_url(M, Tls, Host, Option, M).
+
+get_url(M, Tls, Host, Option, Handler) ->
+    case get_url_preliminar(M, Tls, Host, Option, Handler) of
+        undefined -> undefined;
+        Url -> misc:expand_keyword(<<"@HOST@">>, Url, Host)
+    end.
+
+get_url_preliminar(M, Tls, Host, Option, Handler) ->
+    case gen_mod:get_module_opt(Host, M, Option) of
+        undefined -> undefined;
+        auto -> get_auto_url(Tls, Handler);
+        <<"auto">> -> get_auto_url(Tls, Handler);
+        U when is_binary(U) -> U
+    end.
+
+get_auto_url(Tls, Handler) ->
+    case get_auto_urls(Tls, Handler) of
+        [] -> undefined;
+        [{_ThisTls, Url} | _] -> Url
+    end.
+
+-spec get_auto_urls(boolean() | any, atom()) -> [{boolean(), binary()}].
+
+get_auto_urls(Tls, Handler) ->
+    Paths = find_handler_port_path(Tls, Handler),
+    [prepare_url(Path, Handler) || Path <- Paths].
+
+prepare_url({ThisTls, Port, Path}, Handler) ->
+            Protocol = case {ThisTls, Handler} of
+                           {false, ejabberd_http_ws} -> <<"ws">>;
+                           {true, ejabberd_http_ws} -> <<"wss">>;
+                           {false, _} -> <<"http">>;
+                           {true, _} -> <<"https">>
+                       end,
+            {ThisTls,
+             <<Protocol/binary,
+              "://@HOST@:",
+              (integer_to_binary(Port))/binary,
+              "/",
+              (str:join(Path, <<"/">>))/binary,
+              "/">>}.
+
+find_handler_port_path(Tls, Handler) ->
+    Paths = lists:map(
+      fun({{Port, _, _},
+           ejabberd_http,
+           #{tls := ThisTls, request_handlers := Handlers}})
+            when is_integer(Port) and ((Tls == any) or (Tls == ThisTls)) ->
+              find_handler_port_path_option(ThisTls, Port, Handler, Handlers);
+         (_) ->
+              []
+      end, ets:tab2list(ejabberd_listener)),
+    lists:append(Paths).
+
+find_handler_port_path_option(ThisTls, Port, Handler, Handlers) ->
+    lists:filtermap(fun({Path, H}) when H == Handler ->
+                            {true, {ThisTls, Port, Path}};
+                        ({_Path, _Handler}) ->
+                            false
+                    end, Handlers).
+
+%%%--------------------------------
 
 % The following code is mostly taken from yaws_ssl.erl
 

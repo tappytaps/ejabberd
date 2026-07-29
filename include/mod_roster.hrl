@@ -1,6 +1,6 @@
 %%%----------------------------------------------------------------------
 %%%
-%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2026   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -25,6 +25,7 @@
     jid = {<<>>, <<>>, <<>>}               :: jid:ljid(),
     name = <<>>                            :: binary() | '_',
     subscription = none                    :: subscription() | '_',
+    approved = false                       :: boolean() | '_',
     ask = none                             :: ask() | '_',
     groups = []                            :: [binary()] | '_',
     askmessage = <<"">>                    :: binary() | '_',

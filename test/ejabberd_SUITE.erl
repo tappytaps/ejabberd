@@ -3,7 +3,7 @@
 %%% Created :  2 Jun 2013 by Evgeniy Khramtsov <ekhramtsov@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2026   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -37,7 +37,7 @@
                 bind/1, auth/1, auth/2, open_session/1, open_session/2,
 		zlib/1, starttls/1, starttls/2, close_socket/1, init_stream/1,
 		auth_legacy/2, auth_legacy/3, tcp_connect/1, send_text/2,
-		set_roster/3, del_roster/1]).
+		set_roster/3, del_roster/1, connect_sasl2/2, auth_SASL2/3, auth_fast_token/4]).
 -include("suite.hrl").
 
 suite() ->
@@ -188,7 +188,7 @@ end_per_group(mysql, Config) ->
     case catch ejabberd_sql:sql_query(?MYSQL_VHOST, [Query]) of
         {selected, _, [[<<"0">>]]} ->
             ok;
-        {selected, _, [[<<"1">>]]} ->
+        {selected, _, _} ->
             clear_sql_tables(mysql, Config);
         Other ->
             ct:fail({failed_to_check_table_existence, mysql, Other})
@@ -331,6 +331,9 @@ init_per_testcase(TestCase, OrigConfig) ->
             connect(Config);
         "auth_plain" ->
             connect(Config);
+	"auth_sasl2" ->
+	    Jid = jid:encode(jid:make(User, Server)),
+	    connect_sasl2(starttls(connect_sasl2(Config, Jid)), Jid);
 	"auth_external" ++ _ ->
 	    connect(Config);
 	"unauthenticated_" ++ _ ->
@@ -345,22 +348,23 @@ init_per_testcase(TestCase, OrigConfig) ->
             bind(auth(connect(Config)));
 	"replaced" ++ _ ->
 	    auth(connect(Config));
-        "antispam" ++ _ ->
-            Password = ?config(password, Config),
-            ejabberd_auth:try_register(User, Server, Password),
-            open_session(bind(auth(connect(Config))));
-        _ when IsMaster or IsSlave ->
-            Password = ?config(password, Config),
-            ejabberd_auth:try_register(User, Server, Password),
-            open_session(bind(auth(connect(Config))));
 	_ when TestGroup == s2s_tests ->
 	    auth(connect(starttls(connect(Config))));
         _ ->
+            Password = ?config(password, Config),
+            ejabberd_auth:try_register(User, Server, Password),
             open_session(bind(auth(connect(Config))))
     end.
 
-end_per_testcase(_TestCase, _Config) ->
-    ok.
+end_per_testcase(TestCase, Config) ->
+    case atom_to_list(TestCase) of
+        "invites_" ++ _ ->
+            User = ?config(user, Config),
+            Server = ?config(server, Config),
+            mod_offline:remove_user(User, Server);
+        _ ->
+            ok
+    end.
 
 legacy_auth_tests() ->
     {legacy_auth, [parallel],
@@ -432,6 +436,7 @@ db_tests(DB) when DB == mnesia; DB == redis ->
       [test_register,
        legacy_auth_tests(),
        auth_plain,
+       auth_sasl2,
        auth_md5,
        presence_broadcast,
        last,
@@ -444,6 +449,7 @@ db_tests(DB) when DB == mnesia; DB == redis ->
        pubsub_tests:single_cases(),
        muc_tests:single_cases(),
        offline_tests:single_cases(),
+       invites_tests:single_cases(),
        mam_tests:single_cases(),
        csi_tests:single_cases(),
        push_tests:single_cases(),
@@ -477,6 +483,7 @@ db_tests(DB) ->
        offline_tests:single_cases(),
        mam_tests:single_cases(),
        push_tests:single_cases(),
+       invites_tests:single_cases(),
        test_pass_change,
        test_unregister]},
      muc_tests:master_slave_cases(),
@@ -846,6 +853,26 @@ auth_plain(Config) ->
         false ->
             disconnect(Config),
             {skipped, 'PLAIN_not_available'}
+    end.
+
+auth_sasl2(Config) ->
+    Mechs = ?config(mechs, Config),
+    case lists:member(<<"DIGEST-MD5">>, Mechs) of
+	true ->
+	    Config2 = disconnect(auth_SASL2(<<"DIGEST-MD5">>, Config, false)),
+	    case ?config(fast_token, Config2) of
+		<<>> -> Config2;
+		Token ->
+		    User = ?config(user, Config),
+		    Jid = jid:encode(jid:make(User, ?config(server, Config))),
+		    Hash = crypto:mac(hmac, sha256, Token, <<"Initiator">>),
+		    CalcToken = (<<User/binary, 0, Hash/binary>>),
+		    Config3 = connect_sasl2(starttls(connect_sasl2(Config2, Jid)), Jid),
+		    disconnect(auth_fast_token(<<"HT-SHA-256-NONE">>, CalcToken, Config3, false))
+	    end;
+	false ->
+	    disconnect(Config),
+	    {skipped, 'PLAIN_not_available'}
     end.
 
 auth_external(Config0) ->

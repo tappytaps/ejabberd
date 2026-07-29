@@ -4,7 +4,7 @@
 %%% Created :  2 Mar 2016 by Evgeny Khramtsov <ekhramtsov@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2018   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2026   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -513,7 +513,7 @@ process_mix_message(#message{from = From, to = To,
 		    Msg2 = xmpp:put_meta(Msg1, stanza_id, MamID),
 		    case ejabberd_hooks:run_fold(
 			   store_mam_message, ServerHost, Msg2,
-			   [Chan, Host, BFrom, Nick, groupchat, recv]) of
+			   [Chan, Host, BFrom, Nick, groupchat, recv, false]) of
 			#message{} ->
 			    multicast(Mod, ServerHost, Chan, Host,
 				      ?NS_MIX_NODES_MESSAGES,
@@ -638,7 +638,7 @@ notify_participant_left(Mod, LServer, To, ID) ->
 -spec make_id(jid(), binary()) -> binary().
 make_id(JID, Key) ->
     Data = jid:encode(jid:tolower(jid:remove_resource(JID))),
-    xmpp_util:hex(misc:crypto_hmac(sha256, Data, Key, 10)).
+    xmpp_util:hex(crypto:macN(hmac, sha256, Data, Key, 10)).
 
 -spec make_channel_id(jid(), binary()) -> jid().
 make_channel_id(JID, ID) ->

@@ -5,7 +5,7 @@
 %%% Created :  1 May 2022 by Alexey Shchepin <alexey@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2026   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -23,7 +23,6 @@
 %%%
 %%%-------------------------------------------------------------------
 -module(mod_matrix_gw_s2s).
--ifndef(OTP_BELOW_25).
 -behaviour(gen_statem).
 
 %% API
@@ -591,5 +590,3 @@ request_keys(Via, Data) ->
             Data#data{state = #pending{request_id = RequestID,
                                        servers = NotaryServers}}
     end.
-
--endif.

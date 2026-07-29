@@ -5,7 +5,7 @@
 %%% Created :  8 Nov 2021 by Alexey Shchepin <alexey@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2026   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -31,7 +31,7 @@
 
 -export([start/2, stop/1, reload/3, process/2, depends/2,
          mod_opt_type/1, mod_options/1, mod_doc/0]).
--export([web_menu_system/2]).
+-export([http_handlers_init/2, web_menu_system/3]).
 
 -include_lib("xmpp/include/xmpp.hrl").
 -include("logger.hrl").
@@ -39,8 +39,11 @@
 -include("translate.hrl").
 -include("ejabberd_web_admin.hrl").
 
+-define(AUTOLOGIN_PATH, <<"conversejs-autologin">>).
+
 start(_Host, _Opts) ->
-    {ok, [{hook, webadmin_menu_system_post, web_menu_system, 50, global}]}.
+    {ok, [{hook, http_request_handlers_init, http_handlers_init, 50, global},
+          {hook, webadmin_menu_system_post, web_menu_system, 1000-$c, global}]}.
 
 stop(_Host) ->
     ok.
@@ -51,10 +54,22 @@ reload(_Host, _NewOpts, _OldOpts) ->
 depends(_Host, _Opts) ->
     [].
 
-process([], #request{method = 'GET', host = Host, q = Query, raw_path = RawPath1}) ->
+process(LocalPath, #request{auth = Auth, path = Path, opts = Opts} = Request) ->
+    AutologinPath = lists:member(?AUTOLOGIN_PATH, Path),
+    HasWebsocket = has_websocket(Opts),
+    case {AutologinPath, Auth, HasWebsocket} of
+        {true, undefined, _} ->
+            ejabberd_web:error(not_found);
+        {true, _, false} ->
+            process_websocket();
+        _ ->
+            process2(LocalPath, Request)
+    end.
+
+process2([], #request{method = 'GET', host = Host, auth = Auth, raw_path = RawPath1}) ->
     [RawPath | _] = string:split(RawPath1, "?"),
     ExtraOptions = get_auth_options(Host)
-        ++ get_autologin_options(Query)
+        ++ get_autologin_options(Auth, Host)
         ++ get_register_options(Host)
         ++ get_extra_options(Host),
     Domain = mod_conversejs_opt:default_domain(Host),
@@ -73,12 +88,12 @@ process([], #request{method = 'GET', host = Host, q = Query, raw_path = RawPath1
             {<<"view_mode">>, <<"fullscreen">>}
            | ExtraOptions],
     Init2 =
-        case mod_host_meta:get_url(?MODULE, websocket, any, Host) of
+        case ejabberd_http:get_url(?MODULE, websocket, any, Host) of
             undefined -> Init;
             WSURL -> [{<<"websocket_url">>, WSURL} | Init]
         end,
     Init3 =
-        case mod_host_meta:get_url(?MODULE, bosh, any, Host) of
+        case ejabberd_http:get_url(?MODULE, bosh, any, Host) of
             undefined -> Init2;
             BoshURL -> [{<<"bosh_service_url">>, BoshURL} | Init2]
         end,
@@ -99,25 +114,51 @@ process([], #request{method = 'GET', host = Host, q = Query, raw_path = RawPath1
       <<"</script>">>,
       <<"</body>">>,
       <<"</html>">>]};
-process(LocalPath, #request{host = Host}) ->
+process2(LocalPath, #request{host = Host}) ->
     case is_served_file(LocalPath) of
         true -> serve(Host, LocalPath);
         false -> ejabberd_web:error(not_found)
     end.
 
 %%----------------------------------------------------------------------
+%% WebSocket
+%%----------------------------------------------------------------------
+
+has_websocket(Opts) ->
+    maybe
+        {_, Handlers} ?= lists:keyfind(request_handlers, 1, Opts),
+        true ?= lists:keymember(ejabberd_web_admin, 2, Handlers),
+        true ?= lists:keymember(ejabberd_http_ws, 2, Handlers)
+    else
+        _ -> false
+    end.
+
+process_websocket() ->
+    {200, [html],
+     [<<"<!DOCTYPE html>">>,
+      <<"<html><body>">>,
+      <<"<p>To use Conversejs, please enable WebSocket as a request_handler in this port, like:</p>">>,
+      <<"<pre>    request_handlers:</pre>">>,
+      <<"<pre>      /admin: ejabberd_web_admin</pre>">>,
+      <<"<pre>      /websocket: ejabberd_http_ws</pre>">>,
+      <<"</body></html>">>]}.
+
+%%----------------------------------------------------------------------
 %% File server
 %%----------------------------------------------------------------------
 
-is_served_file([<<"converse.min.js">>]) -> true;
 is_served_file([<<"converse.min.css">>]) -> true;
-is_served_file([<<"converse.min.js.map">>]) -> true;
 is_served_file([<<"converse.min.css.map">>]) -> true;
+is_served_file([<<"converse.min.js">>]) -> true;
+is_served_file([<<"converse.min.js.map">>]) -> true;
+is_served_file([<<"emoji.json">>]) -> true;
 is_served_file([<<"emojis.js">>]) -> true;
-is_served_file([<<"locales">>, _]) -> true;
+is_served_file([<<"images">>, _]) -> true;
 is_served_file([<<"locales">>, <<"dayjs">>, _]) -> true;
-is_served_file([<<"webfonts">>, _]) -> true;
+is_served_file([<<"locales">>, _]) -> true;
 is_served_file([<<"plugins">>, _]) -> true;
+is_served_file([<<"sounds">>, _]) -> true;
+is_served_file([<<"webfonts">>, _]) -> true;
 is_served_file(_) -> false.
 
 serve(Host, LocalPath) ->
@@ -138,11 +179,12 @@ serve2(LocalPathBin, MainPathBin) ->
     LocalPath = [binary_to_list(LPB) || LPB <- LocalPathBin],
     MainPath = binary_to_list(MainPathBin),
     FileName = filename:join(filename:split(MainPath) ++ LocalPath),
+    ContentType = get_content_type(iolist_to_binary(FileName)),
     case file:read_file(FileName) of
         {ok, FileContents} ->
             ?DEBUG("Delivering content.", []),
             {200,
-             [{<<"Content-Type">>, content_type(FileName)}],
+             [{<<"Content-Type">>, ContentType}],
              FileContents};
         {error, eisdir} ->
             {403, [], "Forbidden"};
@@ -155,15 +197,14 @@ serve2(LocalPathBin, MainPathBin) ->
             end
     end.
 
-content_type(Filename) ->
-    case string:to_lower(filename:extension(Filename)) of
-        ".css"  -> "text/css";
-        ".js"   -> "text/javascript";
-        ".map"  -> "application/json";
-        ".ttf"  -> "font/ttf";
-        ".woff"  -> "font/woff";
-        ".woff2"  -> "font/woff2"
-    end.
+-define(DEFAULT_CONTENT_TYPE, <<"application/octet-stream">>).
+
+-spec get_content_type(binary()) -> binary().
+get_content_type(FileName) ->
+    ContentTypes = mod_http_fileserver:build_list_content_types([]),
+    mod_http_fileserver:content_type(FileName,
+				     ?DEFAULT_CONTENT_TYPE,
+				     ContentTypes).
 
 %%----------------------------------------------------------------------
 %% Options parsing
@@ -180,6 +221,17 @@ get_auth_options(Domain) ->
             [{<<"authentication">>, <<"anonymous">>},
              {<<"jid">>, Domain}]
     end.
+
+get_autologin_options({Jid1, Password}, Host) ->
+    Jid = case jid:decode(Jid1) of
+              #jid{luser = <<>>} ->
+                  jid:encode(jid:make(Jid1, Host));
+              _ ->
+                  Jid1
+          end,
+    [{<<"auto_login">>, <<"true">>}, {<<"jid">>, Jid}, {<<"password">>, Password}];
+get_autologin_options(undefined, _) ->
+    [].
 
 get_register_options(Server) ->
     AuthSupportsRegister =
@@ -252,63 +304,34 @@ get_plugins_html(Host, RawPath) ->
 
 %% @format-begin
 
-web_menu_system(Result,
-                #request{host = Host,
-                         auth = Auth,
-                         tp = Protocol}) ->
-    AutoUrl = mod_host_meta:get_auto_url(any, ?MODULE),
-    ConverseUrl = misc:expand_keyword(<<"@HOST@">>, AutoUrl, Host),
-    AutologinQuery =
-        case {Protocol, Auth} of
-            {http, {Jid, _Password}} ->
-                <<"/?autologinjid=", Jid/binary>>;
-            {https, {Jid, Password}} ->
-                AuthToken = build_token(Jid, Password),
-                <<"/?autologinjid=", Jid/binary, "&autologintoken=", AuthToken/binary>>;
-            _ ->
-                <<"">>
+http_handlers_init(Handlers, _Opts) ->
+    Handlers2 =
+        lists:foldl(fun ({Path, ejabberd_web_admin} = Handler, Acc) ->
+                            [Handler, {lists:append(Path, [?AUTOLOGIN_PATH]), mod_conversejs}
+                             | Acc];
+                        (Handler, Acc) ->
+                            [Handler | Acc]
+                    end,
+                    [],
+                    Handlers),
+    lists:reverse(Handlers2).
+
+web_menu_system(Result, #request{tp = Protocol}, Level) ->
+    Els = ejabberd_web_admin:make_menu_system(?MODULE, "☯️", "Converse", ""),
+    Base = iolist_to_binary(lists:duplicate(Level, "../")),
+    ThisTls =
+        case Protocol of
+            http ->
+                false;
+            https ->
+                true
         end,
-    ConverseEl =
-        ?LI([?C(unicode:characters_to_binary("☯️")),
-             ?XAE(<<"a">>,
-                  [{<<"href">>, <<ConverseUrl/binary, AutologinQuery/binary>>},
-                   {<<"target">>, <<"_blank">>}],
-                  [?C(unicode:characters_to_binary("Converse"))])]),
-    [ConverseEl | Result].
-
-get_autologin_options(Query) ->
-    case {proplists:get_value(<<"autologinjid">>, Query),
-          proplists:get_value(<<"autologintoken">>, Query)}
-    of
-        {undefined, _} ->
-            [];
-        {Jid, Token} ->
-            [{<<"auto_login">>, <<"true">>},
-             {<<"jid">>, <<"admin@localhost">>},
-             {<<"password">>, check_token_get_password(Jid, Token)}]
-    end.
-
-build_token(Jid, Password) ->
-    Minutes =
-        integer_to_binary(calendar:datetime_to_gregorian_seconds(
-                              calendar:universal_time())
-                          div 60),
-    Cookie =
-        misc:atom_to_binary(
-            erlang:get_cookie()),
-    str:sha(<<Jid/binary, Password/binary, Minutes/binary, Cookie/binary>>).
-
-check_token_get_password(_, undefined) ->
-    <<"">>;
-check_token_get_password(JidString, TokenProvided) ->
-    Jid = jid:decode(JidString),
-    Password = ejabberd_auth:get_password_s(Jid#jid.luser, Jid#jid.lserver),
-    case build_token(JidString, Password) of
-        TokenProvided ->
-            Password;
-        _ ->
-            <<"">>
-    end.
+    ConverseEl2 =
+        ejabberd_web_admin:make_menu_system_el("☯️",
+                                               "Converse (autologin)",
+                                               binary_to_list(?AUTOLOGIN_PATH),
+                                               {ThisTls, Base}),
+    lists:flatten([ConverseEl2, Els, Result]).
 %% @format-end
 
 %%----------------------------------------------------------------------
@@ -353,6 +376,9 @@ mod_doc() ->
               "are enabled in at least one 'request_handlers'."), "",
            ?T("When 'conversejs_css' and 'conversejs_script' are 'auto', "
               "by default they point to the public Converse client."), "",
+           ?T("When this module is enabled in 'modules', "
+              "it adds automatically a requesthandler and link in WebAdmin. "
+              "."), "",
            ?T("This module is available since ejabberd 21.12.")
           ],
       note => "improved in 25.07",

@@ -5,7 +5,7 @@
 %%% Created : 12 Mar 2006 by Alexey Shchepin <alexey@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2026   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -25,7 +25,7 @@
 
 -module(mod_muc_log).
 
--protocol({xep, 334, '0.2', '15.09', "complete", ""}).
+-protocol({xep, 334, '1.0.0', '15.09', "complete", ""}).
 
 -author('badlop@process-one.net').
 
@@ -144,7 +144,7 @@ handle_cast(Msg, State) ->
 
 handle_info(_Info, State) -> {noreply, State}.
 
-terminate(_Reason, #state{host = Host}) ->
+terminate(_Reason, #logstate{host = Host}) ->
     ejabberd_hooks:delete(muc_log_add, Host, ?MODULE, add_to_log, 100),
     ejabberd_hooks:delete(muc_log_check_access_log, Host, ?MODULE, check_access_log, 100),
     ejabberd_hooks:delete(muc_log_get_url, Host, ?MODULE, get_url, 100),

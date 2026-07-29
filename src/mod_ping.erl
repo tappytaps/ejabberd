@@ -5,7 +5,7 @@
 %%% Created : 11 Jul 2009 by Brian Cully <bjc@kublai.com>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2026   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -27,7 +27,7 @@
 
 -author('bjc@kublai.com').
 
--protocol({xep, 199, '2.0', '2.1.0', "complete", ""}).
+-protocol({xep, 199, '2.0.1', '2.1.0', "complete", ""}).
 
 -behaviour(gen_mod).
 

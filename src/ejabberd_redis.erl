@@ -4,7 +4,7 @@
 %%% Created :  8 May 2016 by Evgeny Khramtsov <ekhramtsov@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2026   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -68,14 +68,6 @@
 -type state() :: #state{}.
 
 -export_type([error_reason/0]).
-
--ifdef(USE_OLD_HTTP_URI). % Erlang/OTP lower than 21
--dialyzer([{no_return, do_connect/6},
-           {no_unused, flush_queue/1},
-           {no_match, flush_queue/1},
-           {no_unused, re_subscribe/2},
-           {no_match, handle_info/2}]).
--endif.
 
 %%%===================================================================
 %%% API

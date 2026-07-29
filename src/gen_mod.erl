@@ -5,7 +5,7 @@
 %%% Created : 24 Jan 2003 by Alexey Shchepin <alexey@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2026   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -34,7 +34,7 @@
 	 loaded_modules/1, loaded_modules_with_opts/1,
 	 get_hosts/2, get_module_proc/2, is_loaded/2, is_loaded_elsewhere/2,
 	 start_modules/0, start_modules/1, stop_modules/0, stop_modules/1,
-	 db_mod/2, ram_db_mod/2]).
+	 db_mod/2, ram_db_mod/2, depend_on/2]).
 -export([validate/2]).
 
 %% Deprecated functions
@@ -367,7 +367,7 @@ prep_stop_module_keep_config(Host, Module) ->
 
 -spec stop_module_keep_config(binary(), atom()) -> error | ok.
 stop_module_keep_config(Host, Module) ->
-    ?DEBUG("Stopping ~ts at ~ts", [Module, Host]),
+    ?INFO_MSG("Stopping ~ts at ~ts", [Module, Host]),
     Registrations =
         case ets:lookup(ejabberd_modules, {Module, Host}) of
             [M] ->
@@ -421,6 +421,11 @@ del_registrations(Host, Module, Registrations) ->
     lists:foreach(
       fun({hook, Hook, Function, Seq}) ->
               ejabberd_hooks:delete(Hook, Host, Module, Function, Seq);
+         ({hook, Hook, Function, Seq, global}) when is_integer(Seq) ->
+              case is_loaded_elsewhere(Host, Module) of
+                  false -> ejabberd_hooks:delete(Hook, global, Module, Function, Seq);
+                  true -> ok
+              end;
          ({hook, Hook, Function, Seq, Host1}) when is_integer(Seq) ->
               ejabberd_hooks:delete(Hook, Host1, Module, Function, Seq);
          ({hook, Hook, Module1, Function, Seq}) when is_integer(Seq) ->
@@ -537,6 +542,10 @@ get_module_proc(Host, Base) ->
       <<(erlang:atom_to_binary(Base, latin1))/binary, "_", Host/binary>>,
       latin1).
 
+-spec depend_on([{atom(), atom()}], fun(([term()]) -> term())) -> term().
+depend_on(Dependant, Fun) ->
+    {depend_on, Fun, Dependant}.
+
 -spec is_loaded(binary(), atom()) -> boolean().
 is_loaded(Host, Module) ->
     ets:member(ejabberd_modules, {Module, Host}).
@@ -611,9 +620,29 @@ validator(Host) ->
 				       fun({Mod, Opts}) ->
 					       {Mod, validator(Host, Mod, Opts)}
 				       end, L)),
-		      Validator = econf:options(Validators, [unique]),
+		      Validator = econf:and_then(econf:options(Validators, [unique]),
+			  fun resolve_depend_on/1),
 		      Validator(L)
 	      end)}).
+
+-spec resolve_depend_on([{atom(), map()}]) -> [{atom(), map()}].
+resolve_depend_on(Values) ->
+    lists:map(
+	fun({Mod, Opts}) ->
+	    {Mod, maps:map(
+		fun(_K, {depend_on, Fun, ExtraKeys}) when is_function(Fun) ->
+		    Resolved = lists:map(
+			fun({DepMod, DepOpt}) ->
+			    case proplists:get_value(DepMod, Values, #{}) of
+				#{DepOpt := Val} ->
+				    Val;
+				_ -> undefined
+			    end
+			end, ExtraKeys),
+		    Fun(Resolved);
+		   (_, V) -> V
+		end, Opts)}
+	end, Values).
 
 -spec validator(binary(), module(), [{atom(), term()}]) -> econf:validator().
 validator(Host, Module, Opts) ->

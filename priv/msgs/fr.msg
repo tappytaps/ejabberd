@@ -45,7 +45,10 @@
 {"Anyone with a presence subscription of both or from may subscribe and retrieve items","N’importe qui avec un abonnement de présence peut s’abonner et récupérer les items"}.
 {"Anyone with Voice","N’importe qui avec Voice"}.
 {"Anyone","N’importe qui"}.
+{"API Commands","Commandes d'API"}.
 {"April","Avril"}.
+{"Arguments","Paramètres"}.
+{"Assign a hat to a user","Attribuer un badge à un utilisateur"}.
 {"Attribute 'channel' is required for this request","L’attribut « channel » est requis pour la requête"}.
 {"Attribute 'id' is mandatory for MIX messages","L’attribut « id » est obligatoire pour les messages MIX"}.
 {"Attribute 'jid' is not allowed here","L’attribut « jid » n’est pas autorisé ici"}.
@@ -58,6 +61,7 @@
 {"Backup to File at ","Sauvegarde fichier sur "}.
 {"Backup","Sauvegarde"}.
 {"Bad format","Mauvais format"}.
+{"BAD REQUEST","MAUVAISE REQUÊTE"}.
 {"Birthday","Date d'anniversaire"}.
 {"Both the username and the resource are required","Le nom d'utilisateur et sa ressource sont nécessaires"}.
 {"Bytestream already activated","Le flux SOCKS5 est déjà activé"}.
@@ -71,6 +75,7 @@
 {"Changing role/affiliation is not allowed","La modification role/affiliation n'est pas autorisée"}.
 {"Channel already exists","Ce canal existe déjà"}.
 {"Channel does not exist","Le canal n’existe pas"}.
+{"Channel JID","JID du canal"}.
 {"Channels","Canaux"}.
 {"Characters not allowed:","Caractères non autorisés :"}.
 {"Chatroom configuration modified","Configuration du salon modifiée"}.
@@ -84,12 +89,16 @@
 {"Choose whether to approve this entity's subscription.","Choisissez d'approuver ou non l'abonnement de cette entité."}.
 {"City","Ville"}.
 {"Client acknowledged more stanzas than sent by server","Le client accuse réception de plus de strophes que ce qui est envoyé par le serveur"}.
+{"Clustering","Clustering"}.
 {"Commands","Commandes"}.
 {"Conference room does not exist","Le salon de discussion n'existe pas"}.
 {"Configuration of room ~s","Configuration pour le salon ~s"}.
 {"Configuration","Configuration"}.
 {"Contact Addresses (normally, room owner or owners)","Adresses de contact (normalement les administrateurs du salon)"}.
+{"Contacts","Contacts"}.
 {"Country","Pays"}.
+{"Create a Hat","Créer un badge"}.
+{"Create Account","Créer un Compte"}.
 {"Current Discussion Topic","Sujet de discussion courant"}.
 {"Database failure","Échec sur la base de données"}.
 {"Database Tables Configuration at ","Configuration des tables de base de données sur "}.
@@ -101,6 +110,8 @@
 {"Delete User","Supprimer l'utilisateur"}.
 {"Deliver event notifications","Envoyer les notifications d'événement"}.
 {"Deliver payloads with event notifications","Inclure le contenu du message avec la notification"}.
+{"Destroy a Hat","Détruire un badge"}.
+{"Disable User","Désactiver l'utilisateur"}.
 {"Disc only copy","Copie sur disque uniquement"}.
 {"Don't tell your password to anybody, not even the administrators of the XMPP server.","Ne révélez votre mot de passe à personne, pas même aux administrateurs du serveur XMPP."}.
 {"Dump Backup to Text File at ","Enregistrer la sauvegarde dans un fichier texte sur "}.
@@ -115,9 +126,10 @@
 {"ejabberd SOCKS5 Bytestreams module","Module SOCKS5 Bytestreams per ejabberd"}.
 {"ejabberd vCard module","Module vCard ejabberd"}.
 {"ejabberd Web Admin","Console Web d'administration de ejabberd"}.
-{"ejabberd","ejabberd"}.
+{"ejabberd","Administration d'ejabberd"}.
 {"Email Address","Adresse courriel"}.
 {"Email","Courriel"}.
+{"Enable hats","Activer les badges"}.
 {"Enable logging","Activer l'archivage"}.
 {"Enable message archiving","Activer l'archivage de messages"}.
 {"Enabling push without 'node' attribute is not supported","L'activation push ne peut se faire sans l'attribut 'node'"}.
@@ -150,11 +162,19 @@
 {"Full List of Room Admins","Liste complète des administrateurs des salons"}.
 {"Full List of Room Owners","Liste complète des propriétaires des salons"}.
 {"Full Name","Nom complet"}.
+{"Get List of Active Users","Récupérer les utilisateurs actifs"}.
+{"Get List of Disabled Users","Récupérer les utilisateurs désactivés"}.
+{"Get List of Idle Users","Récupérer les utilisateurs inactifs"}.
 {"Get List of Online Users","Récupérer les utilisateurs en ligne"}.
 {"Get List of Registered Users","Récupérer les utilisateurs enregistrés"}.
+{"Get Number of Active Users","Récupérer le nombre d'utilisateurs actifs"}.
+{"Get Number of Disabled Users","Récupérer le nombre d'utilisateurs désactivés"}.
+{"Get Number of Idle Users","Récupérer le nombre d'utilisateurs inactifs"}.
 {"Get Number of Online Users","Récupérer le nombre d'utilisateurs en ligne"}.
 {"Get Number of Registered Users","Récupérer le nombre d'utilisateurs enregistrés"}.
+{"Get Pending","En attente"}.
 {"Get User Last Login Time","Récupérer la dernière date de connexion de l'utilisateur"}.
+{"Get User Roster","Récupérer les contacts de l'utilisateur"}.
 {"Get User Statistics","Récupérer les statistiques de l'utilisateur"}.
 {"Given Name","Nom"}.
 {"Grant voice to this person?","Accorder le droit de parole à cet utilisateur ?"}.
@@ -163,6 +183,8 @@
 {"has been kicked because of an affiliation change","a été éjecté à cause d'un changement d'autorisation"}.
 {"has been kicked because the room has been changed to members-only","a été éjecté car la salle est désormais réservée aux membres"}.
 {"has been kicked","a été expulsé"}.
+{"Hash computed from the list of hats available in a room","Hash calculé à partir de la liste des badges disponibles dans le salon"}.
+{"Hat title","Titre du badge"}.
 {"Hats limit exceeded","La limite a été dépassée"}.
 {"Host unknown","Serveur inconnu"}.
 {"HTTP File Upload","Téléversement de fichier HTTP"}.
@@ -184,6 +206,7 @@
 {"Incorrect value of 'action' attribute","Valeur de l'attribut 'action' incorrecte"}.
 {"Incorrect value of 'action' in data form","Valeur de l'attribut 'action' incorrecte dans le formulaire"}.
 {"Incorrect value of 'path' in data form","Valeur de l'attribut 'path' incorrecte dans le formulaire"}.
+{"Installed Modules:","Modules installés :"}.
 {"Install","Installer"}.
 {"Insufficient privilege","Droits insuffisants"}.
 {"Internal server error","Erreur interne du serveur"}.
@@ -191,6 +214,7 @@
 {"Invalid node name","Nom de nœud invalide"}.
 {"Invalid 'previd' value","Valeur 'previd' invalide"}.
 {"Invitations are not allowed in this conference","Les invitations ne sont pas autorisées dans ce salon"}.
+{"Invite User","Inviter un Utilisateur"}.
 {"IP addresses","Adresses IP"}.
 {"is now known as","est maintenant connu comme"}.
 {"It is not allowed to send error messages to the room. The participant (~s) has sent an error message (~s) and got kicked from the room","L'envoyer de messages d'erreur au salon n'est pas autorisé. Le participant (~s) à envoyé un message d'erreur (~s) et à été expulsé du salon"}.
@@ -198,6 +222,9 @@
 {"It is not allowed to send private messages to the conference","Il n'est pas permis d'envoyer des messages privés à la conférence"}.
 {"Jabber ID","Jabber ID"}.
 {"January","Janvier"}.
+{"JID normalization failed","Échec de la normalisation JID"}.
+{"Joined MIX channels of ~ts","Canaux MIX rejoints par ~ts"}.
+{"Joined MIX channels:","Canaux MIX rejoints :"}.
 {"joins the room","rejoint le salon"}.
 {"July","Juillet"}.
 {"June","Juin"}.
@@ -208,6 +235,9 @@
 {"Last month","Dernier mois"}.
 {"Last year","Dernière année"}.
 {"leaves the room","quitte le salon"}.
+{"List of Hats","Liste des badges"}.
+{"List users with hats","Liste des utilisateurs avec des chapeaux"}.
+{"Logged Out","Déconnecté"}.
 {"Make participants list public","Rendre la liste des participants publique"}.
 {"Make room CAPTCHA protected","Protéger le salon par un CAPTCHA"}.
 {"Make room members-only","Réserver le salon aux membres uniquement"}.
@@ -216,15 +246,19 @@
 {"Make room persistent","Rendre le salon persistant"}.
 {"Make room public searchable","Rendre le salon public"}.
 {"Malformed username","Nom d'utilisateur invalide"}.
+{"MAM preference modification denied by service policy","Modification des préférences MAM refusée par la politique de service"}.
 {"March","Mars"}.
 {"Max payload size in bytes","Taille maximum pour le contenu du message en octet"}.
 {"Maximum file size","Taille maximale du fichier"}.
 {"Maximum Number of History Messages Returned by Room","Nombre maximal de messages d'historique renvoyés par salle"}.
+{"Maximum number of invites reached","Nombre maximal d'invitations atteint"}.
 {"Maximum number of items to persist","Nombre maximal d'éléments à conserver"}.
 {"Maximum Number of Occupants","Nombre maximal d'occupants"}.
 {"May","Mai"}.
+{"Members are allowed to invite others","Les membres sont autorisés à inviter d'autres personnes."}.
 {"Membership is required to enter this room","Vous devez être membre pour accèder à ce salon"}.
 {"Memorize your password, or write it in a paper placed in a safe place. In XMPP there isn't an automated way to recover your password if you forget it.","Mémorisez votre mot de passe, ou écrivez-le sur un papier conservé dans un endroit secret. Dans XMPP il n'y a pas de mécanisme pour retrouver votre mot de passe si vous l'avez oublié."}.
+{"Mere Availability in XMPP (No Show Value)","Disponible sur XMPP (sans valeur affichée)"}.
 {"Message body","Corps du message"}.
 {"Message not found in forwarded payload","Message non trouvé dans l'enveloppe transférée"}.
 {"Messages from strangers are rejected","Les messages d'étrangers sont rejetés"}.
@@ -290,17 +324,20 @@
 {"None","Aucun"}.
 {"Not allowed","Non autorisé"}.
 {"Not Found","Nœud non trouvé"}.
+{"NOT FOUND","NON TROUVÉ"}.
 {"Not subscribed","Pas abonné"}.
 {"Notify subscribers when items are removed from the node","Avertir les abonnés lorsque des éléments sont supprimés sur le nœud"}.
 {"Notify subscribers when the node configuration changes","Avertir les abonnés lorsque la configuration du nœud change"}.
 {"Notify subscribers when the node is deleted","Avertir les abonnés lorsque le nœud est supprimé"}.
 {"November","Novembre"}.
 {"Number of answers required","Nombre de réponses requises"}.
+{"Number of disabled users","Nombre d'utilisateurs désactivés"}.
+{"Number of idle users","Nombre d'utilisateurs inactifs"}.
 {"Number of occupants","Nombre d'occupants"}.
 {"Number of Offline Messages","Nombre de messages hors ligne"}.
 {"Number of online users","Nombre d'utilisateurs en ligne"}.
 {"Number of registered users","Nombre d'utilisateurs enregistrés"}.
-{"Occupants are allowed to invite others","Les occupants sont autorisés à inviter d’autres personnes"}.
+{"Occupants are allowed to query others","Les occupants peuvent consulter les informations des autres"}.
 {"Occupants May Change the Subject","Les occupants peuvent changer le sujet"}.
 {"October","Octobre"}.
 {"OK","OK"}.
@@ -313,6 +350,7 @@
 {"Only members may query archives of this room","Seuls les membres peuvent accéder aux archives de ce salon"}.
 {"Only moderators and participants are allowed to change the subject in this room","Seuls les modérateurs et les participants peuvent changer le sujet dans ce salon"}.
 {"Only moderators are allowed to change the subject in this room","Seuls les modérateurs peuvent changer le sujet dans ce salon"}.
+{"Only moderators are allowed to retract messages","Seuls les modérateurs peuvent rétracter des messages"}.
 {"Only moderators can approve voice requests","Seuls les modérateurs peuvent accépter les requêtes voix"}.
 {"Only occupants are allowed to send messages to the conference","Seuls les occupants peuvent envoyer des messages à la conférence"}.
 {"Only occupants are allowed to send queries to the conference","Seuls les occupants sont autorisés à envoyer des requêtes à la conférence"}.
@@ -320,8 +358,10 @@
 {"Only service administrators are allowed to send service messages","Seuls les administrateurs du service sont autoriser à envoyer des messages de service"}.
 {"Organization Name","Nom de l'organisation"}.
 {"Organization Unit","Unité de l'organisation"}.
+{"Other Modules Available:","Autres modules disponibles :"}.
 {"Outgoing s2s Connections","Connexions s2s sortantes"}.
 {"Owner privileges required","Les droits de propriétaire sont nécessaires"}.
+{"Participant ID","ID du participant"}.
 {"Participant","Participant"}.
 {"Password Verification","Vérification du mot de passe"}.
 {"Password Verification:","Vérification du mot de passe :"}.
@@ -346,9 +386,11 @@
 {"Previous session timed out","La session précédente a expiré"}.
 {"private, ","privé, "}.
 {"Public","Public"}.
+{"Publish model","Modèle de publication"}.
 {"Publish-Subscribe","Publication-Abonnement"}.
 {"PubSub subscriber request","Demande d'abonnement PubSub"}.
 {"Purge all items when the relevant publisher goes offline","Purger tous les items lorsque publieur est hors-ligne"}.
+{"Push record not found","Enregistrement non trouvé"}.
 {"Queries to the conference members are not allowed in this room","Les requêtes sur les membres de la conférence ne sont pas autorisé dans ce salon"}.
 {"Query to another users is forbidden","Requête vers un autre utilisateur interdite"}.
 {"RAM and disc copy","Copie en mémoire vive (RAM) et sur disque"}.
@@ -359,9 +401,11 @@
 {"Receive notification of new items only","Recevoir les notifications des nouveaux éléments uniquement"}.
 {"Receive notification of new nodes only","Recevoir les notifications de tous les nouveaux nœuds descendants"}.
 {"Recipient is not in the conference room","Le destinataire n'est pas dans la conférence"}.
+{"Re-Enable User","Réactiver l'utilisateur"}.
 {"Register an XMPP account","Inscrire un compte XMPP"}.
 {"Register","Enregistrer"}.
 {"Remote copy","Copie distante"}.
+{"Remove a hat from a user","Retirer un chapeau d'un utilisateur"}.
 {"Remove User","Supprimer l'utilisateur"}.
 {"Replaced by new connection","Remplacé par une nouvelle connexion"}.
 {"Request has timed out","La demande a expiré"}.
@@ -374,16 +418,22 @@
 {"Restore binary backup immediately:","Restauration immédiate d'une sauvegarde binaire :"}.
 {"Restore plain text backup immediately:","Restauration immédiate d'une sauvegarde texte :"}.
 {"Restore","Restauration"}.
+{"Result","Résultat"}.
+{"Roles and Affiliations that May Retrieve Member List","Rôles et Affiliations pouvant obtenir la liste des membres"}.
+{"Roles for which Presence is Broadcasted","Rôles pour lesquels la présence est diffusée"}.
+{"Roles that May Send Private Messages","Rôles pouvant envoyer des messages privés"}.
 {"Room Configuration","Configuration du salon"}.
 {"Room creation is denied by service policy","La création de salons est interdite par le service"}.
 {"Room description","Description du salon"}.
 {"Room Occupants","Occupants du salon"}.
+{"Room terminates","Fermeture du salon"}.
 {"Room title","Titre du salon"}.
 {"Roster groups allowed to subscribe","Groupes de liste de contact autorisés à s'abonner"}.
 {"Roster size","Taille de la liste de contacts"}.
 {"Running Nodes","Nœuds actifs"}.
-{"~s invites you to the room ~s","~s vous invite dans la salle de discussion ~s"}.
+{"~s invites you to the room ~s","~s vous a invité dans le salon de discussion ~s"}.
 {"Saturday","Samedi"}.
+{"Search from the date","Rechercher à partir de la date"}.
 {"Search Results for ","Résultats de recherche pour "}.
 {"Search the text","Recherche le texte"}.
 {"Search until the date","Rechercher jusqu’à la date"}.
@@ -395,23 +445,29 @@
 {"September","Septembre"}.
 {"Server:","Serveur :"}.
 {"Service list retrieval timed out","La récupération de la liste des services a expiré"}.
+{"Session state copying timed out","Le délai d'attente pour la copie de l'état de la session a expiré"}.
 {"Set message of the day and send to online users","Définir le message du jour et l'envoyer aux utilisateurs en ligne"}.
 {"Set message of the day on all hosts and send to online users","Définir le message du jour pour tous domaines et l'envoyer aux utilisateurs en ligne"}.
 {"Shared Roster Groups","Groupes de liste de contacts partagée"}.
 {"Show Integral Table","Montrer la table intégralement"}.
+{"Show Occupants Join/Leave","Afficher les personnes qui rejoignent/quittent"}.
 {"Show Ordinary Table","Montrer la table ordinaire"}.
 {"Shut Down Service","Arrêter le service"}.
-{"SOCKS5 Bytestreams","SOCKS5 Bytestreams"}.
+{"SOCKS5 Bytestreams","Transferts SOCKS5"}.
 {"Some XMPP clients can store your password in the computer, but you should do this only in your personal computer for safety reasons.","Certains clients XMPP peuvent stocker votre mot de passe sur votre ordinateur. N'utilisez cette fonctionnalité que si vous avez confiance en la sécurité de votre ordinateur."}.
+{"Sources Specs:","Spécifications du code source:"}.
 {"Specify the access model","Définir le modèle d'accès"}.
 {"Specify the event message type","Définir le type de message d'événement"}.
 {"Specify the publisher model","Définir le modèle de publication"}.
+{"Stanza id is not valid","L'identifiant de Stanza n'est pas valide."}.
 {"Stanza ID","Identifiant Stanza"}.
+{"Statically specify a replyto of the node owner(s)","Spécifier de manière statique une réponse au(x) propriétaire(s) du nœud"}.
 {"Stopped Nodes","Nœuds arrêtés"}.
 {"Store binary backup:","Sauvegarde binaire :"}.
 {"Store plain text backup:","Sauvegarde texte :"}.
 {"Stream management is already enabled","La gestion des flux est déjà activée"}.
 {"Subject","Sujet"}.
+{"Submit","Soumettre"}.
 {"Submitted","Soumis"}.
 {"Subscriber Address","Adresse de l'abonné"}.
 {"Subscribers may publish","Les souscripteurs peuvent publier"}.
@@ -452,7 +508,7 @@
 {"The room subject can be modified by participants","Le sujet du salon peut être modifié par les participants"}.
 {"The sender of the last received message","L’expéditeur du dernier message reçu"}.
 {"The subscription identifier associated with the subscription request","L’identificateur d’abonnement associé à la demande d’abonnement"}.
-{"There was an error changing the password: ","Une erreur s’est produite lors de la modification du mot de passe : "}.
+{"There was an error changing the password: ","Une erreur est survenue lors du changement de mot de passe : "}.
 {"There was an error creating the account: ","Il y a eu une erreur en créant le compte : "}.
 {"There was an error deleting the account: ","Il y a eu une erreur en effaçant le compte : "}.
 {"This is case insensitive: macbeth is the same that MacBeth and Macbeth.","C'est insensible à la casse : macbeth est identique à MacBeth et Macbeth."}.
@@ -488,6 +544,7 @@
 {"Unsupported version","Version non prise en charge"}.
 {"Update message of the day (don't send)","Mise à jour du message du jour (pas d'envoi)"}.
 {"Update message of the day on all hosts (don't send)","Mettre à jour le message du jour sur tous les domaines (ne pas envoyer)"}.
+{"Update Specs","Mise à jour des specs"}.
 {"Upgrade","Mise à niveau"}.
 {"URL for Archived Discussion Logs","URL des journaux de discussion archivés"}.
 {"User already exists","L'utilisateur existe déjà"}.
@@ -509,6 +566,7 @@
 {"Value of '~s' should be integer","La valeur de '~s' doit être un entier"}.
 {"Value 'set' of 'type' attribute is not allowed","La valeur de l'attribut 'type' ne peut être 'set'"}.
 {"vCard User Search","Recherche dans l'annnuaire"}.
+{"View joined MIX channels","Voir les canaux MIX rejoints"}.
 {"Virtual Hosts","Serveurs virtuels"}.
 {"Visitors are not allowed to change their nicknames in this room","Les visiteurs ne sont pas autorisés à changer de pseudo dans ce salon"}.
 {"Visitors are not allowed to send messages to all occupants","Les visiteurs ne sont pas autorisés à envoyer des messages à tout les occupants"}.
@@ -522,11 +580,13 @@
 {"Whether owners or publisher should receive replies to items","Quand les propriétaires ou annonceurs doivent revoir des réponses à leurs éléments"}.
 {"Whether to allow subscriptions","Autoriser ou non les abonnements"}.
 {"Whether to notify owners about new subscribers and unsubscribes","Quand notifier le propriétaire à propos des nouvelles souscriptions et désinscriptions"}.
+{"Who can send private messages","Qui peut envoyer des messages privés"}.
 {"Wrong parameters in the web formulary","Paramètres erronés dans le formulaire Web"}.
 {"Wrong xmlns","Xmlns incorrect"}.
 {"XMPP Account Registration","Enregistrement de compte XMPP"}.
 {"XMPP Domains","Domaines XMPP"}.
 {"You are being removed from the room because of a system shutdown","Vous avez été éjecté du salon de discussion en raison de l'arrêt du système"}.
+{"You are not allowed to send private messages","Vous n'êtes pas autorisé à envoyer des messages privés"}.
 {"You are not joined to the channel","Vous n'avez pas rejoint ce canal"}.
 {"You can later change your password using an XMPP client.","Vous pouvez modifier ultérieurement votre mot de passe à l’aide d’un client XMPP."}.
 {"You have been banned from this room","Vous avez été exclus de ce salon"}.
@@ -539,5 +599,5 @@
 {"Your contact offline message queue is full. The message has been discarded.","La file d'attente de message de votre contact est pleine. Votre message a été détruit."}.
 {"Your subscription request and/or messages to ~s have been blocked. To unblock your subscription request, visit ~s","Vos messages pour ~s sont bloqués. Pour les débloquer, veuillez visiter ~s"}.
 {"Your XMPP account was successfully registered.","Votre compte XMPP a été enregistré avec succès."}.
-{"Your XMPP account was successfully unregistered.","Votre compte XMPP a été désinscrit avec succès."}.
+{"Your XMPP account was successfully unregistered.","Votre compte XMPP a été supprimé avec succès."}.
 {"You're not allowed to create nodes","Vous n'êtes pas autorisé à créer des nœuds"}.

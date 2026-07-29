@@ -4,7 +4,7 @@
 %%% Created :  9 Mar 2015 by Evgeny Khramtsov <ekhramtsov@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2026   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -97,9 +97,6 @@ init([]) ->
 			[{ram_copies, [node()]},
 			 {attributes, record_info(fields, session)},
 			 {index, [usr,us]}]),
-    ejabberd_mnesia:create(?MODULE, session_counter,
-			[{ram_copies, [node()]},
-			 {attributes, record_info(fields, session_counter)}]),
     mnesia:subscribe(system),
     {ok, #state{}}.
 

@@ -5,7 +5,7 @@
 %%% Created : 21 Jul 2003 by Alexey Shchepin <alexey@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2026   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -27,7 +27,7 @@
 
 -author('alexey@process-one.net').
 
--protocol({xep, 16, '1.6', '0.5.0', "complete", ""}).
+-protocol({xep, 16, '1.7', '0.5.0', "complete", ""}).
 
 -behaviour(gen_mod).
 

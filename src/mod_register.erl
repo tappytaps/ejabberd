@@ -5,7 +5,7 @@
 %%% Created :  8 Dec 2002 by Alexey Shchepin <alexey@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2026   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -33,7 +33,7 @@
 
 -export([start/2, stop/1, reload/3, stream_feature_register/2,
 	 c2s_unauthenticated_packet/2, try_register/4, try_register/5,
-	 process_iq/1, send_registration_notifications/3,
+	 try_register/6, process_iq/1, send_registration_notifications/3,
 	 mod_opt_type/1, mod_options/1, depends/2,
 	 format_error/1, mod_doc/0]).
 
@@ -215,8 +215,9 @@ process_iq(#iq{type = get, from = From, to = To, id = ID, lang = Lang} = IQ,
     Instr = translate:translate(
 	      Lang, ?T("Choose a username and password to register "
 		       "with this server")),
+    IsPreAuth = maps:get(pre_auth, xmpp:get_meta(IQ), false) == true,
     URL = mod_register_opt:redirect_url(Server),
-    if (URL /= undefined) and not IsRegistered ->
+    if (URL /= undefined) and not IsRegistered and not IsPreAuth ->
 	    Desc = str:translate_and_format(Lang, ?T("To register, visit ~s"), [URL]),
 	    xmpp:make_iq_result(
 	      IQ, #register{instructions = Desc,

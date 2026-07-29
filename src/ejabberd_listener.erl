@@ -5,7 +5,7 @@
 %%% Created : 16 Nov 2002 by Alexey Shchepin <alexey@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2026   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -842,6 +842,12 @@ listen_opt_type(tls_compression) ->
 listen_opt_type(tls) ->
     econf:bool();
 listen_opt_type(max_stanza_size) ->
+    econf:pos_int(infinity);
+listen_opt_type(max_stanza_elements) ->
+    econf:pos_int(infinity);
+listen_opt_type(pre_auth_max_stanza_size) ->
+    econf:pos_int(infinity);
+listen_opt_type(pre_auth_max_stanza_elements) ->
     econf:pos_int(infinity);
 listen_opt_type(max_fsm_queue) ->
     econf:pos_int();

@@ -3,7 +3,7 @@
 %%% Created : 13 Sep 2017 by Evgeny Khramtsov <ekhramtsov@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2026   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -23,7 +23,7 @@
 -module(mod_avatar).
 -behaviour(gen_mod).
 
--protocol({xep, 398, '0.2.0', '18.03', "complete", ""}).
+-protocol({xep, 398, '1.0.0', '18.03', "complete", ""}).
 
 %% gen_mod API
 -export([start/2, stop/1, reload/3, depends/2, mod_opt_type/1, mod_options/1]).

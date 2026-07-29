@@ -5,7 +5,7 @@
 %%% Created :  4 Jul 2013 by Evgeniy Khramtsov <ekhramtsov@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2013-2025   ProcessOne
+%%% ejabberd, Copyright (C) 2013-2026   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -26,12 +26,12 @@
 -module(mod_mam).
 
 -protocol({xep, 313, '0.6.1', '15.06', "complete", ""}).
--protocol({xep, 334, '0.2', '16.01', "complete", ""}).
--protocol({xep, 359, '0.5.0', '15.09', "complete", ""}).
+-protocol({xep, 334, '1.0.0', '16.01', "complete", ""}).
+-protocol({xep, 359, '0.7.0', '15.09', "complete", ""}).
 -protocol({xep, 424, '0.4.2', '24.02', "partial", "Tombstones not implemented"}).
 -protocol({xep, 425, '0.3.0', '24.06', "complete", ""}).
--protocol({xep, 441, '0.2.0', '15.06', "complete", ""}).
 -protocol({xep, 431, '0.2.0', '24.12', "complete", ""}).
+-protocol({xep, 441, '0.2.0', '15.06', "complete", ""}).
 
 -behaviour(gen_mod).
 
@@ -47,14 +47,14 @@
 	 get_room_config/4, set_room_option/3, offline_message/1, export/1,
 	 mod_options/1, remove_mam_for_user_with_peer/3, remove_mam_for_user/2,
 	 is_empty_for_user/2, is_empty_for_room/3, check_create_room/4,
-	 process_iq/3, store_mam_message/7, make_id/0, wrap_as_mucsub/2, select/7,
+	 process_iq/3, store_mam_message/8, make_id/0, wrap_as_mucsub/2, select/7,
 	 is_archiving_enabled/2,
 	 get_mam_count/2,
 	 webadmin_menu_hostuser/4,
 	 webadmin_page_hostuser/4,
 	 get_mam_messages/2, webadmin_user/4,
 	 delete_old_messages_batch/5, delete_old_messages_status/1, delete_old_messages_abort/1,
-	 remove_message_from_archive/3]).
+	 remove_message_from_archive/3, strip_my_stanza_id/2]).
 
 -import(ejabberd_web_admin, [make_command/4, make_command/2]).
 
@@ -79,6 +79,7 @@
 -callback delete_old_messages(binary() | global,
 			      erlang:timestamp(),
 			      all | chat | groupchat) -> any().
+-callback additional_namespaces(binary()) -> [binary()].
 -callback extended_fields(binary()) -> [mam_query:property() | #xdata_field{}].
 -callback store(xmlel(), binary(), {binary(), binary()}, chat | groupchat,
 		jid(), binary(), recv | send, integer(), binary(),
@@ -627,12 +628,15 @@ parse_query(#mam_query{}, _Lang) ->
 
 disco_local_features({error, _Error} = Acc, _From, _To, _Node, _Lang) ->
     Acc;
-disco_local_features(Acc, _From, _To, <<"">>, _Lang) ->
+disco_local_features(Acc, _From, #jid{lserver = LServer} = _To, <<"">>, _Lang) ->
     Features = case Acc of
 		   {result, Fs} -> Fs;
 		   empty -> []
 	       end,
-    {result, [?NS_MESSAGE_RETRACT | Features]};
+    Mod = gen_mod:db_mod(LServer, ?MODULE),
+    AdditionalNamespaces = Mod:additional_namespaces(LServer),
+    Namespaces = [?NS_MESSAGE_RETRACT],
+    {result, lists:append([Namespaces, AdditionalNamespaces, Features])};
 disco_local_features(empty, _From, _To, _Node, Lang) ->
     Txt = ?T("No features available"),
     {error, xmpp:err_item_not_found(Txt, Lang)};
@@ -644,9 +648,11 @@ disco_sm_features(empty, From, To, Node, Lang) ->
 disco_sm_features({result, OtherFeatures},
 		  #jid{luser = U, lserver = S},
 		  #jid{luser = U, lserver = S}, <<"">>, _Lang) ->
-    {result, [?NS_MAM_TMP, ?NS_MAM_0, ?NS_MAM_1, ?NS_MAM_2, ?NS_SID_0,
-              ?NS_MESSAGE_RETRACT |
-	      OtherFeatures]};
+    Mod = gen_mod:db_mod(S, ?MODULE),
+    AdditionalNamespaces = Mod:additional_namespaces(S),
+    Namespaces = [?NS_MAM_TMP, ?NS_MAM_0, ?NS_MAM_1, ?NS_MAM_2, ?NS_SID_0,
+              ?NS_MESSAGE_RETRACT],
+    {result, lists:append([Namespaces, AdditionalNamespaces, OtherFeatures])};
 disco_sm_features(Acc, _From, _To, _Node, _Lang) ->
     Acc.
 
@@ -724,14 +730,14 @@ delete_old_messages_batch(Server, Type, Days, BatchSize, Rate) when Type == <<"c
 					      {true, _} ->
 						  case Mod:delete_old_messages_batch(L, St, T, B) of
 						      {ok, Count} ->
-							  {ok, S, Count};
+							  {ok, S, Count, undefined};
 						      {error, _} = E ->
 							  E
 						  end;
 					      {_, true} ->
 						  case Mod:delete_old_messages_batch(L, St, T, B, IS) of
 						      {ok, IS2, Count} ->
-							  {ok, {L, St, T, B, IS2}, Count};
+							  {ok, {L, St, T, B, IS2}, Count, undefined};
 						      {error, _} = E ->
 							  E
 						  end;
@@ -752,15 +758,15 @@ delete_old_messages_status(Server) ->
 	{failed, Steps, Error} ->
 	    io_lib:format("Operation failed after deleting ~p messages with error ~p",
 			  [Steps, misc:format_val(Error)]);
-	{aborted, Steps} ->
+	{aborted, Steps, _} ->
 	    io_lib:format("Operation was aborted after deleting ~p messages",
-					[Steps]);
-	      {working, Steps} ->
-		  io_lib:format("Operation in progress, deleted ~p messages",
-				[Steps]);
-	{completed, Steps} ->
+			  [Steps]);
+        {working, Steps, _} ->
+	    io_lib:format("Operation in progress, deleted ~p messages",
+			  [Steps]);
+	{completed, Steps, _} ->
 	    io_lib:format("Operation was completed after deleting ~p messages",
-					[Steps])
+			  [Steps])
     end,
     lists:flatten(Msg).
 
@@ -1138,18 +1144,16 @@ store_msg(Pkt, LUser, LServer, Peer, Dir) ->
 	{ok, Prefs} ->
 	    UseMucArchive = mod_mam_opt:user_mucsub_from_muc_archive(LServer),
 	    StoredInMucMam = UseMucArchive andalso xmpp:get_meta(Pkt, in_muc_mam, false),
-	    case {should_archive_peer(LUser, LServer, Prefs, Peer), Pkt, StoredInMucMam} of
-		{true, #message{meta = #{sm_copy := true}}, _} ->
+	    case {should_archive_peer(LUser, LServer, Prefs, Peer), Pkt} of
+		{true, #message{meta = #{sm_copy := true}}} ->
 		    ok; % Already stored.
-		{true, _, true} ->
-		    ok; % Stored in muc archive.
-		{true, _, _} ->
+		{true, _} ->
 		    case ejabberd_hooks:run_fold(store_mam_message, LServer, Pkt,
-						 [LUser, LServer, Peer, <<"">>, chat, Dir]) of
+						 [LUser, LServer, Peer, <<"">>, chat, Dir, StoredInMucMam]) of
 			#message{} -> ok;
 			_ -> pass
 		    end;
-		{false, _, _} ->
+		{false, _} ->
 		    pass
 	    end;
 	{error, _} ->
@@ -1164,15 +1168,16 @@ store_muc(MUCState, Pkt, RoomJID, Peer, Nick) ->
 	    {U, S, _} = jid:tolower(RoomJID),
 	    LServer = MUCState#state.server_host,
 	    case ejabberd_hooks:run_fold(store_mam_message, LServer, Pkt,
-					 [U, S, Peer, Nick, groupchat, recv]) of
+					 [U, S, Peer, Nick, groupchat, recv, false]) of
 		#message{} -> ok;
 		_ -> pass
 	    end;
 	false ->
 	    pass
     end.
-
-store_mam_message(Pkt, U, S, Peer, Nick, Type, Dir) ->
+store_mam_message(_Pkt, _U, _S, _Peer, _Nick, _Type, _Dir, true) ->
+	ok;
+store_mam_message(Pkt, U, S, Peer, Nick, Type, Dir, false) ->
     LServer = ejabberd_router:host_of_route(S),
     US = {U, S},
     ID = get_stanza_id(Pkt),
@@ -1573,7 +1578,7 @@ filter_by_max(Msgs, Len) when is_integer(Len), Len >= 0 ->
 filter_by_max(_Msgs, _Junk) ->
     {[], true}.
 
--spec limit_max(rsm_set(), binary()) -> rsm_set() | undefined.
+-spec limit_max(rsm_set() | undefined, binary()) -> rsm_set() | undefined.
 limit_max(RSM, ?NS_MAM_TMP) ->
     RSM; % XEP-0313 v0.2 doesn't require clients to support RSM.
 limit_max(undefined, _NS) ->

@@ -3,7 +3,7 @@
 %%% Created : 2 Jul 2024 by Badlop <badlop@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2026   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -31,13 +31,6 @@
 
 %%%==================================
 %%%% setup
-
--ifdef(OTP_BELOW_24).
-
-single_cases() ->
-    {commands_single, [sequence], []}.
-
--else.
 
 single_cases() ->
     {commands_single,
@@ -69,8 +62,6 @@ single_cases() ->
       single_test(adhoc_restuple),
       %%single_test(adhoc_all),
       single_test(clean)]}.
-
--endif.
 
 %% @format-begin
 
@@ -212,8 +203,7 @@ page(Config, Tail) ->
 
 adhoc_list_commands(Config) ->
     {ok, Result} = get_items(Config, <<"api-commands">>),
-    {value, #disco_item{name = <<"command_test_binary">>}} =
-        lists:keysearch(<<"command_test_binary">>, #disco_item.name, Result),
+    true = lists:keymember(<<"api-commands/command_test_binary">>, #disco_item.node, Result),
     suite:disconnect(Config).
 
 get_items(Config, Node) ->

@@ -5,7 +5,7 @@
 %%% Created : 24 Aug 2008 by Stephan Maka <stephan@spaceboyz.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2026   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -27,7 +27,7 @@
 
 -behaviour(gen_mod).
 
--protocol({xep, 191, '1.2', '2.1.7', "complete", ""}).
+-protocol({xep, 191, '1.3', '2.1.7', "complete", ""}).
 
 -export([start/2, stop/1, reload/3, process_iq/1, depends/2,
 	 disco_features/5, mod_options/1, mod_doc/0]).

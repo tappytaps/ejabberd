@@ -145,6 +145,7 @@ ifeq "$(REBAR_VER)" "6"
   REBARREL=MIX_ENV=prod $(REBAR) release --overwrite
   REBARDEV=MIX_ENV=dev $(REBAR) release --overwrite
   RELIVECMD=$(ESCRIPT) rel/relive.escript && MIX_ENV=dev RELIVE=true $(MAYBE) $(IEX) --name ejabberd@localhost -S mix run
+  RELIVECTLCMD=$(ESCRIPT) rel/relive.escript ctl && _build/relivectl/ejabberdctl live
   REL_LIB_DIR = _build/dev/rel/ejabberd/lib
   COPY_REL_TARGET = dev
   GET_DEPS_TRANSLATIONS=MIX_ENV=translations $(REBAR) $(GET_DEPS)
@@ -176,6 +177,7 @@ endif
   REBARREL=$(REBAR) as prod tar
   REBARDEV=$(REBAR) as dev release
   RELIVECMD=$(REBAR) as dev relive
+  RELIVECTLCMD=$(ESCRIPT) rel/relive.escript ctl && _build/relivectl/ejabberdctl live
   REL_LIB_DIR = _build/dev/rel/ejabberd/lib
   COPY_REL_TARGET = dev
   GET_DEPS_TRANSLATIONS=$(REBAR) as translations $(GET_DEPS)
@@ -197,6 +199,8 @@ else
 	   \nTry: make prod, or: ./configure --with-rebar=rebar3 ; make dev"
   RELIVECMD=@echo "Rebar2 detected... relive not supported.\
 	   \nTry: ./configure --with-rebar=rebar3 ; make relive"
+  RELIVECTLCMD=@echo "Rebar2 detected... relivectl not supported.\
+	   \nTry: ./configure --with-rebar=rebar3 ; make relivectl"
   REL_LIB_DIR = rel/ejabberd/lib
   COPY_REL_TARGET = rel
 endif
@@ -208,7 +212,11 @@ endif
 
 all: scripts deps src
 
-deps: $(DEPSDIR)/.got
+ifeq (@bootstrap@,true)
+deps: $(DEPSDIR)/.got invites-deps
+else
+deps:  $(DEPSDIR)/.got
+endif
 
 $(DEPSDIR)/.got:
 	rm -rf $(DEPSDIR)/.got
@@ -220,6 +228,21 @@ $(DEPSDIR)/.got:
 $(DEPSDIR)/.built: $(DEPSDIR)/.got
 	$(REBAR) compile && :> $(DEPSDIR)/.built
 
+ifeq (, $(shell which npm))
+  INSTALL_INVITES_DEPS=tools/dl_invites_page_deps.sh priv/mod_invites/static
+else
+  INSTALL_INVITES_DEPS=npm install
+endif
+
+ifeq (@bootstrap@,true)
+invites-deps: priv/mod_invites/static/bootstrap/
+
+priv/mod_invites/static/bootstrap/:
+	$(INSTALL_INVITES_DEPS)
+priv/mod_invites/static/jquery/:
+	$(INSTALL_INVITES_DEPS)
+endif
+
 src: $(DEPSDIR)/.built
 	$(REBAR) $(SKIPDEPS) compile
 	$(EXPLICIT_ELIXIR_COMPILE)
@@ -230,13 +253,13 @@ update:
 	$(REBAR) $(UPDATEDEPS) && :> $(DEPSDIR)/.got
 	$(CONFIGURE_DEPS)
 
-xref: all
+xref: src
 	$(REBAR) $(SKIPDEPS) xref $(XREFOPTIONS)
 
-hooks: all
+hooks: src
 	tools/hook_deps.sh $(EBINDIR)
 
-options: all
+options: src
 	tools/opt_types.sh ejabberd_option $(EBINDIR)
 
 translations:
@@ -307,8 +330,9 @@ BINARIES=$(DEPSDIR)/epam/priv/bin/epam $(DEPSDIR)/eimp/priv/bin/eimp $(DEPSDIR)/
 DEPS_FILES_FILTERED=$(filter-out $(BINARIES) $(DEPSDIR)/elixir/ebin/elixir.app,$(DEPS_FILES))
 DEPS_DIRS=$(sort $(DEPSDIR)/ $(foreach DEP,$(DEPS),$(DEPSDIR)/$(DEP)/) $(dir $(DEPS_FILES)))
 
-MAIN_FILES=$(filter-out %/configure.beam,$(call FILES_WILDCARD,$(EBINDIR)/*.beam $(EBINDIR)/*.app priv/msgs/*.msg priv/css/*.css priv/img/*.png priv/js/*.js priv/lib/* include/*.hrl COPYING))
-MAIN_DIRS=$(sort $(dir $(MAIN_FILES)) priv/bin priv/sql priv/lua)
+MAIN_FILES=$(filter-out %/configure.beam,$(call FILES_WILDCARD,$(EBINDIR)/*.beam $(EBINDIR)/*.app priv/msgs/*.msg priv/css/*.css priv/img/*.png priv/js/*.js priv/lib/* priv/mod_invites/* priv/mod_invites/static/* priv/mod_invites/static/bootstrap/css/bootstrap.min.css priv/mod_invites/static/bootstrap/js/bootstrap.min.js \
+	priv/mod_invites/static/logos/* include/*.hrl COPYING))
+MAIN_DIRS=$(sort $(dir $(MAIN_FILES)) priv/bin priv/sql priv/lua priv/mod_invites)
 
 define DEP_VERSION_template
 DEP_$(1)_VERSION:=$(shell $(SED) -e '/vsn/!d;s/.*, *"/$(1)-/;s/".*//' $(2) 2>/dev/null)
@@ -396,28 +420,30 @@ relive:
 	$(EXPLICIT_ELIXIR_COMPILE_DEV)
 	$(RELIVECMD)
 
+relivectl:
+	$(EXPLICIT_ELIXIR_COMPILE_DEV)
+	$(RELIVECTLCMD)
+
 relivelibdir=$(shell pwd)/$(DEPSDIR)
-relivedir=$(shell pwd)/_build/relive
-CONFIG_DIR = ${relivedir}/conf
-SPOOL_DIR = ${relivedir}/database
-LOGS_DIR = ${relivedir}/logs
+relivebase=$(shell pwd)/$(DEPSBASE)
 
 #.
 #' scripts
 #
 
-ejabberdctl.relive:
+# Used for ejabberdctl.relive and ejabberdctl.relivectl
+ejabberdctl.re%:
 	$(SED)  -e "s*{{installuser}}*${INSTALLUSER}*g" \
-		-e "s*{{config_dir}}*${CONFIG_DIR}*g" \
-		-e "s*{{logs_dir}}*${LOGS_DIR}*g" \
-		-e "s*{{spool_dir}}*${SPOOL_DIR}*g" \
+		-e "s*{{config_dir}}*${relivebase}/re${*}/conf*g" \
+		-e "s*{{logs_dir}}*${relivebase}/re${*}/logs*g" \
+		-e "s*{{spool_dir}}*${relivebase}/re${*}/database*g" \
 		-e "s*{{bindir}}*${BINDIR}*g" \
 		-e "s*{{libdir}}*${relivelibdir}${ELIXIR_LIBDIR}*g" \
 		-e "s*ERTS_VSN*# ERTS_VSN*g" \
 		-e "s*{{iexpath}}*${IEX}*g" \
 		-e "s*{{erl}}*${ERL}*g" \
 		-e "s*{{epmd}}*${EPMD}*g" ejabberdctl.template \
-		> ejabberdctl.relive
+		> ejabberdctl.re${*}
 
 ejabberd.init:
 	$(SED) -e "s*@ctlscriptpath@*$(SBINDIR)*g" \
@@ -547,6 +573,7 @@ clean:
 	rm -rf test/*.beam
 	rm -f rebar.lock
 	rm -f ejabberdctl.example ejabberd.init ejabberd.service
+	rm -rf priv/mod_invites/static/bootstrap
 	$(REBAR) clean $(CLEANARG)
 
 clean-rel:
@@ -676,7 +703,7 @@ group_to_test := $(patsubst test-%,%,$(filter test-%,$(MAKECMDGOALS)))
 $(eval $(call test-group-target,$(group_to_test)))
 endif
 
-test-eunit:
+testeunit:
 	$(REBAR) $(SKIPDEPS) eunit --verbose
 
 #.
@@ -684,7 +711,7 @@ test-eunit:
 #
 
 .PHONY: src edoc dialyzer Makefile TAGS clean clean-rel distclean prod rel \
-	install uninstall uninstall-binary uninstall-all translations deps test test-eunit \
+	install uninstall uninstall-binary uninstall-all translations deps test testeunit \
 	all dev doap help install-rel relive scripts uninstall-rel update \
 	erlang_plt deps_plt ejabberd_plt xref hooks options format indent
 
@@ -710,7 +737,8 @@ help:
 	@echo ""
 	@echo "  prod           Build a production release"
 	@echo "  dev            Build a development release"
-	@echo "  relive         Start a live ejabberd in _build/relive/"
+	@echo "  relive         Start live using rebar3/mix tools"
+	@echo "  relivectl      Start live using ejabberdctl script"
 	@echo ""
 	@echo "  doap           Generate DOAP file"
 	@echo "  edoc           Generate EDoc documentation [mix]"
@@ -725,7 +753,7 @@ help:
 	@echo "  elvis          Run Elvis source code style reviewer [rebar3]"
 	@echo "  hooks          Run hooks validator"
 	@echo "  test           Run Common Tests suite [rebar3]"
-	@echo "  test-eunit     Run EUnit suite [rebar3]"
+	@echo "  testeunit      Run EUnit suite [rebar3]"
 	@echo "  test-<group>   Run Common Test suite for specific group only [rebar3]"
 	@echo "  xref           Run cross reference analysis [rebar3]"
 

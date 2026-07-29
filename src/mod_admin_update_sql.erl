@@ -5,7 +5,7 @@
 %%% Created :  9 Aug 2017 by Alexey Shchepin <alexey@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2026   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -647,8 +647,8 @@ mod_options(_) -> [].
 
 mod_doc() ->
     #{desc =>
-          ?T("This module can be used to update existing SQL database "
-             "from the default to the new schema. Check the section "
-             "_`database.md#default-and-new-schemas|Default and New Schemas`_ for details. "
+          ?T("This module can be used to convert your existing SQL database "
+             "from the singlehost to the multihost schema. Check the section "
+             "_`database.md#singlehost-or-multihost|Singlehost or Multihost`_ for details. "
              "Please note that only MS SQL, MySQL, and PostgreSQL are supported. "
              "When the module is loaded use _`update_sql`_ API.")}.

@@ -5,7 +5,7 @@
 %%% Created : 20 May 2008 by Badlop <badlop@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2026   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -321,7 +321,17 @@ do_execute_command(Command, Arguments) ->
     Function = Command#ejabberd_commands.function,
     ?DEBUG("Executing command ~p:~p with Args=~p", [Module, Function, Arguments]),
     ejabberd_hooks:run(api_call, [Module, Function, Arguments]),
-    apply(Module, Function, Arguments).
+    try apply(Module, Function, Arguments)
+    catch
+        throw:Term ->
+            ?ERROR_MSG("A problem appears when executing command ~p with arguments ~p:~n  ~p:~p",
+                           [Command#ejabberd_commands.name, Arguments, throw, Term]),
+            throw(Term);
+        exit:Reason ->
+            ?ERROR_MSG("A problem appears when executing command ~p with arguments ~p:~n  ~p:~p",
+                           [Command#ejabberd_commands.name, Arguments, exit, Reason]),
+            error(Reason)
+    end.
 
 -spec get_tags_commands() -> [{string(), [string()]}].
 

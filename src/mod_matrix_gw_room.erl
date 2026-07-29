@@ -5,7 +5,7 @@
 %%% Created :  1 May 2022 by Alexey Shchepin <alexey@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2026   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -24,7 +24,6 @@
 %%%-------------------------------------------------------------------
 -module(mod_matrix_gw_room).
 
--ifndef(OTP_BELOW_25).
 -behaviour(gen_statem).
 
 %% API
@@ -3878,5 +3877,3 @@ unescape(<<"\\3e", S/binary>>, Res) -> unescape(S, <<Res/binary, $>>>);
 unescape(<<"\\40", S/binary>>, Res) -> unescape(S, <<Res/binary, $@>>);
 unescape(<<"\\5c", S/binary>>, Res) -> unescape(S, <<Res/binary, $\\>>);
 unescape(<<C, S/binary>>, Res) -> unescape(S, <<Res/binary, C>>).
-
--endif.

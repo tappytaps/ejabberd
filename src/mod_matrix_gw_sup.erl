@@ -2,7 +2,7 @@
 %%% Created :  1 May 2022 by Alexey Shchepin <alexey@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2026   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -20,7 +20,6 @@
 %%%
 %%%----------------------------------------------------------------------
 -module(mod_matrix_gw_sup).
--ifndef(OTP_BELOW_25).
 -behaviour(supervisor).
 
 %% API
@@ -74,4 +73,3 @@ init([Host]) ->
            type => worker,
            modules => [mod_matrix_gw]}],
     {ok, {{one_for_one, 10, 1}, Specs}}.
--endif.

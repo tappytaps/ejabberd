@@ -5,7 +5,7 @@
 %%% Created : 11 Jan 2004 by Alexey Shchepin <alexey@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2026   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -50,7 +50,7 @@
 %%-----------------------------
 
 start() ->
-    disable_logging(),
+    logger:set_primary_config(level, none),
     [SNode, Timeout, Args] = case init:get_plain_arguments() of
                                  [SNode2, "--no-timeout" | Args2] ->
                                      [SNode2, infinity, Args2];
@@ -946,7 +946,11 @@ get_usage_command2(Cmd, C, MaxC, ShCode) ->
 		  end,
 
     NoteEjabberdctlList = case has_list_args(ArgsDefPreliminary) of
-			  true -> ["  ", ?B("Note:"), " In a list argument, separate the elements using the , character for example: one,two,three\n\n"];
+			  true -> ["  ", ?B("Note:"),
+                                   "\n  For argument that is a list of elements:",
+                                   "\n  - To separate the elements use commas: one,two,three"
+                                   "\n  - To set an empty list in ejabberdctl use two double quotes: \"\""
+                                   "\n  - To set an empty list in WebAdmin use a single comma: ,\n\n"];
 			  false -> ""
 		      end,
     NoteEjabberdctlTuple = case has_tuple_args(ArgsDefPreliminary) of
@@ -1034,14 +1038,6 @@ format_usage_tuple([ElementDef | ElementsDef], Indentation) ->
 
 print(Format, Args) ->
     io:format(lists:flatten(Format), Args).
-
--ifdef(LAGER).
-disable_logging() ->
-    ok.
--else.
-disable_logging() ->
-    logger:set_primary_config(level, none).
--endif.
 
 %%-----------------------------
 %% Format Example Help

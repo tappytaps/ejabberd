@@ -32,29 +32,21 @@ jobs:
     runs-on: ubuntu-24.04-arm
     strategy:
       matrix:
-        otp: ['25', '26', '27', '28']
+        otp: ['25', '26', '27', '28', '29']
         rebar: ['rebar', 'rebar3']
         exclude:
         - otp: '27'
           rebar: 'rebar'
         - otp: '28'
           rebar: 'rebar'
+        - otp: '29'
+          rebar: 'rebar'
     container:
       image: public.ecr.aws/docker/library/erlang:${{ matrix.otp }}
 
     steps:
 
-    - uses: actions/checkout@v5
-
-    - name: Get recent compatible Rebar binaries
-      if: matrix.otp < 25
-      run: |
-        rm rebar
-        rm rebar3
-        wget https://github.com/processone/ejabberd/raw/24.12/rebar
-        wget https://github.com/processone/ejabberd/raw/24.12/rebar3
-        chmod +x rebar
-        chmod +x rebar3
+    - uses: actions/checkout@v6
 
     - name: Prepare libraries
       run: |
@@ -64,22 +56,20 @@ jobs:
 
     - name: Cache rebar3
       if: matrix.rebar == 'rebar3'
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: |
           ~/.cache/rebar3/
           _build/default/lib/
-        key: runtime-${{ matrix.otp }}-${{matrix.rebar}}-${{hashFiles('rebar.config')}}
+        key: runtime-${{ matrix.otp }}-${{matrix.rebar}}-${{hashFiles('rebar.*')}}
 
     - name: Compile
-      run: |
-        ./autogen.sh
-        ./configure --with-rebar=./${{ matrix.rebar }} \
-                    --prefix=/tmp/ejabberd \
-                    --with-min-erlang=9.0.5 \
-                    --enable-all \
-                    --disable-elixir
-        make
+      uses: ./.github/actions/manage-ejabberd
+      with:
+        for: prod
+        do: compile
+        tool: ${{ matrix.rebar }}
+        configure: --disable-elixir
 
     - run: make hooks
     - run: make options
@@ -92,7 +82,7 @@ jobs:
       uses: ./.github/actions/manage-ejabberd
       with:
         for: prod
-        do: deploy, start, register, stop, logs, check
+        do: deploy, start, register, stop, check, logs
         tool: ${{ matrix.rebar }}
         username: user1
 
@@ -100,7 +90,7 @@ jobs:
       uses: ./.github/actions/manage-ejabberd
       with:
         for: dev
-        do: deploy, start, register, stop, logs, check
+        do: deploy, start, register, stop, check, logs
         tool: ${{ matrix.rebar }}
         username: user2
 
@@ -108,7 +98,7 @@ jobs:
       uses: ./.github/actions/manage-ejabberd
       with:
         for: install
-        do: deploy, start, register, stop, logs, check
+        do: deploy, start, register, stop, check, logs
         tool: ${{ matrix.rebar }}
         username: user3
 
@@ -124,7 +114,7 @@ jobs:
 
     steps:
 
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v6
 
     - name: Prepare libraries
       run: |
@@ -141,11 +131,11 @@ jobs:
         cat rebar.config
 
     - name: Cache hex.pm
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: |
           ~/.cache/rebar3/
-        key: runtime-${{matrix.elixir}}-${{hashFiles('rebar.config')}}
+        key: runtime-${{matrix.elixir}}-${{hashFiles('rebar.*')}}
 
     - name: Install Hex and Rebar3 manually on older Elixir
       if: matrix.elixir < '1.15'
@@ -154,11 +144,14 @@ jobs:
         mix local.rebar --force
 
     - name: Compile
+      uses: ./.github/actions/manage-ejabberd
+      with:
+        for: prod
+        do: compile
+        tool: ./rebar3
+
+    - name: Test scripts, deps, eunit
       run: |
-        ./autogen.sh
-        ./configure --with-rebar=./rebar3 \
-                    --prefix=/tmp/ejabberd \
-                    --enable-all
         make scripts deps
         ./rebar3 eunit --verbose
 
@@ -173,21 +166,21 @@ jobs:
       uses: ./.github/actions/manage-ejabberd
       with:
         for: prod
-        do: deploy, start, register, stop, logs, check
+        do: deploy, start, register, stop, check, logs
         username: user1
 
     - name: Release
       uses: ./.github/actions/manage-ejabberd
       with:
         for: dev
-        do: deploy, start, register, stop, logs, check
+        do: deploy, start, register, stop, check, logs
         username: user2
 
     - name: Installed
       uses: ./.github/actions/manage-ejabberd
       with:
         for: install
-        do: deploy, start, register, stop, logs, check
+        do: deploy, start, register, stop, check, logs
         username: user3
 
   ################################################################### Mix #####
@@ -202,7 +195,7 @@ jobs:
 
     steps:
 
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v6
 
     - name: Prepare libraries
       run: |
@@ -227,11 +220,11 @@ jobs:
         cat rebar.config
 
     - name: Cache hex.pm
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: |
           ~/.hex/
-        key: runtime-${{matrix.elixir}}-${{hashFiles('mix.exs')}}
+        key: runtime-${{matrix.elixir}}-${{hashFiles('mix.*')}}
 
     - name: Install Hex and Rebar3 manually on older Elixir
       if: matrix.elixir < '1.15'
@@ -240,12 +233,11 @@ jobs:
         mix local.rebar --force
 
     - name: Compile
-      run: |
-        ./autogen.sh
-        ./configure --with-rebar=mix \
-                    --prefix=/tmp/ejabberd \
-                    --enable-all
-        make
+      uses: ./.github/actions/manage-ejabberd
+      with:
+        for: prod
+        do: compile
+        tool: mix
 
     - run: make hooks
     - run: make options
@@ -260,19 +252,19 @@ jobs:
       uses: ./.github/actions/manage-ejabberd
       with:
         for: prod
-        do: deploy, start, register, stop, logs, check
+        do: deploy, start, register, stop, check, logs
         username: user1
 
     - name: Development
       uses: ./.github/actions/manage-ejabberd
       with:
         for: dev
-        do: deploy, start, register, stop, logs, check
+        do: deploy, start, register, stop, check, logs
         username: user2
 
     - name: Installed
       uses: ./.github/actions/manage-ejabberd
       with:
         for: install
-        do: deploy, start, register, stop, logs, check
+        do: deploy, start, register, stop, check, logs
         username: user3

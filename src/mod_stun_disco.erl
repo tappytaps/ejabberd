@@ -5,7 +5,7 @@
 %%% Created : 18 Apr 2020 by Holger Weiss <holger@zedat.fu-berlin.de>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2020-2025   ProcessOne
+%%% ejabberd, Copyright (C) 2020-2026   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -25,7 +25,7 @@
 
 -module(mod_stun_disco).
 -author('holger@zedat.fu-berlin.de').
--protocol({xep, 215, '0.7', '20.04', "complete", ""}).
+-protocol({xep, 215, '1.0.0', '20.04', "complete", ""}).
 
 -behaviour(gen_server).
 -behaviour(gen_mod).
@@ -558,7 +558,7 @@ make_username(ExpireAt, Hash) ->
 
 -spec make_password(binary(), binary()) -> binary().
 make_password(Username, Secret) ->
-    base64:encode(misc:crypto_hmac(sha, Secret, Username)).
+    base64:encode(crypto:mac(hmac, sha, Secret, Username)).
 
 -spec get_password(binary(), binary()) -> binary().
 get_password(Username, HostHash) ->

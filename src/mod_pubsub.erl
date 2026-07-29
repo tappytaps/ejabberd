@@ -5,7 +5,7 @@
 %%% Created :  1 Dec 2007 by Christophe Romain <christophe.romain@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2026   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -37,7 +37,7 @@
 -author('christophe.romain@process-one.net').
 -protocol({xep, 48, '1.2', '0.5.0', "complete", ""}).
 -protocol({xep, 60, '1.14', '0.5.0', "partial", ""}).
--protocol({xep, 163, '1.2', '2.0.0', "complete", ""}).
+-protocol({xep, 163, '1.2.2', '2.0.0', "complete", ""}).
 -protocol({xep, 223, '1.1.1', '2.0.0', "complete", ""}).
 -protocol({xep, 248, '0.2', '2.1.0', "complete", ""}).
 
@@ -2702,21 +2702,26 @@ sub_option_can_deliver(_, _, _) -> true.
 presence_can_deliver(_, false) ->
     true;
 presence_can_deliver({User, Server, Resource}, true) ->
-    case ejabberd_sm:get_user_present_resources(User, Server) of
-	[] ->
-	    false;
-	Ss ->
-	    lists:foldl(fun
-		    (_, true) ->
-			true;
-		    ({_, R}, _Acc) ->
-		    	case Resource of
-			    <<>> -> true;
-			    R -> true;
-			    _ -> false
-			end
-		end,
-		false, Ss)
+    case ejabberd_router:is_my_route(Server) of
+	% We don't know presence of users on remote server, so always deliver
+	false -> true;
+	_ ->
+	    case ejabberd_sm:get_user_present_resources(User, Server) of
+		[] ->
+		    false;
+		Ss ->
+		    lists:foldl(fun
+				    (_, true) ->
+					true;
+				    ({_, R}, _Acc) ->
+					case Resource of
+					    <<>> -> true;
+					    R -> true;
+					    _ -> false
+					end
+				end,
+				false, Ss)
+	    end
     end.
 
 -spec state_can_deliver(ljid(), subOptions()) -> [ljid()].

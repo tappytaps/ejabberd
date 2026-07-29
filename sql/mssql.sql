@@ -1,5 +1,5 @@
 --
--- ejabberd, Copyright (C) 2002-2025   ProcessOne
+-- ejabberd, Copyright (C) 2002-2026   ProcessOne
 --
 -- This program is free software; you can redistribute it and/or
 -- modify it under the terms of the GNU General Public License as
@@ -305,6 +305,7 @@ CREATE TABLE [dbo].[rosterusers] (
         [jid] [varchar] (250) NOT NULL,
         [nick] [text] NOT NULL,
         [subscription] [char] (1) NOT NULL,
+        [approved] [smallint] NOT NULL,
         [ask] [char] (1) NOT NULL,
         [askmessage] [text] NOT NULL,
         [server] [char] (1) NOT NULL,

@@ -5,7 +5,7 @@
 %%% Created :  5 Mar 2005 by Alexey Shchepin <alexey@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2026   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -336,13 +336,6 @@ in_subscription(Acc, #presence{to = To, from = JID, type = Type}) ->
     process_subscription(in, User, Server, JID, Type, Acc).
 
 -spec out_subscription(presence()) -> boolean().
-out_subscription(#presence{from = From, to = To, type = unsubscribed} = Pres) ->
-    #jid{user = User, server = Server} = From,
-    mod_roster:out_subscription(Pres#presence{type = unsubscribe}),
-    mod_roster:in_subscription(false, xmpp:set_from_to(
-					Pres#presence{type = unsubscribe},
-					To, From)),
-    process_subscription(out, User, Server, To, unsubscribed, false);
 out_subscription(#presence{from = From, to = To, type = Type}) ->
     #jid{user = User, server = Server} = From,
     process_subscription(out, User, Server, To, Type, false).

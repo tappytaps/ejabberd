@@ -5,7 +5,7 @@
 %%% Created : 12 Dec 2004 by Alexey Shchepin <alexey@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2026   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -28,6 +28,7 @@
 -author('alexey@process-one.net').
 
 -behaviour(ejabberd_auth).
+-behaviour(ejabberd_db_serialize).
 
 -export([start/1, stop/1, set_password_multiple/3, try_register_multiple/3,
 	 get_users/2, init_db/0,
@@ -35,10 +36,13 @@
 	 remove_user/2, store_type/1, import/2,
 	 plain_password_required/1, use_cache/1, drop_password_type/2, set_password_instance/3]).
 -export([need_transform/1, transform/1]).
+-export([serialize/3, deserialize_start/1, deserialize/2]).
 
+-include_lib("stdlib/include/ms_transform.hrl").
 -include("logger.hrl").
 -include_lib("xmpp/include/scram.hrl").
 -include("ejabberd_auth.hrl").
+-include("ejabberd_db_serialize.hrl").
 
 -record(reg_users_counter, {vhost = <<"">> :: binary(),
                             count = 0 :: integer() | '$1'}).
@@ -151,7 +155,7 @@ get_users(Server, []) ->
     Users = mnesia:dirty_select(passwd,
 			[{#passwd{us = '$1', _ = '_'},
 			  [{'==', {element, 2, '$1'}, Server}], ['$1']}]),
-    misc:lists_uniq([{U, S} || {U, S, _} <- Users]);
+    lists:uniq([{U, S} || {U, S, _} <- Users]);
 get_users(Server, [{from, Start}, {to, End}])
   when is_integer(Start) and is_integer(End) ->
     get_users(Server, [{limit, End - Start + 1}, {offset, Start}]);
@@ -295,3 +299,63 @@ transform(Other) -> Other.
 import(LServer, [LUser, Password, _TimeStamp]) ->
     mnesia:dirty_write(
       #passwd{us = {LUser, LServer}, password = Password}).
+
+serialize(LServer, BatchSize, undefined) ->
+    Users = lists:uniq(lists:sort(mnesia:dirty_select(passwd, ets:fun2ms(
+	fun(#passwd{us = {U, S, _}}) when S == LServer -> U end)))),
+    ReadPass =
+	fun(U) ->
+	    Passwords = mnesia:dirty_select(passwd, ets:fun2ms(
+		fun(#passwd{us = {U2, S, _}, password = Pass}) when S == LServer, U2 == U ->
+		    Pass
+		end)),
+	    P = lists:map(
+		fun(#scram{hash = Hash, salt = Salt, storedkey = SK, serverkey = SEK, iterationcount = IC}) ->
+		    {Hash, SK, SEK, Salt, IC};
+		   (Plain) -> Plain
+		end, Passwords),
+	    {ok, #serialize_auth_v1{serverhost = LServer, username = U, passwords = P}}
+	end,
+
+    ejabberd_db_serialize:iter_records([{
+					    fun() ->
+						case Users of
+						    [H | T] -> {ok, H, T};
+						    _ -> fin
+						end
+					    end,
+					    fun([]) -> fin;
+					       ([H | T]) -> {ok, H, T}
+					    end, ReadPass}], [], BatchSize);
+serialize(_LServer, BatchSize, Key) ->
+    ejabberd_db_serialize:iter_records(Key, [], BatchSize).
+
+deserialize_start(LServer) ->
+    mnesia:transaction(
+	fun() ->
+	    Keys = mnesia:select(passwd,
+					ets:fun2ms(
+					    fun(#passwd{us = US}) when element(2, US) == LServer -> US end)),
+	    lists:foreach(fun(Key) -> mnesia:delete(passwd, Key, write) end, Keys)
+	end),
+    ok.
+
+deserialize(LServer, Batch) ->
+    F = fun() ->
+	lists:foreach(
+	    fun(#serialize_auth_v1{username = U, passwords = P}) ->
+		lists:foreach(
+		    fun({Hash, SK, SEK, Salt, IC}) ->
+			mnesia:write(#passwd{us = {U, LServer, Hash},
+					     password = #scram{hash = Hash, serverkey = SEK, storedkey = SK,
+							       salt = Salt, iterationcount = IC}});
+		       (Plain) ->
+			   mnesia:write(#passwd{us = {U, LServer, plain}, password = Plain})
+		    end, P)
+	    end, Batch)
+	end,
+    case mnesia:transaction(F) of
+	{atomic, _} -> ok;
+	{aborted, Reason} ->
+	    {error, io_lib:format("Error when writing passwords data: ~p", [Reason])}
+    end.

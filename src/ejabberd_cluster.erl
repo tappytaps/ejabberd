@@ -3,7 +3,7 @@
 %%% Created :  5 Jul 2017 by Evgeny Khramtsov <ekhramtsov@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2025   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2026   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -201,10 +201,14 @@ handle_cast(Msg, State) ->
     {noreply, State}.
 
 handle_info({node_up, Node}, State) ->
-    ?INFO_MSG("Node ~ts has joined", [Node]),
+    ?INFO_MSG("Node ~ts has joined our cluster", [Node]),
+    {noreply, State};
+handle_info({node_down, Node, LeaveFun}, State) ->
+    LeaveFun(),
+    ?INFO_MSG("Node ~ts has left our cluster", [Node]),
     {noreply, State};
 handle_info({node_down, Node}, State) ->
-    ?INFO_MSG("Node ~ts has left", [Node]),
+    ?INFO_MSG("Node ~ts has left our cluster", [Node]),
     {noreply, State};
 handle_info(Info, State) ->
     ?WARNING_MSG("Unexpected info: ~p", [Info]),

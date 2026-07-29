@@ -1,5 +1,5 @@
 --
--- ejabberd, Copyright (C) 2002-2025   ProcessOne
+-- ejabberd, Copyright (C) 2002-2026   ProcessOne
 --
 -- This program is free software; you can redistribute it and/or
 -- modify it under the terms of the GNU General Public License as
@@ -48,6 +48,7 @@ CREATE TABLE rosterusers (
     jid varchar(191) NOT NULL,
     nick text NOT NULL,
     subscription character(1) NOT NULL,
+    approved boolean NOT NULL,
     ask character(1) NOT NULL,
     askmessage text NOT NULL,
     server character(1) NOT NULL,
@@ -507,3 +508,18 @@ CREATE TABLE mqtt_pub (
     expiry int unsigned NOT NULL,
     UNIQUE KEY i_mqtt_topic_server (topic(191), server_host)
 ) ENGINE=InnoDB CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+CREATE TABLE invite_token (
+    token text NOT NULL,
+    username text NOT NULL,
+    server_host varchar(191) NOT NULL,
+    invitee varchar(191) NOT NULL DEFAULT '',
+    created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    type character(1) NOT NULL,
+    account_name text NOT NULL,
+    PRIMARY KEY (token(191))
+) ENGINE=InnoDB CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+CREATE INDEX i_invite_token_username USING BTREE ON invite_token(username(191), server_host(191));
+CREATE INDEX i_invite_token_invitee USING BTREE ON invite_token(invitee(191));
