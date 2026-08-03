@@ -283,8 +283,7 @@ uninstall(Package) when is_binary(Package) ->
                 true -> ModuleRuntime:pre_uninstall();
                 _ -> ok
             end,
-            [catch gen_mod:stop_module(Host, ModuleRuntime)
-             || Host <- ejabberd_option:hosts()],
+            stop_module_all_hosts(ModuleRuntime),
             code:purge(ModuleRuntime),
             code:delete(ModuleRuntime),
             [code:del_path(PathDelete) || PathDelete <- [module_ebin_dir(Module)|module_deps_dirs(Module)]],
@@ -294,16 +293,32 @@ uninstall(Package) when is_binary(Package) ->
             {error, not_installed}
     end.
 
+stop_module_all_hosts(ModuleRuntime) ->
+    [stop_module(ModuleRuntime, Host) || Host <- ejabberd_option:hosts()].
+
+stop_module(ModuleRuntime, Host) ->
+    try gen_mod:stop_module(Host, ModuleRuntime)
+    catch A:B ->
+              ?WARNING_MSG("Problem stopping module ~ts at host ~ts: ~p: ~p",
+                             [ModuleRuntime, Host, A, B ]),
+              ok
+    end.
+
 upgrade() ->
     [{Package, upgrade(Package)} || {Package, _Spec} <- installed()].
-upgrade(Module) when is_atom(Module) ->
-    upgrade(misc:atom_to_binary(Module));
 upgrade(Package) when is_binary(Package) ->
-    uninstall(Package),
-    clean(Package),
-    install(Package).
+    upgrade(misc:binary_to_atom(Package));
+upgrade(Module) when is_atom(Module) ->
+    uninstall(Module),
+    clean(Module),
+    case lists:member(Module, ejabberd_option:install_contrib_modules()) of
+        true -> ok;
+        false -> install(Module)
+    end.
 
-clean(Package) ->
+clean(Module) when is_atom(Module) ->
+    clean(misc:atom_to_binary(Module));
+clean(Package) when is_binary(Package) ->
     Spec = [S || {Mod, S} <- available(), misc:atom_to_binary(Mod)==Package],
     case Spec of
         [] ->

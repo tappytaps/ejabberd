@@ -30,6 +30,8 @@ send_recv/2, put_event/2, get_event/1]).
 
 -include("suite.hrl").
 -include_lib("stdlib/include/assert.hrl").
+-include("mod_invites.hrl").
+-include("mod_roster.hrl").
 
 %%%===================================================================
 %%% API
@@ -42,9 +44,12 @@ single_cases() ->
      [single_test(login_page),
       single_test(welcome_page),
       single_test(user_page),
+      single_test(user_roster_page),
       single_test(adduser),
       single_test(changepassword),
-      single_test(removeuser)]}.
+      single_test(removeuser),
+      single_test(invites),
+      single_test(register_web)]}.
 
 login_page(Config) ->
     Headers = ?match({ok, {{"HTTP/1.1", 401, _}, Headers, _}},
@@ -69,6 +74,20 @@ user_page(Config) ->
 		  Body),
     ?match({_, _}, binary:match(Body, <<"<title>ejabberd Web Admin">>)).
 
+user_roster_page(Config) ->
+    Server = ?config(server, Config),
+    User = ?config(user, Config),
+    LJID = {<<"admin">>, Server, <<>>},
+    mod_roster:set_roster(#roster{usj = {User, Server, LJID}, us = {User, Server}, jid = LJID}),
+    URL = "server/" ++ binary_to_list(Server) ++ "/user/" ++ binary_to_list(misc:url_encode(User)) ++ "/roster/",
+    Body = ?match({ok, {{"HTTP/1.1", 200, _}, _, Body}},
+		  httpc:request(get, {page(Config, URL), [basic_auth_header(Config)]}, [],
+				[{body_format, binary}]),
+		  Body),
+    ?match({_, _}, binary:match(Body, <<"<title>ejabberd Web Admin">>)),
+    mod_roster:del_roster(User, Server, LJID),
+    ?match([], mod_roster:get_roster(User, Server)).
+
 adduser(Config) ->
     User = <<"userwebadmin-", (?config(user, Config))/binary>>,
     Server = ?config(server, Config),
@@ -78,7 +97,7 @@ adduser(Config) ->
 	     "server/" ++ binary_to_list(Server) ++ "/users/",
 	     <<"register/user=", (mue(User))/binary, "&register/password=",
 	       (mue(Password))/binary, "&register=Register">>),
-    Password = ejabberd_auth:get_password_s(User, Server),
+    ?match(Password, ejabberd_auth:get_password_s(User, Server)),
     ?match({_, _}, binary:match(Body, <<"User ", User/binary, "@", Server/binary,
                                         " successfully registered">>)).
 
@@ -105,6 +124,43 @@ removeuser(Config) ->
 	     <<"&unregister=Unregister">>),
     false = ejabberd_auth:user_exists(User, Server),
     ?match(nomatch, binary:match(Body, <<"<h3>Last Activity</h3>20">>)).
+
+invites(Config) ->
+    Server = ?config(server, Config),
+    URL = "server/" ++ binary_to_list(Server) ++ "/invites/",
+    Body = ?match({ok, {{"HTTP/1.1", 200, _}, _, Body}},
+		  httpc:request(get, {page(Config, URL), [basic_auth_header(Config)]}, [],
+				[{body_format, binary}]),
+		  Body),
+    ?match({_, _}, binary:match(Body, <<"<title>ejabberd Web Admin">>)),
+    #invite_token{token = Token} = mod_invites:create_account_invite(Server, {<<"foo">>, Server}, <<>>, false),
+    _PBody = make_query(
+	     Config,
+	     "server/" ++ binary_to_list(Server)
+	     ++ "/invites/",
+	     <<"&expire_invite_by_token=", (mue(<<"Expire Invite By Token">>))/binary, "&token=", Token/binary>>),
+    ?match(true,
+           mod_invites:is_expired(mod_invites:get_invite(Server, Token))),
+    ok.
+
+register_web(Config) ->
+    Server = ?config(server_host, Config),
+    Port = ct:get_config(web_port, 5280),
+    Url = "http://" ++ Server ++ ":" ++ integer_to_list(Port) ++ "/register/new/",
+    Body = ?match({ok, {{_, 200, _}, _, Body}}, httpc:request(get, {Url, []}, [], [{body_format, binary}]), Body),
+    case binary:match(Body, <<"<img ">>) of
+        nomatch ->
+            % No captcha on page
+            captcha_not_offered;
+        _ ->
+            Host = ?config(server, Config),
+	        Query = [{"username", "bad_user"}, {"host", Host}, {"password", "pass"}, {"password2", "pass"}],
+            Data = iolist_to_binary(uri_string:compose_query(Query)),
+            ?match({ok, {{_, 404, _}, _, _}},
+                httpc:request(post, {Url, [], "application/x-www-form-urlencoded", Data},
+                 [], [{body_format, binary}])),
+            ?match(false, ejabberd_auth:user_exists(<<"bad_user">>, Host))
+    end.
 
 %%%===================================================================
 %%% Internal functions
@@ -139,10 +195,22 @@ mue(Binary) ->
     misc:url_encode(Binary).
 
 make_query(Config, URL, BodyQ) ->
+    case inets:start(httpc, [{profile, csrf}]) of
+        {ok, _} ->
+            httpc:set_options([{cookies, enabled}], csrf);
+        _ ->
+            ok
+    end,
+    {Headers, Page} = ?match({ok, {{"HTTP/1.1", 200, _}, Headers, Page}},
+		     httpc:request(get, {page(Config, URL), [basic_auth_header(Config)]}, [],
+				   [{body_format, binary}], csrf),
+		     {Headers, Page}),
+    {match, [CsrfToken]} = re:run(Page, <<"name='csrf_token' value='(.*?)'">>, [{capture, [1], binary}]),
+    Q = iolist_to_binary(uri_string:compose_query([{"csrf_token", CsrfToken}])),
     ?match({ok, {{"HTTP/1.1", 200, _}, _, Body}},
 	   httpc:request(post, {page(Config, URL),
 				[basic_auth_header(Config)],
 				"application/x-www-form-urlencoded",
-				BodyQ}, [],
-			 [{body_format, binary}]),
+				<<BodyQ/binary, "&", Q/binary>>}, [],
+			 [{body_format, binary}], csrf),
 	   Body).

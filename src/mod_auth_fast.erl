@@ -89,8 +89,8 @@ mod_opt_type(token_refresh_age) ->
 -spec mod_options(binary()) -> [{atom(), any()}].
 mod_options(Host) ->
     [{db_type, ejabberd_config:default_db(Host, ?MODULE)},
-     {token_lifetime, 30*24*60*60},
-     {token_refresh_age, 24*60*60}].
+     {token_lifetime, 30*24*60*60*1000},
+     {token_refresh_age, 24*60*60*1000}].
 
 mod_doc() ->
     #{desc =>
@@ -98,10 +98,11 @@ mod_doc() ->
 	  "https://xmpp.org/extensions/xep-0484.html"
 	  "[XEP-0484: Fast Authentication Streamlining Tokens] that allows users to authenticate "
 	  "using self-managed tokens.")],
-      note => "added in 24.12",
+      note => "improved in 26.07",
       opts =>
       [{db_type,
-	#{value => "mnesia",
+	#{value => "mnesia | sql",
+	  note => "improved in 26.07",
 	  desc =>
 	  ?T("Same as top-level _`default_db`_ option, but applied to this module only.")}},
        {token_lifetime,
@@ -137,24 +138,25 @@ get_mechanisms(_LServer, _State) ->
 ua_hash(UA) ->
     crypto:hash(sha256, UA).
 
+get_tokens(_LServer, _LUser, undefined) ->
+    [];
 get_tokens(LServer, LUser, UA) ->
     Mod = gen_mod:db_mod(LServer, ?MODULE),
-    ToRefresh = erlang:system_time(second) - mod_auth_fast_opt:token_refresh_age(LServer),
-    lists:map(
-	fun({Type, Token, CreatedAt}) ->
-	    {{Type, CreatedAt < ToRefresh}, Token}
-	end, Mod:get_tokens(LServer, LUser, ua_hash(UA))).
+    ToRefresh = erlang:system_time(second) - (mod_auth_fast_opt:token_refresh_age(LServer) div 1000),
+    [{{Type, CreatedAt < ToRefresh}, Token} || {Type, Token, CreatedAt} <- Mod:get_tokens(LServer, LUser, ua_hash(UA))].
 
 c2s_inline_features({Sasl, Bind, Extra}, Host, State) ->
     {Sasl ++ [#fast{mechs = get_mechanisms(Host, State)}], Bind, Extra}.
 
-gen_token(#{sasl2_ua_id := UA, server := Server, user := User}) ->
+gen_token(Server, User, UA) ->
     Mod = gen_mod:db_mod(Server, ?MODULE),
-    Token = base64:encode(ua_hash(<<UA/binary, (p1_rand:get_string())/binary>>)),
-    ExpiresAt = erlang:system_time(second) + mod_auth_fast_opt:token_lifetime(Server),
+    Token = base64:encode(ua_hash(<<UA/binary, (misc:strong_alphanum_token())/binary>>)),
+    ExpiresAt = erlang:system_time(second) + (mod_auth_fast_opt:token_lifetime(Server) div 1000),
     Mod:set_token(Server, User, ua_hash(UA), next, Token, ExpiresAt),
     #fast_token{token = Token, expiry = misc:usec_to_now(ExpiresAt*1000000)}.
 
+c2s_handle_sasl2_inline({#{sasl2_ua_id := undefined}, _, _} = Acc) ->
+    Acc;
 c2s_handle_sasl2_inline({#{server := Server, user := User, sasl2_ua_id := UA,
 			   sasl2_axtra_auth_info := Extra} = State, Els, Results} = Acc) ->
     Mod = gen_mod:db_mod(Server, ?MODULE),
@@ -171,14 +173,14 @@ c2s_handle_sasl2_inline({#{server := Server, user := User, sasl2_ua_id := UA,
     case {lists:keyfind(fast_request_token, 1, Els), lists:keyfind(fast, 1, Els)} of
 	{#fast_request_token{mech = _Mech}, #fast{invalidate = true}} ->
 	    Mod:del_token(Server, User, ua_hash(UA), current),
-	    {State, Els, [gen_token(State) | Results]};
+	    {State, Els, [gen_token(Server, User, UA) | Results]};
 	{_, #fast{invalidate = true}} ->
 	    Mod:del_token(Server, User, ua_hash(UA), current),
 	    Acc;
 	{#fast_request_token{mech = _Mech}, _} ->
-	    {State, Els, [gen_token(State) | Results]};
+	    {State, Els, [gen_token(Server, User, UA) | Results]};
 	_ when NeedRegen ->
-	    {State, Els, [gen_token(State) | Results]};
+	    {State, Els, [gen_token(Server, User, UA) | Results]};
 	_ ->
 	    Acc
     end.

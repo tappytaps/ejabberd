@@ -258,6 +258,8 @@ check_password_with_authmodule(User, AuthzId, Server, Password, Digest, DigestGe
 		    false;
                 {_, {is_banned, BanReason}} ->
                     {false, 'account-disabled', BanReason};
+                {LAuthzId, _} when LAuthzId /= <<>> andalso LAuthzId /= LUser ->
+					false;
                 {LAuthzId, _} ->
                     untag_stop(
                       lists:foldl(
@@ -930,7 +932,7 @@ is_password_scram_valid(Password, Scram) ->
 	    Salt = base64:decode(Scram#scram.salt),
 	    SaltedPassword = scram:salted_password(Hash, Password, Salt, IterationCount),
 	    StoredKey =	scram:stored_key(Hash, scram:client_key(Hash, SaltedPassword)),
-	    base64:decode(Scram#scram.storedkey) == StoredKey
+	    crypto:hash_equals(base64:decode(Scram#scram.storedkey), StoredKey)
     end.
 
 password_to_scram(Host, Password) ->

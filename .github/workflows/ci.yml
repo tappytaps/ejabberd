@@ -25,6 +25,8 @@ jobs:
 
   compile:
     runs-on: ubuntu-24.04-arm
+    env:
+      ImageOS: ubuntu24
     strategy:
       matrix:
         otp: ['28']
@@ -37,6 +39,7 @@ jobs:
       with:
         otp-version: ${{ matrix.otp }}
 
+    - run: sudo apt-get update
     - uses: awalsh128/cache-apt-pkgs-action@latest
       with:
         packages: libexpat1-dev libgd-dev libpam0g-dev
@@ -73,6 +76,8 @@ jobs:
   static:
     needs: compile
     runs-on: ubuntu-24.04-arm
+    env:
+      ImageOS: ubuntu24
     strategy:
       matrix:
         otp: ['28']
@@ -92,11 +97,13 @@ jobs:
       run: |
         shellcheck ejabberd.init.template
         shellcheck -x ejabberdctl.template
+        shellcheck -x .github/container/ejabberdctl.template
         shellcheck .vscode/relive.sh
         shellcheck rel/setup-dev.sh
         shellcheck rel/setup-relive.sh
         shellcheck test/ejabberd_SUITE_data/gencerts.sh
         shellcheck tools/captcha.sh
+        shellcheck tools/dl_invites_page_deps.sh
         shellcheck tools/emacs-indent.sh
         shellcheck tools/generate-doap.sh
         shellcheck tools/prepare-tr.sh
@@ -117,6 +124,8 @@ jobs:
   dynamic:
     needs: compile
     runs-on: ubuntu-24.04-arm
+    env:
+      ImageOS: ubuntu24
     strategy:
       matrix:
         otp: ['28']
@@ -142,13 +151,13 @@ jobs:
       uses: ./.github/actions/manage-ejabberd
       with:
         for: prod
-        do: deploy, start, stop, check
+        do: deploy, no_acme, start, stop, check
 
     - name: Start development release
       uses: ./.github/actions/manage-ejabberd
       with:
         for: dev
-        do: deploy, no_tls, start, register
+        do: deploy, no_acme, no_tls, start, register
         username: user123
 
     - name: Run XMPP Interoperability Tests against CI server
@@ -189,6 +198,8 @@ jobs:
   ct:
     needs: compile
     runs-on: ubuntu-24.04-arm
+    env:
+      ImageOS: ubuntu24
     strategy:
       matrix:
         otp: ['28']
@@ -300,6 +311,8 @@ jobs:
   schema:
     needs: compile
     runs-on: ubuntu-24.04-arm
+    env:
+      ImageOS: ubuntu24
     strategy:
       matrix:
         otp: ['28']
@@ -329,6 +342,7 @@ jobs:
             --suite=test/ejabberd_SUITE --group=configtest_single
         make dev
         cp test/ejabberd_SUITE_data/ejabberd.yml ${{ env.DEV }}/conf/
+        sed -i 's|captcha_cmd: captcha_gen||g' ${{ env.DEV }}/conf/ejabberd.yml
         cp _build/test/logs/last/*.yml ${{ env.DEV }}/database/
         echo "define_macro: [CONFIGTEST_CONFIG: {modules: {mod_muc: {}}}]" \
              > ${{ env.DEV }}/database/configtest.yml
